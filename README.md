@@ -42,7 +42,7 @@ This is a Model Context Protocol (MCP) server implementation for Alpaca's Tradin
 
 1. Clone the repository and move to the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/alpaca-mcp-server.git
+   git clone https://github.com/alpacahq/alpaca-mcp-server.git
    cd alpaca-mcp-server
    ```
 
