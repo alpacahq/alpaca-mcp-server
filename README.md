@@ -134,6 +134,32 @@ To enable **live trading with real funds**, update the following configuration f
    PAPER = False
    ```
 
+### Docker Usage
+
+```json
+{
+  "mcpServers": {
+    "alpaca": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "ALPACA_API_KEY",
+        "-e",
+        "ALPACA_SECRET_KEY",
+        "ghcr.io/chand1012/alpaca-mcp-server"
+      ],
+      "env": {
+        "ALPACA_API_KEY": "your_alpaca_api_key_for_live_account",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key_for_live_account"
+      }
+    }
+  }
+}
+```
+
 ## Available Tools
 
 ### Account & Positions
