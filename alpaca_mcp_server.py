@@ -16,6 +16,11 @@ from alpaca.data.enums import DataFeed, OptionsFeed
 from alpaca.common.enums import SupportedCurrencies
 
 import time
+import requests
+import json
+import threading
+import asyncio
+from collections import deque, defaultdict
 from alpaca.common.exceptions import APIError
 
 # Initialize FastMCP server
@@ -25,9 +30,9 @@ mcp = FastMCP("alpaca-trading")
 # Import our .env file within the same directory
 load_dotenv()
 
-API_KEY = os.getenv("ALPACA_API_KEY")
-API_SECRET = os.getenv("ALPACA_SECRET_KEY")
-PAPER = os.getenv("PAPER")
+API_KEY = os.getenv("APCA_API_KEY_ID")
+API_SECRET = os.getenv("APCA_API_SECRET_KEY")
+PAPER = os.getenv("PAPER", "true").lower() in ["true", "1", "yes"]
 trade_api_url = os.getenv("trade_api_url")
 trade_api_wss = os.getenv("trade_api_wss")
 data_api_url = os.getenv("data_api_url")
@@ -46,6 +51,206 @@ stock_historical_data_client = StockHistoricalDataClient(API_KEY, API_SECRET)
 stock_data_stream_client = StockDataStream(API_KEY, API_SECRET, url_override = stream_data_wss)
 # For option historical data
 option_historical_data_client = OptionHistoricalDataClient(api_key=API_KEY, secret_key=API_SECRET)
+
+# ============================================================================
+# Global Stock Streaming State (Alpaca allows only ONE stream connection)
+# ============================================================================
+
+_global_stock_stream = None
+_stock_stream_thread = None
+_stock_stream_active = False
+_stock_stream_subscriptions = {
+    'trades': set(),
+    'quotes': set(),
+    'bars': set(),
+    'updated_bars': set(),
+    'daily_bars': set(),
+    'statuses': set()
+}
+
+# Configurable stock data buffers - no artificial limits for active stocks
+_stock_data_buffers = {}
+_stock_stream_stats = defaultdict(int)
+_stock_stream_start_time = None
+_stock_stream_end_time = None
+_stock_stream_config = {
+    'feed': 'sip',
+    'buffer_size': None,  # Unlimited by default
+    'duration_seconds': None  # No time limit by default
+}
+
+# ============================================================================
+# Stock Streaming Helper Classes and Functions
+# ============================================================================
+
+class ConfigurableStockDataBuffer:
+    """Thread-safe buffer with configurable size limits for stock market data"""
+    
+    def __init__(self, max_size: Optional[int] = None):
+        """
+        Initialize buffer with optional size limit.
+        
+        Args:
+            max_size: Maximum number of items to store. None = unlimited.
+                     For active stocks, consider 10000+ or unlimited.
+        """
+        if max_size is None:
+            self.data = deque()  # Unlimited
+        else:
+            self.data = deque(maxlen=max_size)  # Limited
+        
+        self.lock = threading.Lock()
+        self.last_update = time.time()
+        self.max_size = max_size
+        self.total_items_added = 0  # Track total even if some are dropped
+    
+    def add(self, item):
+        with self.lock:
+            self.data.append(item)
+            self.last_update = time.time()
+            self.total_items_added += 1
+    
+    def get_recent(self, seconds: int = 60):
+        with self.lock:
+            cutoff = time.time() - seconds
+            return [item for item in self.data if item.get('timestamp', 0) > cutoff]
+    
+    def get_all(self):
+        with self.lock:
+            return list(self.data)
+    
+    def get_stats(self):
+        with self.lock:
+            return {
+                'current_size': len(self.data),
+                'max_size': self.max_size,
+                'total_added': self.total_items_added,
+                'last_update': self.last_update,
+                'is_unlimited': self.max_size is None
+            }
+    
+    def clear(self):
+        with self.lock:
+            self.data.clear()
+            self.total_items_added = 0
+
+def _get_or_create_stock_buffer(symbol: str, data_type: str, buffer_size: Optional[int] = None) -> ConfigurableStockDataBuffer:
+    """Get or create a buffer for a stock symbol/data_type combination"""
+    buffer_key = f"{symbol}_{data_type}"
+    if buffer_key not in _stock_data_buffers:
+        effective_size = buffer_size if buffer_size is not None else _stock_stream_config.get('buffer_size')
+        _stock_data_buffers[buffer_key] = ConfigurableStockDataBuffer(effective_size)
+    return _stock_data_buffers[buffer_key]
+
+def _check_stock_stream_duration_limit():
+    """Check if stock stream should stop due to duration limit"""
+    if _stock_stream_config['duration_seconds'] and _stock_stream_start_time:
+        elapsed = time.time() - _stock_stream_start_time
+        if elapsed >= _stock_stream_config['duration_seconds']:
+            return True
+    return False
+
+# Global handler functions for stock streaming
+async def handle_stock_trade(trade):
+    """Global handler for stock trade data"""
+    try:
+        if _check_stock_stream_duration_limit():
+            return
+        
+        trade_data = {
+            'type': 'trade',
+            'symbol': trade.symbol,
+            'price': float(trade.price),
+            'size': trade.size,
+            'exchange': trade.exchange,
+            'timestamp': time.time(),
+            'datetime': trade.timestamp.isoformat(),
+            'conditions': getattr(trade, 'conditions', []),
+            'tape': getattr(trade, 'tape', None)
+        }
+        
+        buffer = _get_or_create_stock_buffer(trade.symbol, 'trades', _stock_stream_config.get('buffer_size'))
+        buffer.add(trade_data)
+        _stock_stream_stats['trades'] += 1
+        
+    except Exception as e:
+        print(f"Error handling trade: {e}")
+
+async def handle_stock_quote(quote):
+    """Global handler for stock quote data"""
+    try:
+        if _check_stock_stream_duration_limit():
+            return
+        
+        quote_data = {
+            'type': 'quote',
+            'symbol': quote.symbol,
+            'bid_price': float(quote.bid_price),
+            'ask_price': float(quote.ask_price),
+            'bid_size': quote.bid_size,
+            'ask_size': quote.ask_size,
+            'spread': float(quote.ask_price - quote.bid_price),
+            'timestamp': time.time(),
+            'datetime': quote.timestamp.isoformat(),
+            'bid_exchange': getattr(quote, 'bid_exchange', None),
+            'ask_exchange': getattr(quote, 'ask_exchange', None)
+        }
+        
+        buffer = _get_or_create_stock_buffer(quote.symbol, 'quotes', _stock_stream_config.get('buffer_size'))
+        buffer.add(quote_data)
+        _stock_stream_stats['quotes'] += 1
+        
+    except Exception as e:
+        print(f"Error handling quote: {e}")
+
+async def handle_stock_bar(bar):
+    """Global handler for stock bar data"""
+    try:
+        if _check_stock_stream_duration_limit():
+            return
+        
+        bar_data = {
+            'type': 'bar',
+            'symbol': bar.symbol,
+            'open': float(bar.open),
+            'high': float(bar.high),
+            'low': float(bar.low),
+            'close': float(bar.close),
+            'volume': bar.volume,
+            'trade_count': getattr(bar, 'trade_count', 0),
+            'vwap': float(getattr(bar, 'vwap', 0)) if hasattr(bar, 'vwap') and bar.vwap else None,
+            'timestamp': time.time(),
+            'datetime': bar.timestamp.isoformat()
+        }
+        
+        buffer = _get_or_create_stock_buffer(bar.symbol, 'bars', _stock_stream_config.get('buffer_size'))
+        buffer.add(bar_data)
+        _stock_stream_stats['bars'] += 1
+        
+    except Exception as e:
+        print(f"Error handling bar: {e}")
+
+async def handle_stock_status(status):
+    """Global handler for stock status data"""
+    try:
+        if _check_stock_stream_duration_limit():
+            return
+        
+        status_data = {
+            'type': 'status',
+            'symbol': status.symbol,
+            'status': status.status,
+            'reason': getattr(status, 'reason', None),
+            'timestamp': time.time(),
+            'datetime': status.timestamp.isoformat()
+        }
+        
+        buffer = _get_or_create_stock_buffer(status.symbol, 'statuses', _stock_stream_config.get('buffer_size'))
+        buffer.add(status_data)
+        _stock_stream_stats['statuses'] += 1
+        
+    except Exception as e:
+        print(f"Error handling status: {e}")
 
 # ============================================================================
 # Account Information Tools
@@ -237,6 +442,356 @@ async def get_stock_bars(symbol: str, days: int = 5) -> str:
         return f"Error fetching historical data for {symbol}: {str(e)}"
 
 @mcp.tool()
+async def get_stock_bars_intraday(
+    symbol: str, 
+    timeframe: str = "1Min", 
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 100,
+    adjustment: str = "raw",
+    feed: str = "sip",
+    currency: str = "USD",
+    sort: str = "asc"
+) -> str:
+    """
+    Retrieves and formats intraday historical price bars for a stock with comprehensive customization options.
+    This function matches Alpaca's native bars API capabilities with enhanced formatting and analysis.
+    
+    Args:
+        symbol (str): Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
+        timeframe (str): Time interval for bars. Supports all Alpaca timeframes:
+            - '[1-59]Min' or '[1-59]T': e.g., '1Min', '5Min', '30Min'
+            - '[1-23]Hour' or '[1-23]H': e.g., '1Hour', '12Hour'
+            - '1Day' or '1D': Daily bars
+            - '1Week' or '1W': Weekly bars
+            - '[1,2,3,4,6,12]Month' or 'M': e.g., '1Month', '3Month'
+        start_date (Optional[str]): Start date in YYYY-MM-DD format (default: most recent trading day)
+        end_date (Optional[str]): End date in YYYY-MM-DD format (default: today or most recent trading day)
+        limit (int): Maximum number of bars to return (default: 100, max: 10000)
+        adjustment (str): Corporate action adjustment ('raw', 'split', 'dividend', 'all')
+        feed (str): Data feed source ('sip', 'iex', 'otc') - default: 'sip'
+        currency (str): Currency for prices in ISO 4217 format (default: 'USD')
+        sort (str): Sort order ('asc' for ascending, 'desc' for descending)
+    
+    Returns:
+        str: Formatted string containing comprehensive intraday data including:
+            - Timestamp (in ET timezone)
+            - OHLCV data (Open, High, Low, Close, Volume)
+            - Trade count and VWAP when available
+            - Price changes and percentage moves
+            - Volume analysis and trading activity metrics
+            - Summary statistics for the period
+    """
+    try:
+        # Enhanced timeframe parsing to support Alpaca's full syntax
+        from alpaca.data.timeframe import TimeFrameUnit
+        import re
+        
+        def parse_timeframe(tf_str):
+            """Parse timeframe string into TimeFrame object"""
+            tf_str = tf_str.upper()
+            
+            # Handle minute timeframes: 1Min, 5Min, 30Min, 1T, 5T, etc.
+            if re.match(r'^\d+MIN$', tf_str) or re.match(r'^\d+T$', tf_str):
+                minutes = int(re.findall(r'\d+', tf_str)[0])
+                if 1 <= minutes <= 59:
+                    return TimeFrame(minutes, TimeFrameUnit.Minute)
+                else:
+                    raise ValueError(f"Minutes must be 1-59, got {minutes}")
+            
+            # Handle hour timeframes: 1Hour, 12Hour, 1H, 12H, etc.
+            elif re.match(r'^\d+HOUR$', tf_str) or re.match(r'^\d+H$', tf_str):
+                hours = int(re.findall(r'\d+', tf_str)[0])
+                if 1 <= hours <= 23:
+                    return TimeFrame(hours, TimeFrameUnit.Hour)
+                else:
+                    raise ValueError(f"Hours must be 1-23, got {hours}")
+            
+            # Handle day timeframes: 1Day, 1D
+            elif tf_str in ['1DAY', '1D']:
+                return TimeFrame.Day
+            
+            # Handle week timeframes: 1Week, 1W
+            elif tf_str in ['1WEEK', '1W']:
+                return TimeFrame.Week
+            
+            # Handle month timeframes: 1Month, 3Month, etc.
+            elif re.match(r'^\d+MONTH$', tf_str) or re.match(r'^\d+M$', tf_str):
+                months = int(re.findall(r'\d+', tf_str)[0])
+                if months in [1, 2, 3, 4, 6, 12]:
+                    return TimeFrame(months, TimeFrameUnit.Month)
+                else:
+                    raise ValueError(f"Months must be 1,2,3,4,6,12, got {months}")
+            
+            else:
+                raise ValueError(f"Invalid timeframe format: {tf_str}")
+        
+        try:
+            timeframe_obj = parse_timeframe(timeframe)
+        except ValueError as e:
+            return f"Invalid timeframe '{timeframe}': {str(e)}\n\nSupported formats:\n- Minutes: 1Min-59Min or 1T-59T\n- Hours: 1Hour-23Hour or 1H-23H\n- Days: 1Day or 1D\n- Weeks: 1Week or 1W\n- Months: 1Month, 2Month, 3Month, 4Month, 6Month, 12Month (or 1M, 2M, etc.)"
+        
+        # Get market calendar to find the most recent trading day
+        now = datetime.now()
+        today = now.date()
+        
+        # Look back up to 10 days and forward 1 day to get current trading status
+        calendar_start = now - timedelta(days=10)
+        calendar_end = now + timedelta(days=1)
+        
+        try:
+            calendar_request = GetCalendarRequest(
+                start=calendar_start.date(),
+                end=calendar_end.date()
+            )
+            calendar = trade_client.get_calendar(calendar_request)
+            if not calendar:
+                return "No trading days found in recent calendar data"
+            
+            # Find the most recent trading day (today or before, not future dates)
+            most_recent_trading_day = None
+            for day in reversed(calendar):  # Go backwards from latest date
+                if day.date <= today:  # Only consider today or past dates
+                    most_recent_trading_day = day.date
+                    break
+            
+            # If no past trading day found, use today if it's a trading day
+            if most_recent_trading_day is None:
+                # Check if today is a trading day
+                if any(day.date == today for day in calendar):
+                    most_recent_trading_day = today
+                else:
+                    # Fallback to yesterday
+                    most_recent_trading_day = (now - timedelta(days=1)).date()
+            
+        except Exception as calendar_error:
+            # Fallback: use today first, then yesterday
+            most_recent_trading_day = today
+        
+        # Set default dates if not provided
+        if not end_date:
+            end_date = most_recent_trading_day.strftime("%Y-%m-%d")
+        if not start_date:
+            start_date = most_recent_trading_day.strftime("%Y-%m-%d")
+        
+        
+        # Parse dates and create datetime objects with proper timezone handling
+        try:
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+            
+            # For intraday data, we need to specify the full trading day
+            # Set start to market open (9:30 AM ET) and end to market close (4:00 PM ET)
+            from datetime import timezone, timedelta as td
+            eastern = timezone(td(hours=-5))  # EST (adjust for EDT as needed)
+            
+            # Market hours: 9:30 AM to 4:00 PM ET
+            start_datetime = start_date_obj.replace(hour=9, minute=30, second=0, microsecond=0)
+            end_datetime = end_date_obj.replace(hour=16, minute=0, second=0, microsecond=0)
+            
+        except ValueError as ve:
+            return f"Invalid date format. Use YYYY-MM-DD format. Error: {str(ve)}"
+        
+        # Validate parameters
+        if limit <= 0 or limit > 10000:
+            return "Limit must be between 1 and 10000"
+        
+        if adjustment not in ['raw', 'split', 'dividend', 'all']:
+            return "Invalid adjustment. Must be one of: raw, split, dividend, all"
+        
+        if feed not in ['sip', 'iex', 'otc']:
+            return "Invalid feed. Must be one of: sip, iex, otc"
+        
+        if sort.lower() not in ['asc', 'desc']:
+            return "Invalid sort. Must be 'asc' or 'desc'"
+        
+        # Convert parameters to appropriate enums
+        from alpaca.data.enums import DataFeed, Adjustment
+        feed_enum = getattr(DataFeed, feed.upper())
+        sort_enum = Sort.ASC if sort.lower() == 'asc' else Sort.DESC
+        
+        # Map adjustment parameter
+        adjustment_map = {
+            'raw': 'raw',
+            'split': 'split',
+            'dividend': 'dividend', 
+            'all': 'all'
+        }
+        
+        # Create enhanced request with all parameters
+        if start_date == end_date:
+            # For same-day requests, use just the date without specific times
+            request_params = StockBarsRequest(
+                symbol_or_symbols=symbol,
+                timeframe=timeframe_obj,
+                start=start_date_obj,
+                limit=limit,
+                adjustment=adjustment_map[adjustment],
+                feed=feed_enum,
+                sort=sort_enum
+            )
+        else:
+            # For multi-day requests
+            request_params = StockBarsRequest(
+                symbol_or_symbols=symbol,
+                timeframe=timeframe_obj,
+                start=start_datetime,
+                end=end_datetime,
+                limit=limit,
+                adjustment=adjustment_map[adjustment],
+                feed=feed_enum,
+                sort=sort_enum
+            )
+        
+        # Get the bars
+        bars = stock_historical_data_client.get_stock_bars(request_params)
+        
+        if symbol not in bars.data or not bars.data[symbol]:
+            # If no data found, try with a wider date range
+            if start_date == end_date:
+                # Try looking back 7 days
+                extended_start = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=7)).date()
+                request_params_extended = StockBarsRequest(
+                    symbol_or_symbols=symbol,
+                    timeframe=timeframe_obj,
+                    start=extended_start,
+                    limit=limit,
+                    adjustment=adjustment_map[adjustment],
+                    feed=feed_enum,
+                    sort=sort_enum
+                )
+                bars_extended = stock_historical_data_client.get_stock_bars(request_params_extended)
+                
+                if symbol in bars_extended.data and bars_extended.data[symbol]:
+                    bars = bars_extended
+                    start_date = extended_start.strftime("%Y-%m-%d")
+                else:
+                    return f"No {timeframe} data found for {symbol} between {start_date} and {end_date}\n\n📊 Troubleshooting:\n• Verify {symbol} is a valid stock symbol\n• Check if {start_date} was a trading day\n• Ensure your Alpaca subscription includes real-time intraday data\n• Try different timeframe (e.g., '1Day' instead of '1Min')\n• Check if market was open during requested period\n• Try feed='iex' for IEX-only data"
+            else:
+                return f"No {timeframe} data found for {symbol} between {start_date} and {end_date}\n\n📊 Troubleshooting:\n• Verify {symbol} is a valid stock symbol\n• Check if dates were trading days\n• Ensure your Alpaca subscription includes real-time intraday data\n• Try different timeframe (e.g., '1Day' instead of '1Min')\n• Check if market was open during requested period\n• Try feed='iex' for IEX-only data"
+        
+        # Enhanced formatting with comprehensive analysis
+        bars_list = list(bars.data[symbol])
+        bar_count = min(len(bars_list), limit)
+        
+        result = f"📊 {timeframe.upper()} HISTORICAL BARS: {symbol}\n"
+        result += f"📅 Period: {start_date} to {end_date} | Feed: {feed.upper()} | Adjustment: {adjustment}\n"
+        result += f"📈 Retrieved: {bar_count:,} bars | Sort: {sort.upper()}\n"
+        result += "=" * 80 + "\n\n"
+        
+        if bar_count == 0:
+            return result + "No bars found for the specified period."
+        
+        # Calculate summary statistics
+        opens = [float(bar.open) for bar in bars_list[:bar_count]]
+        highs = [float(bar.high) for bar in bars_list[:bar_count]]
+        lows = [float(bar.low) for bar in bars_list[:bar_count]]
+        closes = [float(bar.close) for bar in bars_list[:bar_count]]
+        volumes = [int(bar.volume) for bar in bars_list[:bar_count]]
+        
+        # Price analysis
+        period_open = opens[0] if sort.lower() == 'asc' else opens[-1]
+        period_close = closes[-1] if sort.lower() == 'asc' else closes[0]
+        period_high = max(highs)
+        period_low = min(lows)
+        period_change = period_close - period_open
+        period_change_pct = (period_change / period_open * 100) if period_open > 0 else 0
+        
+        # Volume analysis
+        total_volume = sum(volumes)
+        avg_volume = total_volume / len(volumes) if volumes else 0
+        max_volume = max(volumes) if volumes else 0
+        
+        # VWAP calculation
+        vwap_bars = [bar for bar in bars_list[:bar_count] if hasattr(bar, 'vwap') and bar.vwap]
+        avg_vwap = sum(float(bar.vwap) for bar in vwap_bars) / len(vwap_bars) if vwap_bars else None
+        
+        # Trade count analysis
+        trade_counts = [bar.trade_count for bar in bars_list[:bar_count] if hasattr(bar, 'trade_count') and bar.trade_count]
+        total_trades = sum(trade_counts) if trade_counts else 0
+        avg_trades = total_trades / len(trade_counts) if trade_counts else 0
+        
+        # Summary statistics
+        result += f"📈 PERIOD SUMMARY:\n"
+        result += f"  Open: ${period_open:.4f} → Close: ${period_close:.4f}\n"
+        result += f"  Change: ${period_change:+.4f} ({period_change_pct:+.2f}%)\n"
+        result += f"  Range: ${period_low:.4f} - ${period_high:.4f} (${period_high - period_low:.4f} spread)\n"
+        if avg_vwap:
+            result += f"  Avg VWAP: ${avg_vwap:.4f}\n"
+        result += f"  Total Volume: {total_volume:,} shares\n"
+        result += f"  Avg Volume/Bar: {avg_volume:,.0f} shares\n"
+        if total_trades > 0:
+            result += f"  Total Trades: {total_trades:,} | Avg/Bar: {avg_trades:.0f}\n"
+        result += "\n"
+        
+        # Trading activity analysis
+        result += f"📊 TRADING ACTIVITY ANALYSIS:\n"
+        if max_volume > avg_volume * 2:
+            result += f"  🔥 High volume detected (peak: {max_volume:,} vs avg: {avg_volume:,.0f})\n"
+        elif max_volume < avg_volume * 0.5:
+            result += f"  📉 Low volume period (peak: {max_volume:,} vs avg: {avg_volume:,.0f})\n"
+        else:
+            result += f"  ⚖️ Normal volume activity (peak: {max_volume:,} vs avg: {avg_volume:,.0f})\n"
+        
+        if period_change_pct > 1.0:
+            result += f"  🟢 Strong upward movement (+{period_change_pct:.2f}%)\n"
+        elif period_change_pct < -1.0:
+            result += f"  🔴 Strong downward movement ({period_change_pct:.2f}%)\n"
+        else:
+            result += f"  🟡 Sideways movement ({period_change_pct:+.2f}%)\n"
+        
+        # Price volatility
+        price_range_pct = ((period_high - period_low) / period_open * 100) if period_open > 0 else 0
+        if price_range_pct > 3.0:
+            result += f"  ⚡ High volatility (range: {price_range_pct:.2f}% of open price)\n"
+        elif price_range_pct > 1.0:
+            result += f"  📊 Moderate volatility (range: {price_range_pct:.2f}% of open price)\n"
+        else:
+            result += f"  😴 Low volatility (range: {price_range_pct:.2f}% of open price)\n"
+        
+        result += "\n"
+        
+        # Individual bar details (show recent bars based on sort order)
+        display_limit = min(15, bar_count)  # Show up to 15 bars
+        result += f"🕐 RECENT {timeframe.upper()} BARS (showing {display_limit} of {bar_count}):\n"
+        result += "─" * 80 + "\n"
+        
+        display_bars = bars_list[:display_limit] if sort.lower() == 'asc' else bars_list[-display_limit:]
+        
+        for i, bar in enumerate(display_bars):
+            # Format timestamp
+            timestamp_str = bar.timestamp.strftime("%Y-%m-%d %H:%M ET")
+            
+            # Calculate bar-specific metrics
+            bar_change = float(bar.close) - float(bar.open)
+            bar_change_pct = (bar_change / float(bar.open) * 100) if float(bar.open) > 0 else 0
+            bar_range = float(bar.high) - float(bar.low)
+            
+            # VWAP and trade count
+            vwap_str = f"${float(bar.vwap):.4f}" if hasattr(bar, 'vwap') and bar.vwap else 'N/A'
+            trades_str = f"{bar.trade_count:,}" if hasattr(bar, 'trade_count') and bar.trade_count else 'N/A'
+            
+            # Trend indicator
+            trend = "🟢" if bar_change > 0 else "🔴" if bar_change < 0 else "⚪"
+            
+            result += f"{timestamp_str} {trend}\n"
+            result += f"  OHLC: ${float(bar.open):.4f} | ${float(bar.high):.4f} | ${float(bar.low):.4f} | ${float(bar.close):.4f}\n"
+            result += f"  Change: ${bar_change:+.4f} ({bar_change_pct:+.2f}%) | Range: ${bar_range:.4f}\n"
+            result += f"  Volume: {int(bar.volume):,} | Trades: {trades_str} | VWAP: {vwap_str}\n"
+            
+            if i < len(display_bars) - 1:  # Don't add separator after last bar
+                result += "  " + "·" * 40 + "\n"
+        
+        result += "\n" + "=" * 80 + "\n"
+        result += f"💡 TIP: Use sort='desc' for most recent bars first, or adjust limit for more data\n"
+        result += f"📊 Data source: Alpaca Markets ({feed.upper()} feed) with {adjustment} adjustment"
+        
+        return result
+        
+    except Exception as e:
+        return f"Error fetching intraday bars for {symbol}: {str(e)}\n\nTroubleshooting tips:\n1. Check your Alpaca API credentials\n2. Verify your data subscription level\n3. Ensure the symbol exists and is tradable\n4. Try a different date range"
+
+@mcp.tool()
 async def get_stock_trades(
     symbol: str,
     days: int = 5,
@@ -387,6 +942,1150 @@ async def get_stock_latest_bar(
             return f"No latest bar data found for {symbol}."
     except Exception as e:
         return f"Error fetching latest bar: {str(e)}"
+
+@mcp.tool()
+async def get_stock_snapshots(
+    symbols: Union[str, List[str]],
+    feed: Optional[DataFeed] = None,
+    currency: Optional[SupportedCurrencies] = None
+) -> str:
+    """
+    Retrieves comprehensive market snapshots for one or more stocks using Alpaca's native snapshots endpoint.
+    Each snapshot includes latest trade, latest quote, minute bar, daily bar, and previous daily bar data.
+    
+    Args:
+        symbols (Union[str, List[str]]): Single stock symbol or list of stock symbols
+            (e.g., 'NVDA' or ['NVDA', 'AAPL', 'MSFT'])
+        feed (Optional[DataFeed]): The source feed of the data:
+            - sip: All US exchanges (default for unlimited subscription)
+            - iex: Investors Exchange only  
+            - otc: Over-the-counter exchanges
+            - delayed_sip: SIP data with 15-minute delay
+        currency (Optional[SupportedCurrencies]): Currency for prices in ISO 4217 format (default: USD)
+    
+    Returns:
+        str: Formatted string containing comprehensive snapshots including:
+            - Latest Quote (bid/ask prices, sizes, exchanges)
+            - Latest Trade (price, size, exchange, conditions)
+            - Current Minute Bar (OHLCV for current minute)
+            - Daily Bar (OHLCV for current trading day)
+            - Previous Daily Bar (OHLCV for previous trading day)
+            - Calculated metrics (spreads, changes, volume analysis)
+    """
+    try:
+        # Convert symbols to list and create comma-separated string
+        if isinstance(symbols, str):
+            symbol_list = [symbols]
+            symbols_param = symbols
+        else:
+            symbol_list = symbols
+            symbols_param = ','.join(symbols)
+        
+        # Build URL and parameters
+        url = "https://data.alpaca.markets/v2/stocks/snapshots"
+        params = {"symbols": symbols_param}
+        
+        if feed:
+            if hasattr(feed, 'value'):
+                params["feed"] = feed.value.lower()
+            else:
+                params["feed"] = str(feed).lower()
+                
+        if currency:
+            if hasattr(currency, 'value'):
+                params["currency"] = currency.value
+            else:
+                params["currency"] = str(currency)
+        
+        # Set up headers
+        headers = {
+            "accept": "application/json",
+            "APCA-API-KEY-ID": API_KEY,
+            "APCA-API-SECRET-KEY": API_SECRET
+        }
+        
+        # Make the API request
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        
+        # Parse response
+        data = response.json()
+        
+        if not data:
+            return f"No snapshot data found for symbols: {symbols_param}"
+        
+        # Format the response
+        result = f"Stock Market Snapshots:\n"
+        result += "=" * 50 + "\n\n"
+        
+        for symbol in symbol_list:
+            if symbol not in data:
+                result += f"❌ {symbol}: No data available\n\n"
+                continue
+                
+            snapshot = data[symbol]
+            result += f"📊 {symbol}\n"
+            result += "-" * (len(symbol) + 3) + "\n"
+            
+            # Latest Quote
+            if "latestQuote" in snapshot and snapshot["latestQuote"]:
+                quote = snapshot["latestQuote"]
+                bid_price = quote.get("bp", 0)
+                ask_price = quote.get("ap", 0)
+                bid_size = quote.get("bs", 0)
+                ask_size = quote.get("as", 0)
+                
+                result += "💰 Latest Quote:\n"
+                result += f"  Bid: ${bid_price:.2f} x {bid_size:,}\n"
+                result += f"  Ask: ${ask_price:.2f} x {ask_size:,}\n"
+                
+                if bid_price > 0 and ask_price > 0:
+                    spread = ask_price - bid_price
+                    spread_pct = (spread / bid_price * 100) if bid_price > 0 else 0
+                    result += f"  Spread: ${spread:.2f} ({spread_pct:.2f}%)\n"
+                
+                if quote.get("bx"):
+                    result += f"  Bid Exchange: {quote['bx']}\n"
+                if quote.get("ax"):
+                    result += f"  Ask Exchange: {quote['ax']}\n"
+                
+                if quote.get("t"):
+                    result += f"  Quote Time: {quote['t']}\n"
+            
+            # Latest Trade
+            if "latestTrade" in snapshot and snapshot["latestTrade"]:
+                trade = snapshot["latestTrade"]
+                trade_price = trade.get("p", 0)
+                trade_size = trade.get("s", 0)
+                
+                result += "\n🔄 Latest Trade:\n"
+                result += f"  Price: ${trade_price:.4f}\n"
+                result += f"  Size: {trade_size:,} shares\n"
+                
+                if trade.get("x"):
+                    result += f"  Exchange: {trade['x']}\n"
+                if trade.get("c"):
+                    result += f"  Conditions: {', '.join(trade['c'])}\n"
+                if trade.get("t"):
+                    result += f"  Trade Time: {trade['t']}\n"
+            
+            # Current Minute Bar
+            if "minuteBar" in snapshot and snapshot["minuteBar"]:
+                bar = snapshot["minuteBar"]
+                result += "\n📈 Current Minute Bar:\n"
+                result += f"  Open: ${bar.get('o', 0):.2f}\n"
+                result += f"  High: ${bar.get('h', 0):.2f}\n"
+                result += f"  Low: ${bar.get('l', 0):.2f}\n"
+                result += f"  Close: ${bar.get('c', 0):.2f}\n"
+                result += f"  Volume: {bar.get('v', 0):,}\n"
+                result += f"  Trade Count: {bar.get('n', 0):,}\n"
+                if bar.get('vw'):
+                    result += f"  VWAP: ${bar['vw']:.2f}\n"
+                if bar.get('t'):
+                    result += f"  Bar Time: {bar['t']}\n"
+            
+            # Current Daily Bar
+            if "dailyBar" in snapshot and snapshot["dailyBar"]:
+                daily = snapshot["dailyBar"]
+                open_price = daily.get('o', 0)
+                close_price = daily.get('c', 0)
+                
+                result += "\n📅 Today's Daily Bar:\n"
+                result += f"  Open: ${open_price:.2f}\n"
+                result += f"  High: ${daily.get('h', 0):.2f}\n"
+                result += f"  Low: ${daily.get('l', 0):.2f}\n"
+                result += f"  Close: ${close_price:.2f}\n"
+                
+                # Calculate daily change
+                if open_price > 0:
+                    daily_change = close_price - open_price
+                    daily_change_pct = (daily_change / open_price * 100)
+                    result += f"  Change: ${daily_change:+.2f} ({daily_change_pct:+.2f}%)\n"
+                
+                result += f"  Volume: {daily.get('v', 0):,}\n"
+                result += f"  Trade Count: {daily.get('n', 0):,}\n"
+                if daily.get('vw'):
+                    result += f"  VWAP: ${daily['vw']:.2f}\n"
+                if daily.get('t'):
+                    result += f"  Date: {daily['t']}\n"
+            
+            # Previous Daily Bar
+            if "prevDailyBar" in snapshot and snapshot["prevDailyBar"]:
+                prev = snapshot["prevDailyBar"]
+                prev_close = prev.get('c', 0)
+                
+                result += "\n📊 Previous Day:\n"
+                result += f"  Open: ${prev.get('o', 0):.2f}\n"
+                result += f"  High: ${prev.get('h', 0):.2f}\n"
+                result += f"  Low: ${prev.get('l', 0):.2f}\n"
+                result += f"  Close: ${prev_close:.2f}\n"
+                result += f"  Volume: {prev.get('v', 0):,}\n"
+                
+                # Calculate overnight change
+                if (prev_close > 0 and "dailyBar" in snapshot and 
+                    snapshot["dailyBar"] and snapshot["dailyBar"].get('o', 0) > 0):
+                    current_open = snapshot["dailyBar"]['o']
+                    overnight_change = current_open - prev_close
+                    overnight_change_pct = (overnight_change / prev_close * 100)
+                    result += f"  Overnight Gap: ${overnight_change:+.2f} ({overnight_change_pct:+.2f}%)\n"
+            
+            # Market Analysis
+            result += "\n🔍 Market Analysis:\n"
+            
+            # Trading activity
+            if "dailyBar" in snapshot and snapshot["dailyBar"]:
+                today_volume = snapshot["dailyBar"].get('v', 0)
+                if "prevDailyBar" in snapshot and snapshot["prevDailyBar"]:
+                    prev_volume = snapshot["prevDailyBar"].get('v', 0)
+                    if prev_volume > 0:
+                        volume_ratio = today_volume / prev_volume
+                        if volume_ratio > 1.5:
+                            result += "  Volume: Higher than average (strong interest)\n"
+                        elif volume_ratio < 0.5:
+                            result += "  Volume: Lower than average (light trading)\n"
+                        else:
+                            result += "  Volume: Normal trading activity\n"
+                    else:
+                        result += f"  Volume: {today_volume:,} shares today\n"
+            
+            # Price action relative to quote
+            if ("latestTrade" in snapshot and snapshot["latestTrade"] and
+                "latestQuote" in snapshot and snapshot["latestQuote"]):
+                trade_price = snapshot["latestTrade"].get("p", 0)
+                bid_price = snapshot["latestQuote"].get("bp", 0)
+                ask_price = snapshot["latestQuote"].get("ap", 0)
+                
+                if bid_price > 0 and ask_price > 0:
+                    if trade_price <= bid_price:
+                        result += "  Last Trade: At/below bid (selling pressure)\n"
+                    elif trade_price >= ask_price:
+                        result += "  Last Trade: At/above ask (buying pressure)\n"
+                    else:
+                        result += "  Last Trade: Within spread (balanced)\n"
+            
+            # Liquidity assessment
+            if "latestQuote" in snapshot and snapshot["latestQuote"]:
+                total_size = snapshot["latestQuote"].get("bs", 0) + snapshot["latestQuote"].get("as", 0)
+                if total_size > 1000:
+                    result += "  Liquidity: High\n"
+                elif total_size > 100:
+                    result += "  Liquidity: Moderate\n"
+                else:
+                    result += "  Liquidity: Low\n"
+            
+            result += "\n" + "=" * 50 + "\n\n"
+        
+        return result.rstrip()
+        
+    except requests.exceptions.RequestException as e:
+        return f"API request error: {str(e)}"
+    except json.JSONDecodeError as e:
+        return f"Error parsing response: {str(e)}"
+    except Exception as e:
+        return f"Error retrieving stock snapshots: {str(e)}"
+
+# ============================================================================
+# Real-Time Stock Market Data Streaming Tools
+# ============================================================================
+
+@mcp.tool()
+async def start_global_stock_stream(
+    symbols: List[str],
+    data_types: List[str] = ["trades", "quotes"],
+    feed: str = "sip",
+    duration_seconds: Optional[int] = None,
+    buffer_size_per_symbol: Optional[int] = None,
+    replace_existing: bool = False
+) -> str:
+    """
+    Start the global real-time stock market data stream (Alpaca allows only one stream connection).
+    
+    Args:
+        symbols (List[str]): List of stock symbols to stream (e.g., ['AAPL', 'MSFT', 'NVDA'])
+        data_types (List[str]): Types of stock data to stream. Options:
+            - "trades": Real-time stock trade executions
+            - "quotes": Stock bid/ask prices and sizes  
+            - "bars": 1-minute OHLCV stock bars
+            - "updated_bars": Corrections to stock minute bars
+            - "daily_bars": Daily OHLCV stock bars
+            - "statuses": Stock trading halt/resume notifications
+        feed (str): Stock data feed source ("sip" for all exchanges, "iex" for IEX only)
+        duration_seconds (Optional[int]): How long to run the stock stream in seconds. None = run indefinitely
+        buffer_size_per_symbol (Optional[int]): Max items per stock symbol/data_type buffer. 
+                                               None = unlimited (recommended for active stocks)
+                                               High-velocity stocks may need 10000+ or unlimited
+        replace_existing (bool): If True, stop existing stock stream and start new one
+    
+    Returns:
+        str: Confirmation with stock stream details and data access instructions
+    """
+    global _global_stock_stream, _stock_stream_thread, _stock_stream_active, _stock_stream_start_time, _stock_stream_end_time
+    
+    try:
+        # Check if stock stream already exists
+        if _stock_stream_active and not replace_existing:
+            current_symbols = set()
+            for data_type, symbol_set in _stock_stream_subscriptions.items():
+                current_symbols.update(symbol_set)
+            
+            return f"""
+❌ Global stock stream already active!
+
+Current Stock Stream:
+└── Symbols: {', '.join(sorted(current_symbols)) if current_symbols else 'None'}
+└── Data Types: {[dt for dt, symbols in _stock_stream_subscriptions.items() if symbols]}
+└── Feed: {_stock_stream_config['feed'].upper()}
+└── Runtime: {(time.time() - _stock_stream_start_time)/60:.1f} minutes
+
+Options:
+└── Use add_symbols_to_stock_stream() to add more symbols
+└── Use stop_global_stock_stream() to stop current stream
+└── Use replace_existing=True to replace current stream
+            """
+        
+        # Stop existing stock stream if replacing
+        if _stock_stream_active and replace_existing:
+            await stop_global_stock_stream()
+            await asyncio.sleep(2)  # Give time for cleanup
+        
+        # Validate parameters
+        valid_data_types = ["trades", "quotes", "bars", "updated_bars", "daily_bars", "statuses"]
+        invalid_types = [dt for dt in data_types if dt not in valid_data_types]
+        if invalid_types:
+            return f"Invalid data types: {invalid_types}. Valid options: {valid_data_types}"
+        
+        if feed.lower() not in ['sip', 'iex']:
+            return "Feed must be 'sip' or 'iex'"
+        
+        # Convert symbols to uppercase
+        symbols = [s.upper() for s in symbols]
+        
+        # Update global stock stream config
+        _stock_stream_config.update({
+            'feed': feed,
+            'buffer_size': buffer_size_per_symbol,
+            'duration_seconds': duration_seconds
+        })
+        
+        # Create data feed enum
+        feed_enum = DataFeed.SIP if feed.lower() == 'sip' else DataFeed.IEX
+        
+        # Create the single global stock stream
+        _global_stock_stream = StockDataStream(
+            api_key=API_KEY,
+            secret_key=API_SECRET,
+            feed=feed_enum,
+            raw_data=False
+        )
+        
+        # Subscribe to requested stock data types
+        if "trades" in data_types:
+            _global_stock_stream.subscribe_trades(handle_stock_trade, *symbols)
+            _stock_stream_subscriptions['trades'].update(symbols)
+        
+        if "quotes" in data_types:
+            _global_stock_stream.subscribe_quotes(handle_stock_quote, *symbols)
+            _stock_stream_subscriptions['quotes'].update(symbols)
+        
+        if "bars" in data_types:
+            _global_stock_stream.subscribe_bars(handle_stock_bar, *symbols)
+            _stock_stream_subscriptions['bars'].update(symbols)
+        
+        if "updated_bars" in data_types:
+            _global_stock_stream.subscribe_updated_bars(handle_stock_bar, *symbols)
+            _stock_stream_subscriptions['updated_bars'].update(symbols)
+        
+        if "daily_bars" in data_types:
+            _global_stock_stream.subscribe_daily_bars(handle_stock_bar, *symbols)
+            _stock_stream_subscriptions['daily_bars'].update(symbols)
+        
+        if "statuses" in data_types:
+            _global_stock_stream.subscribe_trading_statuses(handle_stock_status, *symbols)
+            _stock_stream_subscriptions['statuses'].update(symbols)
+        
+        # Function to run the stock stream with duration monitoring
+        def run_stock_stream():
+            global _stock_stream_active, _stock_stream_start_time, _stock_stream_end_time
+            
+            try:
+                _stock_stream_active = True
+                _stock_stream_start_time = time.time()
+                _stock_stream_end_time = _stock_stream_start_time + duration_seconds if duration_seconds else None
+                
+                print(f"Starting Alpaca stock stream for {len(symbols)} symbols...")
+                
+                # Start the stock stream
+                _global_stock_stream.run()
+                
+            except Exception as e:
+                print(f"Stock stream error: {e}")
+            finally:
+                _stock_stream_active = False
+                print("Stock stream stopped")
+        
+        # Start the stock stream in a background thread
+        _stock_stream_thread = threading.Thread(target=run_stock_stream, daemon=True)
+        _stock_stream_thread.start()
+        
+        # Wait a moment for connection
+        await asyncio.sleep(2)
+        
+        # Format response
+        buffer_info = f"Unlimited" if buffer_size_per_symbol is None else f"{buffer_size_per_symbol:,} items"
+        duration_info = f"{duration_seconds:,} seconds" if duration_seconds else "Indefinite"
+        
+        return f"""
+🚀 GLOBAL STOCK STREAM STARTED SUCCESSFULLY!
+
+📊 Stock Stream Configuration:
+└── Symbols: {', '.join(symbols)} ({len(symbols)} stock symbols)
+└── Data Types: {', '.join(data_types)}
+└── Feed: {feed.upper()}
+└── Duration: {duration_info}
+└── Buffer Size per Symbol: {buffer_info}
+└── Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+💾 Stock Data Storage:
+└── Each stock symbol/data_type gets its own buffer
+└── High-velocity stocks fully supported
+└── Thread-safe concurrent access
+
+📡 Access Your Stock Data:
+└── get_stock_stream_data("AAPL", "trades") - Recent stock trades
+└── get_stock_stream_buffer_stats() - Buffer statistics  
+└── list_active_stock_streams() - Current stream status
+└── get_stock_stream_analysis("NVDA", "momentum") - Real-time analysis
+
+⚡ Stock Stream Management:
+└── add_symbols_to_stock_stream(["TSLA", "META"]) - Add more stocks
+└── stop_global_stock_stream() - Stop streaming
+
+🔥 Pro Tips for Stock Trading:
+└── For active stocks like NVDA, TSLA: unlimited buffers recommended
+└── Use get_stock_stream_data() with time filters for analysis
+└── Combine with stock snapshots for comprehensive market view
+└── Stock stream data persists until manually cleared
+        """
+        
+    except Exception as e:
+        return f"Error starting global stock stream: {str(e)}"
+
+@mcp.tool()
+async def add_symbols_to_stock_stream(
+    symbols: List[str],
+    data_types: Optional[List[str]] = None
+) -> str:
+    """
+    Add stock symbols to the existing global stock stream (if active).
+    
+    Args:
+        symbols (List[str]): List of stock symbols to add
+        data_types (Optional[List[str]]): Stock data types to subscribe for new symbols.
+                                         If None, uses same types as existing subscriptions.
+    
+    Returns:
+        str: Confirmation message with updated stock subscription details
+    """
+    global _global_stock_stream, _stock_stream_subscriptions
+    
+    try:
+        if not _stock_stream_active or not _global_stock_stream:
+            return "No active global stock stream. Use start_global_stock_stream() first."
+        
+        symbols = [s.upper() for s in symbols]
+        
+        # Determine data types to subscribe
+        if data_types is None:
+            # Use existing subscription types
+            data_types = [dt for dt, symbol_set in _stock_stream_subscriptions.items() if symbol_set]
+            if not data_types:
+                return "No existing stock subscriptions found. Specify data_types parameter."
+        
+        # Add stock subscriptions
+        added_subscriptions = []
+        
+        if "trades" in data_types and "trades" in [dt for dt, s in _stock_stream_subscriptions.items() if s]:
+            _global_stock_stream.subscribe_trades(handle_stock_trade, *symbols)
+            _stock_stream_subscriptions['trades'].update(symbols)
+            added_subscriptions.append("trades")
+        
+        if "quotes" in data_types and "quotes" in [dt for dt, s in _stock_stream_subscriptions.items() if s]:
+            _global_stock_stream.subscribe_quotes(handle_stock_quote, *symbols)
+            _stock_stream_subscriptions['quotes'].update(symbols)
+            added_subscriptions.append("quotes")
+        
+        if "bars" in data_types and "bars" in [dt for dt, s in _stock_stream_subscriptions.items() if s]:
+            _global_stock_stream.subscribe_bars(handle_stock_bar, *symbols)
+            _stock_stream_subscriptions['bars'].update(symbols)
+            added_subscriptions.append("bars")
+        
+        # Create buffers for new stock symbols
+        for symbol in symbols:
+            for data_type in data_types:
+                _get_or_create_stock_buffer(symbol, data_type, _stock_stream_config['buffer_size'])
+        
+        # Get current total stock symbols
+        all_symbols = set()
+        for symbol_set in _stock_stream_subscriptions.values():
+            all_symbols.update(symbol_set)
+        
+        return f"""
+✅ SYMBOLS ADDED TO STOCK STREAM
+
+📈 Added: {', '.join(symbols)}
+📊 Data Types: {', '.join(added_subscriptions)}
+🔢 Total Stock Symbols: {len(all_symbols)}
+💾 Buffers Created: {len(symbols) * len(data_types)}
+
+Current Stock Stream:
+└── All Symbols: {', '.join(sorted(all_symbols))}
+└── Runtime: {(time.time() - _stock_stream_start_time)/60:.1f} minutes
+└── Total Events: {sum(_stock_stream_stats.values()):,}
+        """
+        
+    except Exception as e:
+        return f"Error adding symbols to stock stream: {str(e)}"
+
+@mcp.tool()
+async def get_stock_stream_data(
+    symbol: str,
+    data_type: str,
+    recent_seconds: Optional[int] = None,
+    limit: Optional[int] = None
+) -> str:
+    """
+    Retrieve streaming stock market data for a symbol with flexible filtering.
+    
+    Args:
+        symbol (str): Stock symbol
+        data_type (str): Type of stock data ("trades", "quotes", "bars", etc.)
+        recent_seconds (Optional[int]): Get stock data from last N seconds. None = all data
+        limit (Optional[int]): Maximum number of items to return. None = no limit
+    
+    Returns:
+        str: Formatted streaming stock data with statistics
+    """
+    try:
+        if not _stock_stream_active:
+            return "No active stock stream. Use start_global_stock_stream() to begin streaming."
+        
+        symbol = symbol.upper()
+        buffer_key = f"{symbol}_{data_type}"
+        
+        if buffer_key not in _stock_data_buffers:
+            return f"No stock data buffer found for {symbol} {data_type}. Check if stock symbol is subscribed."
+        
+        buffer = _stock_data_buffers[buffer_key]
+        
+        # Get data based on filters
+        if recent_seconds is not None:
+            data = buffer.get_recent(recent_seconds)
+            time_filter = f"last {recent_seconds}s"
+        else:
+            data = buffer.get_all()
+            time_filter = "all time"
+        
+        # Apply limit if specified
+        if limit is not None and len(data) > limit:
+            data = data[-limit:]  # Get most recent items
+            limit_info = f", limited to {limit} items"
+        else:
+            limit_info = ""
+        
+        if not data:
+            return f"No {data_type} data found for {symbol} ({time_filter})"
+        
+        # Get buffer statistics
+        buffer_stats = buffer.get_stats()
+        
+        # Format response
+        result = f"📊 LIVE STOCK {data_type.upper()} DATA: {symbol}\n"
+        result += f"Filter: {time_filter}{limit_info} | Found: {len(data)} items\n"
+        result += f"Buffer: {buffer_stats['current_size']:,} current, {buffer_stats['total_added']:,} total added"
+        if not buffer_stats['is_unlimited']:
+            result += f", max {buffer_stats['max_size']:,}"
+        result += "\n"
+        result += "=" * 70 + "\n\n"
+        
+        # Format data based on type
+        if data_type == "trades":
+            if len(data) >= 2:
+                # Calculate summary statistics
+                total_volume = sum(item['size'] for item in data)
+                avg_price = sum(item['price'] * item['size'] for item in data) / total_volume if total_volume > 0 else 0
+                price_range = (min(item['price'] for item in data), max(item['price'] for item in data))
+                
+                # Calculate velocity (trades per minute)
+                time_span = (data[-1]['timestamp'] - data[0]['timestamp']) / 60 if len(data) > 1 else 0
+                trade_velocity = len(data) / time_span if time_span > 0 else 0
+                
+                result += f"📈 Stock Trading Summary:\n"
+                result += f"  Total Stock Trades: {len(data):,}\n"
+                result += f"  Total Volume: {total_volume:,} shares\n"
+                result += f"  VWAP: ${avg_price:.4f}\n"
+                result += f"  Price Range: ${price_range[0]:.4f} - ${price_range[1]:.4f}\n"
+                result += f"  Trade Velocity: {trade_velocity:.1f} trades/min\n\n"
+            
+            # Show recent trades
+            display_count = min(15, len(data))
+            result += f"🔥 Recent Stock Trades (last {display_count}):\n"
+            for trade in data[-display_count:]:
+                timestamp_str = datetime.fromtimestamp(trade['timestamp']).strftime('%H:%M:%S.%f')[:-3]
+                result += f"  {timestamp_str} | ${trade['price']:.4f} x {trade['size']:,} @ {trade['exchange']}"
+                if trade.get('conditions'):
+                    result += f" [{','.join(trade['conditions'])}]"
+                result += "\n"
+                
+        elif data_type == "quotes":
+            if data:
+                latest_quote = data[-1]
+                spreads = [item['spread'] for item in data]
+                avg_spread = sum(spreads) / len(spreads)
+                
+                result += f"💰 Latest Stock Quote:\n"
+                result += f"  Bid: ${latest_quote['bid_price']:.4f} x {latest_quote['bid_size']:,}\n"
+                result += f"  Ask: ${latest_quote['ask_price']:.4f} x {latest_quote['ask_size']:,}\n"
+                result += f"  Spread: ${latest_quote['spread']:.4f}\n"
+                result += f"  Avg Spread: ${avg_spread:.4f}\n"
+                result += f"  Quote Updates: {len(data)} in timeframe\n\n"
+            
+            # Show recent quotes
+            display_count = min(10, len(data))
+            result += f"📊 Recent Stock Quotes (last {display_count}):\n"
+            for quote in data[-display_count:]:
+                timestamp_str = datetime.fromtimestamp(quote['timestamp']).strftime('%H:%M:%S.%f')[:-3]
+                result += f"  {timestamp_str} | ${quote['bid_price']:.4f}x{quote['bid_size']} / ${quote['ask_price']:.4f}x{quote['ask_size']}\n"
+                
+        elif data_type == "bars":
+            if data:
+                latest_bar = data[-1]
+                
+                result += f"📊 Latest Stock Bar:\n"
+                result += f"  OHLC: ${latest_bar['open']:.4f} / ${latest_bar['high']:.4f} / ${latest_bar['low']:.4f} / ${latest_bar['close']:.4f}\n"
+                result += f"  Volume: {latest_bar['volume']:,}\n"
+                if latest_bar.get('vwap'):
+                    result += f"  VWAP: ${latest_bar['vwap']:.4f}\n"
+                result += f"  Bars Count: {len(data)}\n\n"
+            
+            # Show recent bars
+            display_count = min(8, len(data))
+            result += f"📈 Recent Stock Bars (last {display_count}):\n"
+            for bar in data[-display_count:]:
+                timestamp_str = datetime.fromtimestamp(bar['timestamp']).strftime('%H:%M')
+                change = bar['close'] - bar['open']
+                change_pct = (change / bar['open'] * 100) if bar['open'] > 0 else 0
+                result += f"  {timestamp_str} | O:{bar['open']:.2f} H:{bar['high']:.2f} L:{bar['low']:.2f} C:{bar['close']:.2f} "
+                result += f"({change:+.2f}, {change_pct:+.1f}%) Vol:{bar['volume']:,}\n"
+        
+        # Add buffer health info
+        result += f"\n💾 Stock Data Buffer Health:\n"
+        result += f"  Current Size: {buffer_stats['current_size']:,} items\n"
+        result += f"  Total Added: {buffer_stats['total_added']:,} items\n"
+        storage_info = 'Unlimited' if buffer_stats['is_unlimited'] else f"Limited to {buffer_stats['max_size']:,}"
+        result += f"  Storage: {storage_info}\n"
+        result += f"  Last Update: {datetime.fromtimestamp(buffer_stats['last_update']).strftime('%H:%M:%S')}\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"Error retrieving stock stream data: {str(e)}"
+
+@mcp.tool()
+async def get_stock_stream_buffer_stats() -> str:
+    """
+    Get comprehensive statistics about all stock stream buffers and performance.
+    
+    Returns:
+        str: Detailed buffer statistics and stream performance metrics
+    """
+    try:
+        if not _stock_stream_active:
+            return "No active stock stream. Use start_global_stock_stream() to begin streaming."
+        
+        runtime_minutes = (time.time() - _stock_stream_start_time) / 60 if _stock_stream_start_time else 0
+        
+        result = f"📊 STOCK STREAM BUFFER STATISTICS\n"
+        result += "=" * 50 + "\n\n"
+        
+        # Stream overview
+        result += f"🔧 Stock Stream Status:\n"
+        result += f"  Runtime: {runtime_minutes:.1f} minutes\n"
+        result += f"  Feed: {_stock_stream_config['feed'].upper()}\n"
+        
+        if _stock_stream_config['duration_seconds']:
+            remaining = (_stock_stream_config['duration_seconds'] - (time.time() - _stock_stream_start_time)) / 60
+            result += f"  Remaining: {remaining:.1f} minutes\n"
+        else:
+            result += f"  Duration: Indefinite\n"
+        
+        buffer_limit = 'Unlimited' if _stock_stream_config['buffer_size'] is None else f"{_stock_stream_config['buffer_size']:,} per buffer"
+        result += f"  Buffer Limit: {buffer_limit}\n\n"
+        
+        # Global statistics
+        total_events = sum(_stock_stream_stats.values())
+        result += f"📈 Global Stock Statistics:\n"
+        result += f"  Total Events: {total_events:,}\n"
+        
+        for data_type, count in _stock_stream_stats.items():
+            if count > 0:
+                rate = count / runtime_minutes if runtime_minutes > 0 else 0
+                result += f"  {data_type.title()}: {count:,} ({rate:.1f}/min)\n"
+        
+        # Buffer breakdown
+        result += f"\n💾 Stock Buffer Breakdown:\n"
+        result += f"  Total Buffers: {len(_stock_data_buffers)}\n\n"
+        
+        # Group by symbol for better readability
+        symbols = set()
+        for buffer_key in _stock_data_buffers.keys():
+            symbol = buffer_key.split('_')[0]
+            symbols.add(symbol)
+        
+        for symbol in sorted(symbols):
+            symbol_buffers = {k: v for k, v in _stock_data_buffers.items() if k.startswith(f"{symbol}_")}
+            
+            result += f"📊 {symbol}:\n"
+            symbol_total = 0
+            
+            for buffer_key, buffer in symbol_buffers.items():
+                data_type = buffer_key.split('_', 1)[1]
+                stats = buffer.get_stats()
+                symbol_total += stats['current_size']
+                
+                result += f"  {data_type}: {stats['current_size']:,} items"
+                if not stats['is_unlimited'] and stats['current_size'] == stats['max_size']:
+                    result += " (FULL)"
+                result += f" | Total added: {stats['total_added']:,}\n"
+            
+            result += f"  Subtotal: {symbol_total:,} items\n\n"
+        
+        # Performance metrics
+        if runtime_minutes > 0 and total_events > 0:
+            result += f"⚡ Performance:\n"
+            result += f"  Events/minute: {total_events/runtime_minutes:.1f}\n"
+            result += f"  Events/second: {total_events/(runtime_minutes*60):.2f}\n"
+            
+            # Estimate memory usage (rough approximation)
+            avg_bytes_per_event = 200  # Rough estimate
+            estimated_memory_mb = (total_events * avg_bytes_per_event) / (1024 * 1024)
+            result += f"  Estimated Memory: {estimated_memory_mb:.1f} MB\n"
+        
+        # Subscription details
+        result += f"\n🎯 Active Stock Subscriptions:\n"
+        for data_type, symbol_set in _stock_stream_subscriptions.items():
+            if symbol_set:
+                result += f"  {data_type}: {', '.join(sorted(symbol_set))}\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"Error getting stock buffer stats: {str(e)}"
+
+@mcp.tool()
+async def clear_stock_stream_buffers(
+    symbol: Optional[str] = None,
+    data_type: Optional[str] = None
+) -> str:
+    """
+    Clear stock stream buffers to free memory (useful for long-running streams).
+    
+    Args:
+        symbol (Optional[str]): Specific symbol to clear. None = all symbols
+        data_type (Optional[str]): Specific data type to clear. None = all data types
+    
+    Returns:
+        str: Confirmation of buffers cleared
+    """
+    try:
+        if not _stock_data_buffers:
+            return "No stock stream buffers found to clear."
+        
+        cleared_count = 0
+        cleared_items = 0
+        
+        if symbol and data_type:
+            # Clear specific buffer
+            buffer_key = f"{symbol.upper()}_{data_type}"
+            if buffer_key in _stock_data_buffers:
+                buffer = _stock_data_buffers[buffer_key]
+                stats = buffer.get_stats()
+                cleared_items = stats['current_size']
+                buffer.clear()
+                cleared_count = 1
+                result = f"Cleared {buffer_key}: {cleared_items:,} items"
+            else:
+                result = f"Buffer {buffer_key} not found"
+                
+        elif symbol:
+            # Clear all buffers for a symbol
+            symbol = symbol.upper()
+            for buffer_key, buffer in list(_stock_data_buffers.items()):
+                if buffer_key.startswith(f"{symbol}_"):
+                    stats = buffer.get_stats()
+                    cleared_items += stats['current_size']
+                    buffer.clear()
+                    cleared_count += 1
+            result = f"Cleared {cleared_count} buffers for {symbol}: {cleared_items:,} total items"
+            
+        elif data_type:
+            # Clear all buffers for a data type
+            for buffer_key, buffer in list(_stock_data_buffers.items()):
+                if buffer_key.endswith(f"_{data_type}"):
+                    stats = buffer.get_stats()
+                    cleared_items += stats['current_size']
+                    buffer.clear()
+                    cleared_count += 1
+            result = f"Cleared {cleared_count} {data_type} buffers: {cleared_items:,} total items"
+            
+        else:
+            # Clear all buffers
+            for buffer_key, buffer in _stock_data_buffers.items():
+                stats = buffer.get_stats()
+                cleared_items += stats['current_size']
+                buffer.clear()
+                cleared_count += 1
+            result = f"Cleared all {cleared_count} buffers: {cleared_items:,} total items"
+        
+        return f"""
+🗑️ STOCK BUFFERS CLEARED
+
+{result}
+
+💾 Memory Impact:
+└── Freed approximately {cleared_items * 0.2:.1f} KB
+└── Buffers remain active for new data
+└── Stream continues normally
+
+⚠️ Note: Historical data has been removed
+└── Use get_stock_stream_data() to verify clearing
+        """
+        
+    except Exception as e:
+        return f"Error clearing stock buffers: {str(e)}"
+
+@mcp.tool()
+async def stop_global_stock_stream() -> str:
+    """
+    Stop the global stock streaming session and provide final statistics.
+    
+    Returns:
+        str: Final statistics and confirmation message
+    """
+    global _global_stock_stream, _stock_stream_thread, _stock_stream_active, _stock_stream_subscriptions
+    
+    try:
+        if not _stock_stream_active:
+            return "No active stock stream to stop."
+        
+        # Calculate final statistics
+        runtime_minutes = (time.time() - _stock_stream_start_time) / 60 if _stock_stream_start_time else 0
+        total_events = sum(_stock_stream_stats.values())
+        
+        # Stop the stream
+        _stock_stream_active = False
+        
+        if _global_stock_stream:
+            try:
+                _global_stock_stream.stop()
+            except:
+                pass  # Stream might already be stopped
+        
+        # Get final buffer statistics
+        total_buffered_items = sum(len(buffer.get_all()) for buffer in _stock_data_buffers.values())
+        
+        # Clear subscriptions
+        for data_type in _stock_stream_subscriptions:
+            _stock_stream_subscriptions[data_type].clear()
+        
+        result = f"🛑 GLOBAL STOCK STREAM STOPPED\n"
+        result += "=" * 40 + "\n\n"
+        
+        result += f"📊 Final Stock Statistics:\n"
+        result += f"  Runtime: {runtime_minutes:.1f} minutes\n"
+        result += f"  Total Events Processed: {total_events:,}\n"
+        result += f"  Items in Buffers: {total_buffered_items:,}\n"
+        
+        if runtime_minutes > 0:
+            result += f"  Average Rate: {total_events/runtime_minutes:.1f} events/min\n"
+        
+        # Breakdown by data type
+        result += f"\n📈 Event Breakdown:\n"
+        for data_type, count in _stock_stream_stats.items():
+            if count > 0:
+                percentage = (count / total_events * 100) if total_events > 0 else 0
+                result += f"  {data_type.title()}: {count:,} ({percentage:.1f}%)\n"
+        
+        # Buffer retention info
+        result += f"\n💾 Data Retention:\n"
+        result += f"  Buffers: {len(_stock_data_buffers)} remain in memory\n"
+        result += f"  Access: Use get_stock_stream_data() for historical analysis\n"
+        result += f"  Cleanup: Use clear_stock_stream_buffers() to free memory\n"
+        
+        result += f"\n🔄 Restart Options:\n"
+        result += f"  start_global_stock_stream() - Start fresh stream\n"
+        result += f"  clear_stock_stream_buffers() - Free memory first\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"Error stopping stock stream: {str(e)}"
+
+@mcp.tool()
+async def list_active_stock_streams() -> str:
+    """
+    List all active stock streaming subscriptions and their status.
+    
+    Returns:
+        str: Detailed information about active stock streams
+    """
+    try:
+        if not _stock_stream_active:
+            return "No active stock stream. Use start_global_stock_stream() to begin streaming."
+        
+        runtime_minutes = (time.time() - _stock_stream_start_time) / 60 if _stock_stream_start_time else 0
+        
+        result = f"📡 ACTIVE STOCK STREAMING STATUS\n"
+        result += "=" * 50 + "\n\n"
+        
+        # Stream configuration
+        result += f"🔧 Stream Configuration:\n"
+        result += f"  Feed: {_stock_stream_config['feed'].upper()}\n"
+        result += f"  Runtime: {runtime_minutes:.1f} minutes\n"
+        buffer_size_info = 'Unlimited' if _stock_stream_config['buffer_size'] is None else f"{_stock_stream_config['buffer_size']:,} per buffer"
+        result += f"  Buffer Size: {buffer_size_info}\n"
+        
+        if _stock_stream_config['duration_seconds']:
+            remaining = (_stock_stream_config['duration_seconds'] - (time.time() - _stock_stream_start_time)) / 60
+            result += f"  Duration: {_stock_stream_config['duration_seconds']/60:.1f} min ({remaining:.1f} min remaining)\n"
+        else:
+            result += f"  Duration: Indefinite\n"
+        
+        # Active subscriptions
+        result += f"\n📊 Active Stock Subscriptions:\n"
+        total_symbols = set()
+        
+        for data_type, symbol_set in _stock_stream_subscriptions.items():
+            if symbol_set:
+                result += f"  {data_type.upper()}: {', '.join(sorted(symbol_set))} ({len(symbol_set)} symbols)\n"
+                total_symbols.update(symbol_set)
+        
+        result += f"\n🎯 Summary:\n"
+        result += f"  Total Unique Symbols: {len(total_symbols)}\n"
+        result += f"  Active Data Types: {len([dt for dt, symbols in _stock_stream_subscriptions.items() if symbols])}\n"
+        result += f"  Total Subscriptions: {sum(len(symbols) for symbols in _stock_stream_subscriptions.values())}\n"
+        
+        # Event statistics
+        total_events = sum(_stock_stream_stats.values())
+        if total_events > 0:
+            result += f"\n📈 Live Statistics:\n"
+            result += f"  Total Events: {total_events:,}\n"
+            
+            for data_type, count in _stock_stream_stats.items():
+                if count > 0:
+                    rate = count / runtime_minutes if runtime_minutes > 0 else 0
+                    result += f"  {data_type.title()}: {count:,} ({rate:.1f}/min)\n"
+        
+        # Buffer status
+        result += f"\n💾 Buffer Status:\n"
+        result += f"  Active Buffers: {len(_stock_data_buffers)}\n"
+        
+        total_items = sum(len(buffer.get_all()) for buffer in _stock_data_buffers.values())
+        result += f"  Total Items Stored: {total_items:,}\n"
+        
+        # Quick access commands
+        result += f"\n🚀 Quick Commands:\n"
+        result += f"  get_stock_stream_data(\"AAPL\", \"trades\") - View recent trades\n"
+        result += f"  get_stock_stream_buffer_stats() - Detailed buffer stats\n"
+        result += f"  add_symbols_to_stock_stream([\"TSLA\"]) - Add more symbols\n"
+        result += f"  stop_global_stock_stream() - Stop streaming\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"Error listing active stock streams: {str(e)}"
+
+@mcp.tool()
+async def get_stock_stream_analysis(
+    symbol: str,
+    analysis_type: str = "price_momentum"
+) -> str:
+    """
+    Perform real-time analysis on streaming stock data.
+    
+    Args:
+        symbol (str): Stock symbol to analyze
+        analysis_type (str): Type of analysis to perform:
+            - "price_momentum": Price movement and momentum indicators
+            - "volume_analysis": Volume patterns and surges
+            - "spread_analysis": Bid-ask spread patterns
+            - "trade_frequency": Trading frequency and patterns
+    
+    Returns:
+        str: Real-time analysis results
+    """
+    try:
+        if not _stock_stream_active:
+            return "No active stock stream. Use start_global_stock_stream() to begin streaming."
+        
+        symbol = symbol.upper()
+        
+        result = f"📊 REAL-TIME STOCK ANALYSIS: {symbol}\n"
+        result += f"Analysis Type: {analysis_type.replace('_', ' ').title()}\n"
+        result += "=" * 60 + "\n\n"
+        
+        if analysis_type == "price_momentum":
+            # Get recent trade data
+            trades_buffer_key = f"{symbol}_trades"
+            quotes_buffer_key = f"{symbol}_quotes"
+            
+            if trades_buffer_key not in _stock_data_buffers:
+                return f"No trade data available for {symbol}. Ensure symbol is subscribed to trades."
+            
+            trades_buffer = _stock_data_buffers[trades_buffer_key]
+            trades_data = trades_buffer.get_recent(300)  # Last 5 minutes
+            
+            if len(trades_data) < 2:
+                return f"Insufficient trade data for momentum analysis ({len(trades_data)} trades)"
+            
+            # Calculate momentum indicators
+            prices = [trade['price'] for trade in trades_data]
+            volumes = [trade['size'] for trade in trades_data]
+            
+            current_price = prices[-1]
+            price_5min_ago = prices[0]
+            price_change = current_price - price_5min_ago
+            price_change_pct = (price_change / price_5min_ago * 100) if price_5min_ago > 0 else 0
+            
+            # Volume-weighted average price
+            total_volume = sum(volumes)
+            vwap = sum(trade['price'] * trade['size'] for trade in trades_data) / total_volume if total_volume > 0 else 0
+            
+            # Price volatility
+            price_std = (sum((p - sum(prices)/len(prices))**2 for p in prices) / len(prices))**0.5
+            
+            result += f"🎯 Price Momentum Analysis:\n"
+            result += f"  Current Price: ${current_price:.4f}\n"
+            result += f"  5-min Change: ${price_change:+.4f} ({price_change_pct:+.2f}%)\n"
+            result += f"  VWAP (5min): ${vwap:.4f}\n"
+            result += f"  Price vs VWAP: {((current_price - vwap) / vwap * 100):+.2f}%\n"
+            result += f"  Volatility: ${price_std:.4f}\n"
+            result += f"  Trade Count: {len(trades_data)}\n"
+            result += f"  Total Volume: {total_volume:,} shares\n"
+            
+            # Momentum signals
+            result += f"\n📈 Momentum Signals:\n"
+            if price_change_pct > 0.5:
+                result += f"  🟢 Strong Upward Momentum (+{price_change_pct:.2f}%)\n"
+            elif price_change_pct < -0.5:
+                result += f"  🔴 Strong Downward Momentum ({price_change_pct:.2f}%)\n"
+            else:
+                result += f"  🟡 Neutral Momentum ({price_change_pct:.2f}%)\n"
+            
+            if current_price > vwap:
+                result += f"  🟢 Trading above VWAP (bullish)\n"
+            else:
+                result += f"  🔴 Trading below VWAP (bearish)\n"
+                
+        elif analysis_type == "volume_analysis":
+            trades_buffer_key = f"{symbol}_trades"
+            
+            if trades_buffer_key not in _stock_data_buffers:
+                return f"No trade data available for {symbol}."
+            
+            trades_buffer = _stock_data_buffers[trades_buffer_key]
+            recent_trades = trades_buffer.get_recent(300)  # Last 5 minutes
+            all_trades = trades_buffer.get_recent(1800)   # Last 30 minutes for comparison
+            
+            if len(recent_trades) < 5:
+                return f"Insufficient trade data for volume analysis"
+            
+            # Volume analysis
+            recent_volume = sum(trade['size'] for trade in recent_trades)
+            total_volume = sum(trade['size'] for trade in all_trades)
+            avg_volume_per_5min = total_volume / 6 if len(all_trades) > 0 else recent_volume  # 30min / 6 = 5min periods
+            
+            volume_ratio = recent_volume / avg_volume_per_5min if avg_volume_per_5min > 0 else 1
+            
+            # Trade size analysis
+            trade_sizes = [trade['size'] for trade in recent_trades]
+            avg_trade_size = sum(trade_sizes) / len(trade_sizes)
+            large_trades = [size for size in trade_sizes if size > avg_trade_size * 2]
+            
+            result += f"📊 Volume Analysis (5 minutes):\n"
+            result += f"  Recent Volume: {recent_volume:,} shares\n"
+            result += f"  Average 5min Volume: {avg_volume_per_5min:,.0f} shares\n"
+            result += f"  Volume Ratio: {volume_ratio:.2f}x\n"
+            result += f"  Trade Count: {len(recent_trades)}\n"
+            result += f"  Average Trade Size: {avg_trade_size:,.0f} shares\n"
+            result += f"  Large Trades (>2x avg): {len(large_trades)}\n"
+            
+            result += f"\n📈 Volume Signals:\n"
+            if volume_ratio > 2.0:
+                result += f"  🔥 High Volume Surge ({volume_ratio:.1f}x normal)\n"
+            elif volume_ratio > 1.5:
+                result += f"  🟡 Above Average Volume ({volume_ratio:.1f}x normal)\n"
+            elif volume_ratio < 0.5:
+                result += f"  📉 Low Volume ({volume_ratio:.1f}x normal)\n"
+            else:
+                result += f"  🟢 Normal Volume ({volume_ratio:.1f}x normal)\n"
+                
+        elif analysis_type == "spread_analysis":
+            quotes_buffer_key = f"{symbol}_quotes"
+            
+            if quotes_buffer_key not in _stock_data_buffers:
+                return f"No quote data available for {symbol}. Ensure symbol is subscribed to quotes."
+            
+            quotes_buffer = _stock_data_buffers[quotes_buffer_key]
+            quotes_data = quotes_buffer.get_recent(300)  # Last 5 minutes
+            
+            if len(quotes_data) < 5:
+                return f"Insufficient quote data for spread analysis"
+            
+            # Spread analysis
+            spreads = [quote['spread'] for quote in quotes_data]
+            avg_spread = sum(spreads) / len(spreads)
+            current_spread = spreads[-1]
+            min_spread = min(spreads)
+            max_spread = max(spreads)
+            
+            # Liquidity analysis
+            latest_quote = quotes_data[-1]
+            total_liquidity = latest_quote['bid_size'] + latest_quote['ask_size']
+            
+            result += f"💰 Spread Analysis (5 minutes):\n"
+            result += f"  Current Spread: ${current_spread:.4f}\n"
+            result += f"  Average Spread: ${avg_spread:.4f}\n"
+            result += f"  Spread Range: ${min_spread:.4f} - ${max_spread:.4f}\n"
+            result += f"  Current Bid: ${latest_quote['bid_price']:.4f} x {latest_quote['bid_size']:,}\n"
+            result += f"  Current Ask: ${latest_quote['ask_price']:.4f} x {latest_quote['ask_size']:,}\n"
+            result += f"  Total Liquidity: {total_liquidity:,} shares\n"
+            
+            result += f"\n📊 Liquidity Signals:\n"
+            if current_spread <= avg_spread * 0.8:
+                result += f"  🟢 Tight Spread (good liquidity)\n"
+            elif current_spread >= avg_spread * 1.2:
+                result += f"  🔴 Wide Spread (poor liquidity)\n"
+            else:
+                result += f"  🟡 Normal Spread\n"
+            
+            if total_liquidity > 1000:
+                result += f"  🟢 High Liquidity ({total_liquidity:,} shares)\n"
+            elif total_liquidity > 100:
+                result += f"  🟡 Moderate Liquidity ({total_liquidity:,} shares)\n"
+            else:
+                result += f"  🔴 Low Liquidity ({total_liquidity:,} shares)\n"
+        
+        else:
+            return f"Unknown analysis type: {analysis_type}. Available: price_momentum, volume_analysis, spread_analysis, trade_frequency"
+        
+        # Add timestamp
+        result += f"\n⏰ Analysis Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        result += f"🔄 Refresh: Call this function again for updated analysis\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"Error performing stock stream analysis: {str(e)}"
 
 # ============================================================================
 # Order Management Tools

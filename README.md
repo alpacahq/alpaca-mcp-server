@@ -1,11 +1,14 @@
 # Alpaca MCP Server
 
-This is a Model Context Protocol (MCP) server implementation for Alpaca's Trading API. It enables large language models (LLMs) on Claude Desktop, Cursor, or VScode to interact with Alpaca's trading infrastructure using natural language. This server supports stock trading, options trading, portfolio management, watchlist handling, and real-time market data access.
+This is a Model Context Protocol (MCP) server implementation for Alpaca's Trading API. It enables large language models (LLMs) on Claude Desktop, Cursor, or VScode to interact with Alpaca's trading infrastructure using natural language. This server supports stock trading, options trading, portfolio management, watchlist handling, real-time market data streaming, and comprehensive market analysis with 40+ trading tools.
 
 ## Features
 
 - **Market Data**
   - Real-time quotes, trades, and price bars for stocks
+  - Stock snapshots with comprehensive market data (quote, trade, minute/daily bars)
+  - Enhanced intraday bars with professional analysis and multiple timeframes
+  - Real-time streaming data for high-frequency trading applications
   - Historical price data and trading history
   - Option contract quotes and Greeks (via snapshots)
 - **Account Management**
@@ -34,48 +37,98 @@ This is a Model Context Protocol (MCP) server implementation for Alpaca's Tradin
 
 ## Prerequisites
 
-- Python 3.10+
+- Python 3.12+
 - Alpaca API keys (with paper or live trading access)
 - Claude for Desktop or another compatible MCP client
 
 ## Installation
 
-1. Clone the repository and move to the repository:
+### Option 1: Using UV (Recommended)
+
+1. Install UV if you haven't already:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. Clone the repository:
    ```bash
    git clone https://github.com/YOUR_USERNAME/alpaca-mcp-server.git
    cd alpaca-mcp-server
    ```
 
-2. Install the required packages:
-
+3. Install dependencies with UV:
    ```bash
-   pip install mcp alpaca-py python-dotenv
+   uv sync
    ```
 
-## Usage (for Paper Trading) with Claude Desktop
+### Option 2: Using pip
 
-### Edit a `.env` file for your credentials in the project directory
-
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/alpaca-mcp-server.git
+   cd alpaca-mcp-server
    ```
-   ALPACA_API_KEY = "your_alpaca_api_key_for_paper_account"
-   ALPACA_SECRET_KEY = "your_alpaca_secret_key_for_paper_account"
+
+2. Create a virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
-### Start the MCP Server
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Open a terminal and run the command below from the project directory:
+## Usage with Claude Code
 
-```bash
-python alpaca_mcp_server.py
+### 1. Set up your API credentials
+
+Create a `.env` file in the project directory:
+
+```env
+APCA_API_KEY_ID=your_alpaca_api_key_here
+APCA_API_SECRET_KEY=your_alpaca_secret_key_here
+PAPER=true
 ```
 
-Or use a module invocation:
+### 2. Configure Claude Code
 
-```bash
-python -m alpaca_mcp_server
+Create a `.mcp.json` file in your project directory:
+
+```json
+{
+  "mcpServers": {
+    "alpaca": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "-c",
+        "cd /path/to/alpaca-mcp-server && source .venv/bin/activate && uv run python alpaca_mcp_server.py"
+      ],
+      "env": {
+        "APCA_API_KEY_ID": "your_alpaca_api_key_here",
+        "APCA_API_SECRET_KEY": "your_alpaca_secret_key_here",
+        "PAPER": "true"
+      }
+    }
+  }
+}
 ```
 
-### Claude for Desktop Configuration
+**Note**: Replace `/path/to/alpaca-mcp-server` with the actual path to your cloned repository.
+
+### 3. Start Claude Code
+
+```bash
+code . --mcp-config .mcp.json
+```
+
+## Usage with Claude Desktop
+
+### 1. Set up your API credentials (same as above)
+
+### 2. Configure Claude Desktop
 
 1. Open Claude Desktop
 2. Navigate to: `Settings → Developer → Edit Config`
@@ -85,54 +138,91 @@ python -m alpaca_mcp_server
 {
   "mcpServers": {
     "alpaca": {
-      "command": "python",
+      "command": "bash",
       "args": [
-        "/path/to/alpaca_mcp_server.py"
+        "-c",
+        "cd /path/to/alpaca-mcp-server && source .venv/bin/activate && uv run python alpaca_mcp_server.py"
       ],
       "env": {
-        "ALPACA_API_KEY": "your_alpaca_api_key_for_paper_account",
-        "ALPACA_SECRET_KEY": "your_alpaca_secret_key_for_paper_account"
+        "APCA_API_KEY_ID": "your_alpaca_api_key_here",
+        "APCA_API_SECRET_KEY": "your_alpaca_secret_key_here",
+        "PAPER": "true"
       }
     }
   }
 }
 ```
 
-## API Key Configuration for Live Trading
+### Alternative: Direct Python execution
 
-This MCP server connects to Alpaca's **paper trading API** by default for safe testing.
-To enable **live trading with real funds**, update the following configuration files:
+If you prefer not to use UV, you can run the server directly:
 
-### 🔐 Set Your API Credentials in Two Places:
+```bash
+python alpaca_mcp_server.py
+```
 
-1. **Claude for Desktop Configuration**
+Or with module invocation:
 
-   In `claude_desktop_config.json`, provide your keys for your live account as environment variables:
+```bash
+python -m alpaca_mcp_server
+```
 
-   ```json
-   {
-     "mcpServers": {
-       "alpaca": {
-         "command": "python",
-         "args": [
-           "/path/to/alpaca_mcp_server.py"
-         ],
-         "env": {
-           "ALPACA_API_KEY": "your_alpaca_api_key_for_live_account",
-           "ALPACA_SECRET_KEY": "your_alpaca_secret_key_for_live_account"
-         }
-       }
-     }
-   }
-   ```
+## Live Trading Configuration
 
-2. **`.env` in the project directory**
+⚠️ **This MCP server connects to Alpaca's paper trading API by default for safe testing.**
 
-   ```
-   ALPACA_API_KEY = "your_alpaca_api_key_for_live_account"
-   ALPACA_SECRET_KEY = "your_alpaca_secret_key_for_live_account"
-   PAPER = False
-   ```
+To enable **live trading with real funds**, update your configuration:
+
+### For Claude Code (.mcp.json):
+
+```json
+{
+  "mcpServers": {
+    "alpaca": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "-c",
+        "cd /path/to/alpaca-mcp-server && source .venv/bin/activate && uv run python alpaca_mcp_server.py"
+      ],
+      "env": {
+        "APCA_API_KEY_ID": "your_live_alpaca_api_key_here",
+        "APCA_API_SECRET_KEY": "your_live_alpaca_secret_key_here",
+        "PAPER": "false"
+      }
+    }
+  }
+}
+```
+
+### For Claude Desktop (claude_desktop_config.json):
+
+```json
+{
+  "mcpServers": {
+    "alpaca": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "cd /path/to/alpaca-mcp-server && source .venv/bin/activate && uv run python alpaca_mcp_server.py"
+      ],
+      "env": {
+        "APCA_API_KEY_ID": "your_live_alpaca_api_key_here",
+        "APCA_API_SECRET_KEY": "your_live_alpaca_secret_key_here",
+        "PAPER": "false"
+      }
+    }
+  }
+}
+```
+
+### Environment file (.env):
+
+```env
+APCA_API_KEY_ID=your_live_alpaca_api_key_here
+APCA_API_SECRET_KEY=your_live_alpaca_secret_key_here
+PAPER=false
+```
 
 ## Available Tools
 
@@ -147,10 +237,23 @@ To enable **live trading with real funds**, update the following configuration f
 ### Stock Market Data
 
 * `get_stock_quote(symbol)` – Real-time bid/ask quote
+* `get_stock_snapshots(symbols)` – Comprehensive market data with analysis (quote, trade, bars)
 * `get_stock_bars(symbol, start_date, end_date)` – OHLCV historical bars
+* `get_stock_bars_intraday(symbol, timeframe, start_date, end_date, limit, adjustment, feed, currency, sort)` – Enhanced intraday bars with professional analysis
 * `get_stock_latest_trade(symbol)` – Latest market trade price
 * `get_stock_latest_bar(symbol)` – Most recent OHLC bar
 * `get_stock_trades(symbol, start_time, end_time)` – Trade-level history
+
+### Real-Time Stock Streaming
+
+* `start_global_stock_stream(symbols, data_types, feed, duration_seconds, buffer_size_per_symbol, replace_existing)` – Start real-time data streaming
+* `add_symbols_to_stock_stream(symbols, data_types, buffer_size_per_symbol)` – Add symbols to active stream
+* `remove_symbols_from_stock_stream(symbols, data_types)` – Remove symbols from stream
+* `get_stock_stream_data(symbols, data_types, recent_seconds)` – Retrieve buffered streaming data
+* `get_stock_stream_stats()` – View streaming statistics and performance
+* `configure_stock_stream(feed, buffer_size, duration_seconds)` – Modify stream settings
+* `stop_stock_stream()` – Stop all streaming and clear buffers
+* `list_stock_stream_subscriptions()` – View active streaming subscriptions
 
 ### Orders
 
@@ -226,31 +329,97 @@ See the "Example Queries" section below for 50 real examples covering everything
 31. Show me the most recent quote for MSFT.
 32. Retrieve the last 100 trades for AMD.
 33. Show me intraday bars for AMZN from last Tuesday through last Friday.
+34. Get a comprehensive snapshot for AAPL with all market data.
+35. Show me 30-minute intraday bars for NVDA with professional analysis.
+36. Start real-time streaming for AAPL and MSFT with trades and quotes.
+37. Get the last 5 minutes of streaming data for TSLA.
+38. Show me streaming statistics and buffer usage.
 
 ### Orders
-34. Show me all my open and filled orders from this week.
-35. What orders do I have for AAPL?
-36. List all limit orders I placed in the past 3 days.
-37. Filter all orders by status: filled.
-38. Get me the order history for yesterday.
+39. Show me all my open and filled orders from this week.
+40. What orders do I have for AAPL?
+41. List all limit orders I placed in the past 3 days.
+42. Filter all orders by status: filled.
+43. Get me the order history for yesterday.
 
 ### Watchlists
-39. Create a new watchlist called "Tech Stocks" with AAPL, MSFT, and NVDA.
-40. Update my "Tech Stocks" watchlist to include TSLA and AMZN.
-41. What stocks are in my "Dividend Picks" watchlist?
-42. Remove META from my "Growth Portfolio" watchlist.
-43. List all my existing watchlists.
+44. Create a new watchlist called "Tech Stocks" with AAPL, MSFT, and NVDA.
+45. Update my "Tech Stocks" watchlist to include TSLA and AMZN.
+46. What stocks are in my "Dividend Picks" watchlist?
+47. Remove META from my "Growth Portfolio" watchlist.
+48. List all my existing watchlists.
 
 ### Asset Information
-44. Search for details about the asset 'AAPL'.
-45. List all tradeable US Large-cap stocks.
-46. Show me the top 5 tradable crypto assets by trading volume.
-47. Filter all assets with status 'active'.
-48. Show me details for the stock with symbol 'GOOGL'.
+49. Search for details about the asset 'AAPL'.
+50. List all tradeable US Large-cap stocks.
+51. Show me the top 5 tradable crypto assets by trading volume.
+52. Filter all assets with status 'active'.
+53. Show me details for the stock with symbol 'GOOGL'.
 
 ### Combined Scenarios
-49. Get today's market clock and show me my buying power before placing a limit buy order for TSLA at $340.
-50. Place a bull call spread with SPY July 3rd options: buy one 5% above and sell one 3% below the current SPY price.
+54. Get today's market clock and show me my buying power before placing a limit buy order for TSLA at $340.
+55. Place a bull call spread with SPY July 3rd options: buy one 5% above and sell one 3% below the current SPY price.
+56. Start streaming NVDA data, get a snapshot, then analyze the 30-minute bars with professional insights.
+57. Stream multiple tech stocks, monitor for 2 minutes, then show comprehensive statistics.
+
+### Stock Snapshot Analysis
+Query: "Get a comprehensive snapshot for NVDA."
+
+Response:
+```
+NVDA Comprehensive Market Snapshot
+===================================
+
+Current Quote:
+- Bid: $461.75 x 200 shares
+- Ask: $461.85 x 300 shares
+- Spread: $0.10 (0.02%)
+
+Latest Trade:
+- Price: $461.80
+- Size: 150 shares
+- Timestamp: 2024-06-07 15:45:23 EST
+
+Minute Bar (15:45):
+- Open: $461.50 | High: $462.00
+- Low: $461.25 | Close: $461.80
+- Volume: 45,250 shares
+- VWAP: $461.62
+
+Daily Bar:
+- Open: $458.20 | High: $463.50
+- Low: $457.80 | Close: $461.80
+- Volume: 12,450,000 shares
+- Change: +$3.60 (+0.79%)
+
+Market Analysis:
+✓ Strong upward momentum (+0.79%)
+✓ Trading above VWAP ($461.62)
+✓ High volume participation
+```
+
+### Real-Time Streaming Data
+Query: "Start streaming AAPL and MSFT with trades and quotes for 60 seconds."
+
+Response:
+```
+Stock Streaming Started Successfully
+====================================
+
+Stream Configuration:
+- Symbols: AAPL, MSFT
+- Data Types: trades, quotes
+- Feed: SIP (Securities Information Processor)
+- Duration: 60 seconds
+- Buffer: Unlimited per symbol
+
+Real-time subscriptions active:
+✓ AAPL trades and quotes
+✓ MSFT trades and quotes
+
+Streaming will auto-stop in 60 seconds.
+Use get_stock_stream_data() to retrieve buffered data.
+```
 
 ## Example Outputs
 
@@ -311,7 +480,7 @@ The server maintains this level of detail and formatting across all supported qu
 
 ## ⚠️ Security Notice
 
-This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
+This server can place real trades, access your portfolio, and stream real-time market data. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies, multi-leg trades, or high-frequency streaming operations.
 
 ## License
 

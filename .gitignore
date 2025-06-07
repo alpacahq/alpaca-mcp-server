@@ -12,6 +12,23 @@ __pycache__/
 env/
 venv/
 .venv/
+*.egg-info/
+dist/
+build/
+
+# Claude Code specific
+CLAUDE.md
+.claude/
+
+# Development and backup files
+*.backup
+*.backup[0-9]
+*.bak
+*.tmp
+*.temp
+bub.sh
+main.py
+test_*.py
 
 # IDE
 .vscode/
@@ -22,3 +39,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# MCP configuration (user-specific)
+.mcp.json
