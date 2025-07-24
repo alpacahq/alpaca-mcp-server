@@ -92,13 +92,13 @@ def parse_arguments():
     parser.add_argument(
         "--host",
         default="127.0.0.1",
-        help="Host preference for HTTP transport (Note: Official MCP SDK uses fixed 127.0.0.1:8000)"
+        help="Host to bind the server to for HTTP/SSE transport (default: 127.0.0.1)"
     )
     parser.add_argument(
         "--port",
         type=int,
         default=8000,
-        help="Port preference for HTTP transport (Note: Official MCP SDK uses fixed 127.0.0.1:8000)"
+        help="Port to bind the server to for HTTP/SSE transport (default: 8000)"
     )
     return parser.parse_args()
 
@@ -193,7 +193,7 @@ async def get_account_info() -> str:
             - Day Trades Remaining
     """
     account = trade_client.get_account()
-    
+
     info = f"""
             Account Information:
             -------------------
@@ -226,10 +226,10 @@ async def get_positions() -> str:
             - Unrealized P/L
     """
     positions = trade_client.get_all_positions()
-    
+
     if not positions:
         return "No open positions found."
-    
+
     result = "Current Positions:\n-------------------\n"
     for position in positions:
         result += f"""
@@ -256,10 +256,10 @@ async def get_open_position(symbol: str) -> str:
     """
     try:
         position = trade_client.get_open_position(symbol)
-        
+
         # Check if it's an options position by looking for the options symbol pattern
         is_option = len(symbol) > 6 and any(c in symbol for c in ['C', 'P'])
-        
+
         # Format quantity based on asset type
         quantity_text = f"{position.qty} contracts" if is_option else f"{position.qty}"
 
@@ -271,7 +271,7 @@ async def get_open_position(symbol: str) -> str:
                 Average Entry Price: ${float(position.avg_entry_price):.2f}
                 Current Price: ${float(position.current_price):.2f}
                 Unrealized P/L: ${float(position.unrealized_pl):.2f}
-                """ 
+                """
     except Exception as e:
         return f"Error fetching position: {str(e)}"
 
@@ -298,7 +298,7 @@ async def get_stock_quote(symbol: str) -> str:
     try:
         request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
         quotes = stock_historical_data_client.get_stock_latest_quote(request_params)
-        
+
         if symbol in quotes:
             quote = quotes[symbol]
             return f"""
@@ -309,7 +309,7 @@ async def get_stock_quote(symbol: str) -> str:
                     Ask Size: {quote.ask_size}
                     Bid Size: {quote.bid_size}
                     Timestamp: {quote.timestamp}
-                    """ 
+                    """
         else:
             return f"No quote data found for {symbol}."
     except Exception as e:
@@ -317,8 +317,8 @@ async def get_stock_quote(symbol: str) -> str:
 
 @mcp.tool()
 async def get_stock_bars(
-    symbol: str, 
-    days: int = 5, 
+    symbol: str,
+    days: int = 5,
     timeframe: str = "1Day",
     limit: Optional[int] = None,
     start: Optional[str] = None,
@@ -349,23 +349,23 @@ async def get_stock_bars(
         timeframe_obj = parse_timeframe_with_enums(timeframe)
         if timeframe_obj is None:
             return f"Error: Invalid timeframe '{timeframe}'. Supported formats: 1Min, 2Min, 4Min, 5Min, 15Min, 30Min, 1Hour, 2Hour, 4Hour, 1Day, 1Week, 1Month, etc."
-        
+
         # Parse start/end times or calculate from days
         start_time = None
         end_time = None
-        
+
         if start:
             try:
                 start_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
             except ValueError:
                 return f"Error: Invalid start time format '{start}'. Use ISO format like '2023-01-01T09:30:00' or '2023-01-01'"
-                
+
         if end:
             try:
                 end_time = datetime.fromisoformat(end.replace('Z', '+00:00'))
             except ValueError:
                 return f"Error: Invalid end time format '{end}'. Use ISO format like '2023-01-01T16:00:00' or '2023-01-01'"
-        
+
         # If no start/end provided, calculate from days parameter OR limit+timeframe
         if not start_time:
             if limit and timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
@@ -381,7 +381,7 @@ async def get_stock_bars(
                 start_time = datetime.now() - timedelta(days=days)
         if not end_time:
             end_time = datetime.now()
-        
+
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=timeframe_obj,
@@ -389,23 +389,23 @@ async def get_stock_bars(
             end=end_time,
             limit=limit
         )
-        
+
         bars = stock_historical_data_client.get_stock_bars(request_params)
-        
+
         if bars[symbol]:
             time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
             result = f"Historical Data for {symbol} ({timeframe} bars, {time_range}):\n"
             result += "---------------------------------------------------\n"
-            
+
             for bar in bars[symbol]:
                 # Format timestamp based on timeframe unit
                 if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
                     time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S')
                 else:
                     time_str = bar.timestamp.date()
-                
+
                 result += f"Time: {time_str}, Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}, Volume: {bar.volume}\n"
-            
+
             return result
         else:
             return f"No historical data found for {symbol} with {timeframe} timeframe in the specified time range."
@@ -440,7 +440,7 @@ async def get_stock_trades(
     try:
         # Calculate start time based on days
         start_time = datetime.now() - timedelta(days=days)
-        
+
         # Create the request object with all available parameters
         request_params = StockTradesRequest(
             symbol_or_symbols=symbol,
@@ -452,14 +452,14 @@ async def get_stock_trades(
             currency=currency,
             asof=asof
         )
-        
+
         # Get the trades
         trades = stock_historical_data_client.get_stock_trades(request_params)
-        
+
         if symbol in trades:
             result = f"Historical Trades for {symbol} (Last {days} days):\n"
             result += "---------------------------------------------------\n"
-            
+
             for trade in trades[symbol]:
                 result += f"""
                     Time: {trade.timestamp}
@@ -499,10 +499,10 @@ async def get_stock_latest_trade(
             feed=feed,
             currency=currency
         )
-        
+
         # Get the latest trade
         latest_trades = stock_historical_data_client.get_stock_latest_trade(request_params)
-        
+
         if symbol in latest_trades:
             trade = latest_trades[symbol]
             return f"""
@@ -543,10 +543,10 @@ async def get_stock_latest_bar(
             feed=feed,
             currency=currency
         )
-        
+
         # Get the latest bar
         latest_bars = stock_historical_data_client.get_stock_latest_bar(request_params)
-        
+
         if symbol in latest_bars:
             bar = latest_bars[symbol]
             return f"""
@@ -572,10 +572,10 @@ def _format_ohlcv_bar(bar, bar_type: str, include_time: bool = True) -> str:
     """Helper function to format OHLCV bar data consistently."""
     if not bar:
         return ""
-    
+
     time_format = '%Y-%m-%d %H:%M:%S %Z' if include_time else '%Y-%m-%d'
     time_label = "Timestamp" if include_time else "Date"
-    
+
     return f"""{bar_type}:
   Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}
   Volume: {bar.volume:,}, {time_label}: {bar.timestamp.strftime(time_format)}
@@ -586,7 +586,7 @@ def _format_quote_data(quote) -> str:
     """Helper function to format quote data consistently."""
     if not quote:
         return ""
-    
+
     return f"""Latest Quote:
   Bid: ${quote.bid_price:.2f} x {quote.bid_size}, Ask: ${quote.ask_price:.2f} x {quote.ask_size}
   Timestamp: {quote.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}
@@ -597,7 +597,7 @@ def _format_trade_data(trade) -> str:
     """Helper function to format trade data consistently."""
     if not trade:
         return ""
-    
+
     optional_fields = []
     if hasattr(trade, 'exchange') and trade.exchange:
         optional_fields.append(f"Exchange: {trade.exchange}")
@@ -605,9 +605,9 @@ def _format_trade_data(trade) -> str:
         optional_fields.append(f"Conditions: {trade.conditions}")
     if hasattr(trade, 'id') and trade.id:
         optional_fields.append(f"ID: {trade.id}")
-    
+
     optional_str = f", {', '.join(optional_fields)}" if optional_fields else ""
-    
+
     return f"""Latest Trade:
   Price: ${trade.price:.2f}, Size: {trade.size}{optional_str}
   Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}
@@ -616,7 +616,7 @@ def _format_trade_data(trade) -> str:
 
 @mcp.tool()
 async def get_stock_snapshot(
-    symbol_or_symbols: Union[str, List[str]], 
+    symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None
 ) -> str:
@@ -640,17 +640,17 @@ async def get_stock_snapshot(
         # Create and execute request
         request = StockSnapshotRequest(symbol_or_symbols=symbol_or_symbols, feed=feed, currency=currency)
         snapshots = stock_historical_data_client.get_stock_snapshot(request)
-        
+
         # Format response
         symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else symbol_or_symbols
         results = ["Stock Snapshots:", "=" * 15, ""]
-        
+
         for symbol in symbols:
             snapshot = snapshots.get(symbol)
             if not snapshot:
                 results.append(f"No data available for {symbol}\n")
                 continue
-            
+
             # Build snapshot data using helper functions
             snapshot_data = [
                 f"Symbol: {symbol}",
@@ -661,11 +661,11 @@ async def get_stock_snapshot(
                 _format_ohlcv_bar(snapshot.daily_bar, "Latest Daily Bar", False),
                 _format_ohlcv_bar(snapshot.previous_daily_bar, "Previous Daily Bar", False),
             ]
-            
+
             results.extend(filter(None, snapshot_data))  # Filter out empty strings
-        
+
         return "\n".join(results)
-        
+
     except APIError as api_error:
         error_message = str(api_error)
         # Handle specific data feed subscription errors
@@ -687,7 +687,7 @@ async def get_stock_snapshot(
                     """
         else:
             return f"API Error retrieving stock snapshots: {error_message}"
-            
+
     except Exception as e:
         return f"Error retrieving stock snapshots: {str(e)}"
 
@@ -723,20 +723,20 @@ async def get_orders(status: str = "all", limit: int = 10) -> str:
             query_status = QueryOrderStatus.CLOSED
         else:
             query_status = QueryOrderStatus.ALL
-            
+
         request_params = GetOrdersRequest(
             status=query_status,
             limit=limit
         )
-        
+
         orders = trade_client.get_orders(request_params)
-        
+
         if not orders:
             return f"No {status} orders found."
-        
+
         result = f"{status.capitalize()} Orders (Last {len(orders)}):\n"
         result += "-----------------------------------\n"
-        
+
         for order in orders:
             result += f"""
                         Symbol: {order.symbol}
@@ -749,12 +749,12 @@ async def get_orders(status: str = "all", limit: int = 10) -> str:
                         """
             if hasattr(order, 'filled_at') and order.filled_at:
                 result += f"Filled At: {order.filled_at}\n"
-                
+
             if hasattr(order, 'filled_avg_price') and order.filled_avg_price:
                 result += f"Filled Price: ${float(order.filled_avg_price):.2f}\n"
-                
+
             result += "-----------------------------------\n"
-            
+
         return result
     except Exception as e:
         return f"Error fetching orders: {str(e)}"
@@ -923,14 +923,14 @@ async def cancel_all_orders() -> str:
     try:
         # Cancel all orders
         cancel_responses = trade_client.cancel_orders()
-        
+
         if not cancel_responses:
             return "No orders were found to cancel."
-        
+
         # Format the response
         response_parts = ["Order Cancellation Results:"]
         response_parts.append("-" * 30)
-        
+
         for response in cancel_responses:
             status = "Success" if response.status == 200 else "Failed"
             response_parts.append(f"Order ID: {response.id}")
@@ -938,9 +938,9 @@ async def cancel_all_orders() -> str:
             if response.body:
                 response_parts.append(f"Details: {response.body}")
             response_parts.append("-" * 30)
-        
+
         return "\n".join(response_parts)
-        
+
     except Exception as e:
         return f"Error cancelling orders: {str(e)}"
 
@@ -958,7 +958,7 @@ async def cancel_order_by_id(order_id: str) -> str:
     try:
         # Cancel the specific order
         response = trade_client.cancel_order_by_id(order_id)
-        
+
         # Format the response
         status = "Success" if response.status == 200 else "Failed"
         result = f"""
@@ -967,12 +967,12 @@ async def cancel_order_by_id(order_id: str) -> str:
         Order ID: {response.id}
         Status: {status}
         """
-        
+
         if response.body:
             result += f"Details: {response.body}\n"
-            
+
         return result
-        
+
     except Exception as e:
         return f"Error cancelling order {order_id}: {str(e)}"
 
@@ -1001,10 +1001,10 @@ async def close_position(symbol: str, qty: Optional[str] = None, percentage: Opt
                 qty=qty,
                 percentage=percentage
             )
-        
+
         # Close the position
         order = trade_client.close_position(symbol, close_options)
-        
+
         return f"""
                 Position Closed Successfully:
                 ----------------------------
@@ -1012,7 +1012,7 @@ async def close_position(symbol: str, qty: Optional[str] = None, percentage: Opt
                 Order ID: {order.id}
                 Status: {order.status}
                 """
-                
+
     except APIError as api_error:
         error_message = str(api_error)
         if "42210000" in error_message and "would result in order size of zero" in error_message:
@@ -1027,10 +1027,10 @@ async def close_position(symbol: str, qty: Optional[str] = None, percentage: Opt
             """
         else:
             return f"Error closing position: {error_message}"
-            
+
     except Exception as e:
         return f"Error closing position: {str(e)}"
-    
+
 @mcp.tool()
 async def close_all_positions(cancel_orders: bool = False) -> str:
     """
@@ -1045,23 +1045,23 @@ async def close_all_positions(cancel_orders: bool = False) -> str:
     try:
         # Close all positions
         close_responses = trade_client.close_all_positions(cancel_orders=cancel_orders)
-        
+
         if not close_responses:
             return "No positions were found to close."
-        
+
         # Format the response
         response_parts = ["Position Closure Results:"]
         response_parts.append("-" * 30)
-        
+
         for response in close_responses:
             response_parts.append(f"Symbol: {response.symbol}")
             response_parts.append(f"Status: {response.status}")
             if response.order_id:
                 response_parts.append(f"Order ID: {response.order_id}")
             response_parts.append("-" * 30)
-        
+
         return "\n".join(response_parts)
-        
+
     except Exception as e:
         return f"Error closing positions: {str(e)}"
 
@@ -1129,17 +1129,17 @@ async def get_all_assets(
                 exchange=exchange,
                 attributes=attributes
             )
-        
+
         # Get all assets
         assets = trade_client.get_all_assets(filter_params)
-        
+
         if not assets:
             return "No assets found matching the criteria."
-        
+
         # Format the response
         response_parts = ["Available Assets:"]
         response_parts.append("-" * 30)
-        
+
         for asset in assets:
             response_parts.append(f"Symbol: {asset.symbol}")
             response_parts.append(f"Name: {asset.name}")
@@ -1148,9 +1148,9 @@ async def get_all_assets(
             response_parts.append(f"Status: {asset.status}")
             response_parts.append(f"Tradable: {'Yes' if asset.tradable else 'No'}")
             response_parts.append("-" * 30)
-        
+
         return "\n".join(response_parts)
-        
+
     except Exception as e:
         return f"Error fetching assets: {str(e)}"
 
@@ -1249,11 +1249,11 @@ async def get_market_calendar(start_date: str, end_date: str) -> str:
         # Convert string dates to date objects
         start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
         end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
-        
+
         # Create the request object with the correct parameters
         calendar_request = GetCalendarRequest(start=start_dt, end=end_dt)
         calendar = trade_client.get_calendar(calendar_request)
-        
+
         result = f"Market Calendar ({start_date} to {end_date}):\n----------------------------\n"
         for day in calendar:
             result += f"Date: {day.date}, Open: {day.open}, Close: {day.close}\n"
@@ -1323,64 +1323,64 @@ async def get_corporate_announcements(
             sort=sort
         )
         announcements = corporate_actions_client.get_corporate_actions(request)
-        
+
         if not announcements or not announcements.data:
             return "No corporate announcements found for the specified criteria."
-        
+
         result = "Corporate Announcements:\n----------------------\n"
-        
+
         # The response.data contains action types as keys (e.g., 'cash_dividends', 'forward_splits')
         # Each value is a list of corporate actions
         for action_type, actions_list in announcements.data.items():
             if not actions_list:
                 continue
-                
+
             result += f"\n{action_type.replace('_', ' ').title()}:\n"
             result += "=" * 30 + "\n"
-            
+
             for action in actions_list:
                 # Group by symbol for better organization
                 symbol = getattr(action, 'symbol', 'Unknown')
                 result += f"\nSymbol: {symbol}\n"
                 result += "-" * 15 + "\n"
-                
+
                 # Display action details based on available attributes
                 if hasattr(action, 'corporate_action_type'):
                     result += f"Type: {action.corporate_action_type}\n"
-                
+
                 if hasattr(action, 'ex_date') and action.ex_date:
                     result += f"Ex Date: {action.ex_date}\n"
-                    
+
                 if hasattr(action, 'record_date') and action.record_date:
                     result += f"Record Date: {action.record_date}\n"
-                    
+
                 if hasattr(action, 'payable_date') and action.payable_date:
                     result += f"Payable Date: {action.payable_date}\n"
-                    
+
                 if hasattr(action, 'process_date') and action.process_date:
                     result += f"Process Date: {action.process_date}\n"
-                
+
                 # Cash dividend specific fields
                 if hasattr(action, 'rate') and action.rate:
                     result += f"Rate: ${action.rate:.6f}\n"
-                    
+
                 if hasattr(action, 'foreign') and hasattr(action, 'special'):
                     result += f"Foreign: {action.foreign}, Special: {action.special}\n"
-                
+
                 # Split specific fields
                 if hasattr(action, 'old_rate') and action.old_rate:
                     result += f"Old Rate: {action.old_rate}\n"
-                    
+
                 if hasattr(action, 'new_rate') and action.new_rate:
                     result += f"New Rate: {action.new_rate}\n"
-                
+
                 # Due bill dates
                 if hasattr(action, 'due_bill_on_date') and action.due_bill_on_date:
                     result += f"Due Bill On Date: {action.due_bill_on_date}\n"
-                    
+
                 if hasattr(action, 'due_bill_off_date') and action.due_bill_off_date:
                     result += f"Due Bill Off Date: {action.due_bill_off_date}\n"
-                
+
                 result += "\n"
         return result
     except Exception as e:
@@ -1448,10 +1448,10 @@ async def get_option_contracts(
         use_specific_date = expiration_date is not None
         use_month_filter = expiration_month is not None and expiration_year is not None
         use_week_filter = expiration_week_start is not None
-        
+
         # Create the request object - if filtering by month or week, don't use expiration_date
         request_expiration_date = expiration_date if use_specific_date and not use_month_filter and not use_week_filter else None
-        
+
         # Create the request object with all available parameters
         # Set a higher limit to get more contracts (default is 100, we use 1000 for comprehensive results)
         request = GetOptionContractsRequest(
@@ -1464,42 +1464,42 @@ async def get_option_contracts(
             root_symbol=root_symbol,
             limit=limit if limit else 1000  # Default to 1000 to get more comprehensive results
         )
-        
+
         # Get the option contracts
         response = trade_client.get_option_contracts(request)
-        
+
         if not response or not response.option_contracts:
             return f"No option contracts found for {underlying_symbol} matching the criteria."
-        
+
         # Filter by month or week if specified
         contracts_to_display = response.option_contracts
         if use_month_filter:
             contracts_to_display = [
-                contract for contract in response.option_contracts 
+                contract for contract in response.option_contracts
                 if contract.expiration_date.month == expiration_month and contract.expiration_date.year == expiration_year
             ]
-            
+
             if not contracts_to_display:
                 month_name = date(expiration_year, expiration_month, 1).strftime("%B")
                 return f"No option contracts found for {underlying_symbol} expiring in {month_name} {expiration_year}."
-        
+
         elif use_week_filter:
             # Calculate the week range (Monday to Sunday)
             from datetime import timedelta
-            
+
             # Find the Monday of the week containing expiration_week_start
             days_since_monday = expiration_week_start.weekday()
             week_start = expiration_week_start - timedelta(days=days_since_monday)
             week_end = week_start + timedelta(days=6)  # Sunday
-            
+
             contracts_to_display = [
-                contract for contract in response.option_contracts 
+                contract for contract in response.option_contracts
                 if week_start <= contract.expiration_date <= week_end
             ]
-            
+
             if not contracts_to_display:
                 return f"No option contracts found for {underlying_symbol} expiring during the week of {week_start.strftime('%B %d, %Y')}."
-        
+
         # Format the response
         if use_month_filter:
             month_name = date(expiration_year, expiration_month, 1).strftime("%B")
@@ -1513,18 +1513,18 @@ async def get_option_contracts(
         else:
             result = f"Option Contracts for {underlying_symbol}:\n"
         result += "----------------------------------------\n"
-        
+
         # Check if there are too many results and provide guidance instead of overwhelming output
         total_contracts = len(contracts_to_display)
         max_display_contracts = 500  # Threshold to limit display and show guidance message instead
-        
+
         # Sort contracts by expiration date and strike price
         contracts_to_display.sort(key=lambda x: (x.expiration_date, float(x.strike_price)))
-        
+
         if total_contracts > max_display_contracts:
             # Too many results - provide simple guidance
             result += f"Found {total_contracts} contracts. For easier viewing, please specify a particular expiration date or strike price range."
-            
+
         else:
             # Normal display for manageable number of results
             for contract in contracts_to_display:
@@ -1545,7 +1545,7 @@ async def get_option_contracts(
                 Close Price Date: {contract.close_price_date}
                 -------------------------
                 """
-        
+
         # Add summary information
         if use_month_filter:
             month_name = date(expiration_year, expiration_month, 1).strftime("%B")
@@ -1557,9 +1557,9 @@ async def get_option_contracts(
             result += f"\nTotal contracts found for {underlying_symbol} during the week of {week_start.strftime('%B %d, %Y')}: {total_contracts}"
         else:
             result += f"\nTotal contracts found for {underlying_symbol}: {total_contracts}"
-        
+
         return result
-        
+
     except Exception as e:
         return f"Error fetching option contracts: {str(e)}"
 
@@ -1596,10 +1596,10 @@ async def get_option_latest_quote(
             symbol_or_symbols=symbol,
             feed=feed
         )
-        
+
         # Get the latest quote
         quotes = option_historical_data_client.get_option_latest_quote(request)
-        
+
         if symbol in quotes:
             quote = quotes[symbol]
             return f"""
@@ -1617,7 +1617,7 @@ async def get_option_latest_quote(
                 """
         else:
             return f"No quote data found for {symbol}."
-            
+
     except Exception as e:
         return f"Error fetching option quote: {str(e)}"
 
@@ -1662,26 +1662,26 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
             symbol_or_symbols=symbol_or_symbols,
             feed=feed
         )
-        
+
         # Get snapshots
         snapshots = option_historical_data_client.get_option_snapshot(request)
-        
+
         # Format the response
         result = "Option Snapshots:\n"
         result += "================\n\n"
-        
+
         # Handle both single symbol and list of symbols
         symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else symbol_or_symbols
-        
+
         for symbol in symbols:
             snapshot = snapshots.get(symbol)
             if snapshot is None:
                 result += f"No data available for {symbol}\n"
                 continue
-                
+
             result += f"Symbol: {symbol}\n"
             result += "-----------------\n"
-            
+
             # Latest Quote
             if snapshot.latest_quote:
                 quote = snapshot.latest_quote
@@ -1697,7 +1697,7 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
                 if quote.tape:
                     result += f"  Tape: {quote.tape}\n"
                 result += f"  Timestamp: {quote.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f %Z')}\n"
-            
+
             # Latest Trade
             if snapshot.latest_trade:
                 trade = snapshot.latest_trade
@@ -1713,11 +1713,11 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
                 if trade.id:
                     result += f"  Trade ID: {trade.id}\n"
                 result += f"  Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f %Z')}\n"
-            
+
             # Implied Volatility
             if snapshot.implied_volatility is not None:
                 result += f"Implied Volatility: {snapshot.implied_volatility:.2%}\n"
-            
+
             # Greeks
             if snapshot.greeks:
                 greeks = snapshot.greeks
@@ -1727,11 +1727,11 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
                 result += f"  Rho: {greeks.rho:.4f}\n"
                 result += f"  Theta: {greeks.theta:.4f}\n"
                 result += f"  Vega: {greeks.vega:.4f}\n"
-            
+
             result += "\n"
-        
+
         return result
-        
+
     except Exception as e:
         return f"Error retrieving option snapshots: {str(e)}"
 
@@ -1775,7 +1775,7 @@ def _process_option_legs(legs: List[Dict[str, Any]]) -> Union[List[OptionLegRequ
         # Validate ratio_qty
         if not isinstance(leg['ratio_qty'], int) or leg['ratio_qty'] <= 0:
             return f"Error: Invalid ratio_qty for leg {leg['symbol']}. Must be positive integer."
-        
+
         # Convert side string to enum
         if leg['side'].lower() == "buy":
             order_side = OrderSide.BUY
@@ -1783,7 +1783,7 @@ def _process_option_legs(legs: List[Dict[str, Any]]) -> Union[List[OptionLegRequ
             order_side = OrderSide.SELL
         else:
             return f"Invalid order side: {leg['side']}. Must be 'buy' or 'sell'."
-        
+
         order_legs.append(OptionLegRequest(
             symbol=leg['symbol'],
             side=order_side,
@@ -1792,8 +1792,8 @@ def _process_option_legs(legs: List[Dict[str, Any]]) -> Union[List[OptionLegRequ
     return order_legs
 
 def _create_option_market_order_request(
-    order_legs: List[OptionLegRequest], 
-    order_class: OrderClass, 
+    order_legs: List[OptionLegRequest],
+    order_class: OrderClass,
     quantity: int,
     time_in_force: TimeInForce,
     extended_hours: bool
@@ -1837,7 +1837,7 @@ def _format_option_order_response(order: Order, order_class: OrderClass, order_l
             Created At: {order.created_at}
             Updated At: {order.updated_at}
             """
-    
+
     if order_class == OrderClass.MLEG and order.legs:
         result += "\nLegs:\n"
         for leg in order.legs:
@@ -1861,7 +1861,7 @@ def _format_option_order_response(order: Order, order_class: OrderClass, order_l
                 Filled Time: {order.filled_at if hasattr(order, 'filled_at') else 'Not filled'}
                 -------------------------
                 """
-    
+
     return result
 
 def _analyze_option_strategy_type(order_legs: List[OptionLegRequest], order_class: OrderClass) -> tuple[bool, bool, bool]:
@@ -1869,28 +1869,28 @@ def _analyze_option_strategy_type(order_legs: List[OptionLegRequest], order_clas
     is_short_straddle = False
     is_short_strangle = False
     is_short_calendar = False
-    
+
     if order_class == OrderClass.MLEG and len(order_legs) == 2:
         both_short = order_legs[0].side == OrderSide.SELL and order_legs[1].side == OrderSide.SELL
-        
+
         if both_short:
             # Check for short straddle (same strike, same expiration, both short)
             if (order_legs[0].symbol.split('C')[0] == order_legs[1].symbol.split('P')[0]):
                 is_short_straddle = True
             else:
                 is_short_strangle = True
-                
+
             # Check for short calendar spread (same strike, different expirations, both short)
             leg1_type = 'C' if 'C' in order_legs[0].symbol else 'P'
             leg2_type = 'C' if 'C' in order_legs[1].symbol else 'P'
-            
+
             if leg1_type == 'C' and leg2_type == 'C':
                 leg1_exp = order_legs[0].symbol.split(leg1_type)[1][:6]
                 leg2_exp = order_legs[1].symbol.split(leg2_type)[1][:6]
                 if leg1_exp != leg2_exp:
                     is_short_calendar = True
                     is_short_strangle = False  # Override strangle detection
-    
+
     return is_short_straddle, is_short_strangle, is_short_calendar
 
 def _get_short_straddle_error_message() -> str:
@@ -1981,7 +1981,7 @@ def _handle_option_api_error(error_message: str, order_legs: List[OptionLegReque
     """Handle API errors with specific option strategy analysis."""
     if "40310000" in error_message and "not eligible to trade uncovered option contracts" in error_message:
         is_short_straddle, is_short_strangle, is_short_calendar = _analyze_option_strategy_type(order_legs, order_class)
-        
+
         if is_short_straddle:
             return _get_short_straddle_error_message()
         elif is_short_strangle:
@@ -2076,44 +2076,44 @@ async def place_option_market_order(
     """
     # Initialize variables that might be used in exception handlers
     order_legs: List[OptionLegRequest] = []
-    
+
     try:
         # Validate inputs
         validation_error = _validate_option_order_inputs(legs, quantity, time_in_force)
         if validation_error:
             return validation_error
-        
+
         # Convert order class string to enum if needed
         converted_order_class = _convert_order_class_string(order_class)
         if isinstance(converted_order_class, OrderClass):
             order_class = converted_order_class
         elif isinstance(converted_order_class, str):  # Error message returned
             return converted_order_class
-        
+
         # Determine order class if not provided
         if order_class is None:
             order_class = OrderClass.MLEG if len(legs) > 1 else OrderClass.SIMPLE
-        
+
         # Process legs
         processed_legs = _process_option_legs(legs)
         if isinstance(processed_legs, str):  # Error message returned
             return processed_legs
         order_legs = processed_legs
-        
+
         # Create order request
         order_data = _create_option_market_order_request(
             order_legs, order_class, quantity, time_in_force, extended_hours
         )
-        
+
         # Submit order
         order = trade_client.submit_order(order_data)
-        
+
         # Format and return response
         return _format_option_order_response(order, order_class, order_legs)
-        
+
     except APIError as api_error:
         return _handle_option_api_error(str(api_error), order_legs, order_class)
-        
+
     except Exception as e:
         return f"""
         Unexpected error placing option order: {str(e)}
@@ -2139,33 +2139,33 @@ def parse_timeframe_with_enums(timeframe_str: str) -> Optional[TimeFrame]:
     Reference:
         https://alpaca.markets/sdks/python/api_reference/data/timeframe.html#timeframeunit
     """
-    
+
     try:
         timeframe_str = timeframe_str.strip()
-        
+
         # Use predefined TimeFrame objects for common cases (more efficient)
         predefined_timeframes = {
             "1Min": TimeFrame.Minute,
-            "1Hour": TimeFrame.Hour, 
+            "1Hour": TimeFrame.Hour,
             "1Day": TimeFrame.Day,
             "1Week": TimeFrame.Week,
             "1Month": TimeFrame.Month
         }
-        
+
         if timeframe_str in predefined_timeframes:
             return predefined_timeframes[timeframe_str]
-        
+
         # Flexible regex pattern to parse any valid timeframe format
         # Matches: <number><unit> where unit can be Min, Hour, Day, Week, Month
         pattern = r'^(\d+)(Min|Hour|Day|Week|Month)$'
         match = re.match(pattern, timeframe_str, re.IGNORECASE)
-        
+
         if not match:
             return None
-            
+
         amount = int(match.group(1))
         unit_str = match.group(2).lower()
-        
+
         # Map unit strings to TimeFrameUnit enums
         unit_mapping = {
             'min': TimeFrameUnit.Minute,
@@ -2174,11 +2174,11 @@ def parse_timeframe_with_enums(timeframe_str: str) -> Optional[TimeFrame]:
             'week': TimeFrameUnit.Week,
             'month': TimeFrameUnit.Month
         }
-        
+
         unit = unit_mapping.get(unit_str)
         if unit is None:
             return None
-            
+
         # Validate amount based on unit type
         if unit == TimeFrameUnit.Minute and amount > 59:
             # Minutes should be reasonable (1-59)
@@ -2189,9 +2189,9 @@ def parse_timeframe_with_enums(timeframe_str: str) -> Optional[TimeFrame]:
         elif unit in [TimeFrameUnit.Day, TimeFrameUnit.Week, TimeFrameUnit.Month] and amount > 365:
             # Days/weeks/months should be reasonable
             return None
-            
+
         return TimeFrame(amount, unit)
-        
+
     except (ValueError, AttributeError, TypeError):
         return None
 
@@ -2199,26 +2199,31 @@ def parse_timeframe_with_enums(timeframe_str: str) -> Optional[TimeFrame]:
 if __name__ == "__main__":
     # Parse command line arguments when running as main script
     args = parse_arguments()
-    
+
     # Setup transport configuration based on command line arguments
     transport_config = setup_transport_config(args)
     
     try:
         # Run server with the specified transport
         if args.transport == "http":
+            mcp.settings.host = transport_config["host"]
+            mcp.settings.port = transport_config["port"]
             mcp.run(transport="streamable-http")
         elif args.transport == "sse":
+            mcp.settings.host = transport_config["host"]
+            mcp.settings.port = transport_config["port"]
             mcp.run(transport="sse")
         else:
             mcp.run(transport="stdio")
     except Exception as e:
         if args.transport in ["http", "sse"]:
             print(f"Error starting {args.transport} server: {e}")
-            print("Note: Official MCP SDK uses fixed defaults (127.0.0.1:8000 for HTTP)")
+            print(f"Server was configured to run on {transport_config['host']}:{transport_config['port']}")
             print("Common solutions:")
-            print("1. Ensure port 8000 is available")
-            print("2. Check if another service is using port 8000")
-            print("3. For remote access, consider using SSH tunneling or reverse proxy")
+            print(f"1. Ensure port {transport_config['port']} is available")
+            print(f"2. Check if another service is using port {transport_config['port']}")
+            print("3. Try using a different port with --port <PORT>")
+            print("4. For remote access, consider using SSH tunneling or reverse proxy")
         else:
             print(f"Error starting MCP server: {e}")
         sys.exit(1)
