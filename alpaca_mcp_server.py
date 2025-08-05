@@ -158,9 +158,12 @@ STREAM_DATA_WSS = os.getenv("STREAM_DATA_WSS")
 if not TRADE_API_KEY or not TRADE_API_SECRET:
     raise ValueError("Alpaca API credentials not found in environment variables.")
 
+# Convert string to boolean
+ALPACA_PAPER_TRADE_BOOL = ALPACA_PAPER_TRADE.lower() not in ['false', '0', 'no', 'off']
+
 # Initialize clients
 # For trading
-trade_client = TradingClientSigned(TRADE_API_KEY, TRADE_API_SECRET, paper=ALPACA_PAPER_TRADE)
+trade_client = TradingClientSigned(TRADE_API_KEY, TRADE_API_SECRET, paper=ALPACA_PAPER_TRADE_BOOL)
 # For historical market data
 stock_historical_data_client = StockHistoricalDataClientSigned(TRADE_API_KEY, TRADE_API_SECRET)
 # For streaming market data
