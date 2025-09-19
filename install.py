@@ -164,9 +164,39 @@ def install_dependencies(venv_path: Path, project_dir: Path):
     print()
 
 
+def prompt_for_client() -> str:
+    """Prompt user to select which MCP client to configure."""
+    print_step(4, "MCP Client Selection")
+    
+    available_clients = {
+        "claude": "Claude Desktop",
+        "cursor": "Cursor IDE"
+    }
+    
+    print("   Which MCP client would you like to configure?")
+    print("   (To configure multiple clients, run the script multiple times)")
+    print()
+    
+    for key, name in available_clients.items():
+        print(f"   • {name} (type '{key}')")
+    print()
+    
+    while True:
+        choice = input("   Enter your choice (claude or cursor): ").strip().lower()
+        
+        if choice in available_clients:
+            print()
+            print(f"   ✅ Selected: {available_clients[choice]}")
+            print()
+            return choice
+        else:
+            print("   Invalid choice. Please type 'claude' or 'cursor'.")
+            continue
+
+
 def prompt_for_api_keys() -> Dict[str, str]:
     """Prompt user for API keys and configuration."""
-    print_step(4, "API Key Configuration")
+    print_step(5, "API Key Configuration")
     
     print("   Please enter your Alpaca API credentials.")
     print("   You can find these at: https://app.alpaca.markets/paper/dashboard/overview")
@@ -210,7 +240,7 @@ def prompt_for_api_keys() -> Dict[str, str]:
 
 def create_env_file(project_dir: Path, api_config: Dict[str, str]):
     """Create .env file with API configuration."""
-    print_step(5, "Creating Environment File")
+    print_step(6, "Creating Environment File")
     
     env_file = project_dir / ".env"
     
@@ -245,10 +275,8 @@ STREAM_DATA_WSS = {api_config['STREAM_DATA_WSS']}
     print()
 
 
-def generate_claude_config(project_dir: Path, venv_path: Path) -> Dict[str, Any]:
-    """Generate Claude Desktop configuration."""
-    print_step(6, "Generating Claude Desktop Configuration")
-    
+def generate_mcp_config(project_dir: Path, venv_path: Path) -> Dict[str, Any]:
+    """Generate MCP server configuration."""
     # Get paths
     server_script = project_dir / "alpaca_mcp_server.py"
     venv_python = get_venv_python(venv_path)
@@ -266,8 +294,6 @@ def generate_claude_config(project_dir: Path, venv_path: Path) -> Dict[str, Any]
         }
     }
     
-    print("   ✅ Claude Desktop configuration generated")
-    print()
     return config
 
 
@@ -284,13 +310,26 @@ def get_claude_config_path() -> Optional[Path]:
         return home / ".config" / "claude" / "claude_desktop_config.json"
 
 
-def backup_claude_config(config_path: Path) -> Optional[Path]:
-    """Create a backup of the existing Claude config file."""
+def get_cursor_config_path() -> Optional[Path]:
+    """Get the Cursor MCP config file path for the current platform."""
+    system = platform.system()
+    home = Path.home()
+    
+    if system == "Darwin":  # macOS
+        return home / ".cursor" / "mcp.json"
+    elif system == "Windows":
+        return home / ".cursor" / "mcp.json"
+    else:  # Linux and others
+        return home / ".cursor" / "mcp.json"
+
+
+def backup_config_file(config_path: Path, client_name: str) -> Optional[Path]:
+    """Create a backup of the existing config file."""
     if not config_path.exists():
         return None
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = config_path.parent / f"claude_desktop_config_backup_{timestamp}.json"
+    backup_path = config_path.parent / f"{client_name}_config_backup_{timestamp}.json"
     
     try:
         shutil.copy2(config_path, backup_path)
@@ -301,8 +340,8 @@ def backup_claude_config(config_path: Path) -> Optional[Path]:
         return None
 
 
-def load_claude_config(config_path: Path) -> Dict[str, Any]:
-    """Load existing Claude Desktop configuration."""
+def load_mcp_config(config_path: Path, client_name: str) -> Dict[str, Any]:
+    """Load existing MCP configuration."""
     if not config_path.exists():
         return {"mcpServers": {}}
     
@@ -319,25 +358,25 @@ def load_claude_config(config_path: Path) -> Dict[str, Any]:
             
         return config
     except json.JSONDecodeError as e:
-        print(f"   ⚠️  Warning: Invalid JSON in Claude config: {e}")
+        print(f"   ⚠️  Warning: Invalid JSON in {client_name} config: {e}")
         print(f"   Creating new configuration...")
         return {"mcpServers": {}}
     except Exception as e:
-        print(f"   ⚠️  Warning: Could not read Claude config: {e}")
+        print(f"   ⚠️  Warning: Could not read {client_name} config: {e}")
         return {"mcpServers": {}}
 
 
-def update_claude_config(config_path: Path, alpaca_config: Dict[str, Any], api_config: Dict[str, str]) -> bool:
-    """Update Claude Desktop configuration with Alpaca MCP server."""
+def update_mcp_config(config_path: Path, alpaca_config: Dict[str, Any], api_config: Dict[str, str], client_name: str) -> bool:
+    """Update MCP client configuration with Alpaca MCP server."""
     try:
         # Create config directory if it doesn't exist
         config_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Backup existing config
-        backup_claude_config(config_path)
+        backup_config_file(config_path, client_name)
         
         # Load existing configuration
-        claude_config = load_claude_config(config_path)
+        existing_config = load_mcp_config(config_path, client_name)
         
         # Create Alpaca server config with actual API keys
         alpaca_server_config = alpaca_config["mcpServers"]["alpaca"].copy()
@@ -348,75 +387,90 @@ def update_claude_config(config_path: Path, alpaca_config: Dict[str, Any], api_c
             }
         
         # Add or update Alpaca server configuration
-        claude_config["mcpServers"]["alpaca"] = alpaca_server_config
+        existing_config["mcpServers"]["alpaca"] = alpaca_server_config
         
         # Write updated configuration
         with open(config_path, 'w') as f:
-            json.dump(claude_config, f, indent=2)
+            json.dump(existing_config, f, indent=2)
         
-        print(f"   ✅ Claude Desktop config updated: {config_path}")
+        print(f"   ✅ {client_name.title()} config updated: {config_path}")
         return True
         
     except Exception as e:
-        print(f"   ❌ Error updating Claude config: {e}")
+        print(f"   ❌ Error updating {client_name} config: {e}")
         return False
 
 
-def update_claude_desktop_config(claude_config: Dict[str, Any], api_config: Dict[str, str]):
-    """Update Claude Desktop configuration automatically."""
-    print_step(7, "Updating Claude Desktop Configuration")
+def update_client_configuration(selected_client: str, mcp_config: Dict[str, Any], api_config: Dict[str, str]) -> bool:
+    """Update MCP client configuration automatically."""
+    print_step(7, f"Updating {selected_client.title()} Configuration")
     
-    claude_config_path = get_claude_config_path()
+    print(f"   🔧 Configuring {selected_client.title()}...")
     
-    if not claude_config_path:
-        print("   ⚠️  Could not determine Claude config path for this platform")
+    if selected_client == "claude":
+        config_path = get_claude_config_path()
+    elif selected_client == "cursor":
+        config_path = get_cursor_config_path()
+    else:
+        print(f"   ❌ Unknown client: {selected_client}")
         return False
     
-    print(f"   📁 Claude config location: {claude_config_path}")
+    if not config_path:
+        print(f"   ⚠️  Could not determine {selected_client} config path for this platform")
+        return False
+    
+    print(f"   📁 {selected_client.title()} config location: {config_path}")
     
     # Update automatically if API keys are provided
     if api_config['ALPACA_API_KEY'] and api_config['ALPACA_SECRET_KEY']:
-        success = update_claude_config(claude_config_path, claude_config, api_config)
+        success = update_mcp_config(config_path, mcp_config, api_config, selected_client)
         if success:
-            print("   🎉 Claude Desktop configuration updated successfully!")
-            print("   📌 Next: Restart Claude Desktop to load the new configuration")
+            print(f"   🎉 {selected_client.title()} configuration updated successfully!")
+            if selected_client == "claude":
+                print("   📌 Next: Restart Claude Desktop to load the new configuration")
+            elif selected_client == "cursor":
+                print("   📌 Next: Restart Cursor IDE to load the new configuration")
         else:
-            print("   ⚠️  Manual configuration may be required")
+            print(f"   ⚠️  {selected_client.title()} manual configuration may be required")
         print()
         return success
     else:
-        print("   ⏭️  Skipping automatic update (API keys not provided)")
+        print(f"   ⏭️  Skipping {selected_client} automatic update (API keys not provided)")
         print("   💡 You can run the installer again with API keys to auto-configure")
         print()
         return False
 
 
-def print_instructions(project_dir: Path, venv_path: Path, config: Dict[str, Any], auto_configured: bool = False):
+def print_instructions(project_dir: Path, venv_path: Path, config: Dict[str, Any], selected_client: str, config_success: bool):
     """Print final setup instructions."""
-    step_num = 8 if auto_configured else 7
-    print_step(step_num, "Setup Complete - Next Steps")
+    print_step(8, "Setup Complete - Next Steps")
     
-    # Get platform-specific paths
-    claude_config_path = get_claude_config_path()
     server_script = project_dir / "alpaca_mcp_server.py"
-    venv_python = get_venv_python(venv_path)
+    env_file = project_dir / ".env"
+    client_name = selected_client.title()
     
     print("   🎉 Alpaca MCP Server installation completed successfully!")
     print()
     
-    if auto_configured:
-        print("   ✅ Claude Desktop has been automatically configured!")
+    if config_success:
+        print(f"   ✅ {client_name} automatically configured!")
+        print()
+        
         print("   📋 Final Steps:")
         print()
         
-        # Step 1: Restart Claude
-        print("   1️⃣  Restart Claude Desktop")
-        print("      Close and reopen Claude Desktop to load the new configuration")
+        # Step 1: Restart client
+        if selected_client == "claude":
+            print("   1️⃣  Restart Claude Desktop")
+            print("      Close and reopen Claude Desktop to load the new configuration")
+        elif selected_client == "cursor":
+            print("   1️⃣  Restart Cursor IDE")
+            print("      Close and reopen Cursor to load the new configuration")
         print()
         
         # Step 2: Test the integration
         print("   2️⃣  Test the integration:")
-        print("      Open Claude Desktop and try asking:")
+        print(f"      Try asking in {client_name}:")
         print('      "What is my Alpaca account balance?"')
         print('      "Show me my current positions"')
         print()
@@ -433,62 +487,57 @@ def print_instructions(project_dir: Path, venv_path: Path, config: Dict[str, Any
         print()
         
     else:
-        print("   📋 Next Steps:")
+        print(f"   📋 Manual Configuration Required for {client_name}:")
         print()
         
-        # Step 1: Configure API keys (if needed)
-        print("   1️⃣  Configure your API keys (if not done already):")
-        env_file = project_dir / ".env"
+        # Step 1: API keys (if needed)
+        print("   1️⃣  Configure API keys (if not done already):")
         print(f"      Edit {env_file}")
         print("      Add your Alpaca API keys")
         print()
         
-        # Step 2: Test the server
-        print("   2️⃣  Test the MCP server:")
-        print(f"      cd {project_dir}")
-        if platform.system() == "Windows":
-            print(f"      {venv_path}\\Scripts\\activate")
-        else:
-            print(f"      source {venv_path}/bin/activate")
-        print(f"      python {server_script.name}")
-        print("      (Press Ctrl+C to stop)")
-        print()
+        # Step 2: Client-specific instructions
+        if selected_client == "claude":
+            claude_config_path = get_claude_config_path()
+            print("   2️⃣  Configure Claude Desktop:")
+            print("      Open Claude Desktop → Settings → Developer → Edit Config")
+            if claude_config_path:
+                print(f"      This should open: {claude_config_path}")
+            print("      Add this configuration and update the API keys:")
+            print("      " + "─" * 50)
+            print(json.dumps(config, indent=6))
+            print("      " + "─" * 50)
+            print()
+            
+        elif selected_client == "cursor":
+            cursor_config_path = get_cursor_config_path()
+            print("   2️⃣  Configure Cursor IDE:")
+            if cursor_config_path:
+                print(f"      Create or edit: {cursor_config_path}")
+            print("      Add this configuration and update the API keys:")
+            print("      " + "─" * 50)
+            print(json.dumps(config, indent=6))
+            print("      " + "─" * 50)
+            print()
         
-        # Step 3: Configure Claude Desktop manually
-        print("   3️⃣  Configure Claude Desktop manually:")
-        print(f"      Open Claude Desktop → Settings → Developer → Edit Config")
-        if claude_config_path:
-            print(f"      This should open: {claude_config_path}")
-        print()
-        print("      Add this configuration:")
-        print("      " + "─" * 50)
-        print(json.dumps(config, indent=6))
-        print("      " + "─" * 50)
-        print()
-        
-        # Step 4: Update paths and keys
-        print("   4️⃣  Update the configuration:")
-        print("      - Replace 'your_alpaca_api_key_for_paper_account' with your actual API key")
-        print("      - Replace 'your_alpaca_secret_key_for_paper_account' with your actual secret key")
-        print("      - Verify the paths are correct for your system")
-        print()
-        
-        # Step 5: Restart Claude
-        print("   5️⃣  Restart Claude Desktop")
-        print("      Close and reopen Claude Desktop to load the new configuration")
+        # Step 3: Restart
+        print(f"   3️⃣  Restart {client_name}")
+        print(f"      Close and reopen {client_name} to load the new configuration")
         print()
     
     # Additional info (always shown)
     print("   💡 Additional Information:")
     print("      - The server uses paper trading by default (safe for testing)")
     print("      - To enable live trading, set ALPACA_PAPER_TRADE = False in .env")
-    if auto_configured and claude_config_path:
-        print(f"      - Configuration backup created in {claude_config_path.parent}")
+    if config_success:
+        print("      - Configuration backup was created automatically")
+    print("      - To configure additional clients, run this script again")
     print("      - See README.md for more configuration options")
     print("      - For support, visit: https://github.com/alpacahq/alpaca-mcp-server")
     print()
     
-    print("   ✅ Installation complete! Enjoy trading with Claude! 🚀")
+    # Final message
+    print(f"   ✅ Installation complete! Enjoy trading with {client_name}! 🚀")
 
 
 def main():
@@ -510,20 +559,23 @@ def main():
         # Install dependencies
         install_dependencies(venv_path, project_dir)
         
+        # Get client selection
+        selected_client = prompt_for_client()
+        
         # Get API configuration
         api_config = prompt_for_api_keys()
         
         # Create .env file
         create_env_file(project_dir, api_config)
         
-        # Generate Claude config
-        claude_config = generate_claude_config(project_dir, venv_path)
+        # Generate MCP config
+        mcp_config = generate_mcp_config(project_dir, venv_path)
         
-        # Update Claude Desktop configuration
-        auto_configured = update_claude_desktop_config(claude_config, api_config)
+        # Update client configuration
+        config_success = update_client_configuration(selected_client, mcp_config, api_config)
         
         # Print final instructions
-        print_instructions(project_dir, venv_path, claude_config, auto_configured)
+        print_instructions(project_dir, venv_path, mcp_config, selected_client, config_success)
         
     except KeyboardInterrupt:
         print("\n\n❌ Installation cancelled by user")
