@@ -60,8 +60,8 @@ This is a Model Context Protocol (MCP) server implementation for Alpaca's Tradin
     **Option A: Using pip (traditional)**
 
     ```bash
-    python3 -m venv myvenv
-    source myvenv/bin/activate  # On Windows: myvenv\Scripts\activate
+    python3 -m venv .venv
+    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
     pip install -r requirements.txt
     ```
 
@@ -69,8 +69,8 @@ This is a Model Context Protocol (MCP) server implementation for Alpaca's Tradin
 
     To use uv, you'll first need to install it. See the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for detailed installation instructions for your platform.
     ```bash
-    uv venv myvenv
-    source myvenv/bin/activate # On Windows: myvenv\Scripts\activate
+    uv venv .venv
+    source .venv/bin/activate # On Windows: .venv\Scripts\activate
     uv pip install -r requirements.txt
     ```
     **Note:** The virtual environment will use the Python version that was used to create it. If you run the command with Python 3.10 or newer, your virtual environment will also use Python 3.10+. If you want to confirm the version, you can run `python3 --version` after activating the virtual environment. 

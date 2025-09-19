@@ -111,7 +111,7 @@ def create_virtual_environment(python_cmd: str, project_dir: Path) -> Path:
     """Create and return path to virtual environment."""
     print_step(2, "Creating Virtual Environment")
     
-    venv_path = project_dir / "myvenv"
+    venv_path = project_dir / ".venv"
     
     # Remove existing venv if it exists
     if venv_path.exists():
