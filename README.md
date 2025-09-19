@@ -40,40 +40,57 @@ This is a Model Context Protocol (MCP) server implementation for Alpaca's Tradin
   - Filter assets by status, class, exchange, and attributes
 
 ## Getting Started
-### 0. Prerequisites
+
+### Prerequisites
 
 - Python (version requirements can be found at: https://modelcontextprotocol.io/quickstart/server)
 - GitHub account
 - Alpaca API keys (with paper or live trading access)
 - Claude for Desktop or another compatible MCP client
 
+### Clone the repo
+Clone the repository and navigate to the directory:
+```bash
+git clone https://github.com/alpacahq/alpaca-mcp-server.git
+cd alpaca-mcp-server
+```
+
+## Quick Start
+
+To set up Alpaca MCP Server quickly, execute the following commands in your terminal:
+
+  ```bash
+  cd alpaca-mcp-server
+  python3 install.py
+  ```
+
+Our install script will guide you through set up with Claude Desktop or Cursor.
+
+## Advanced Instructions
+
+Manual installation.
+
 ### 1. Installation
 
-1. Clone the repository and navigate to the directory:
-   ```bash
-   git clone https://github.com/alpacahq/alpaca-mcp-server.git
-   cd alpaca-mcp-server
-   ```
+ Create and activate a virtual environment and Install the required packages:
 
-2. Create and activate a virtual environment and Install the required packages:
+  **Option A: Using pip (traditional)**
 
-    **Option A: Using pip (traditional)**
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+  pip install -r requirements.txt
+  ```
 
-    ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-    pip install -r requirements.txt
-    ```
+  **Option B: Using uv (modern, faster)**
 
-    **Option B: Using uv (modern, faster)**
-
-    To use uv, you'll first need to install it. See the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for detailed installation instructions for your platform.
-    ```bash
-    uv venv .venv
-    source .venv/bin/activate # On Windows: .venv\Scripts\activate
-    uv pip install -r requirements.txt
-    ```
-    **Note:** The virtual environment will use the Python version that was used to create it. If you run the command with Python 3.10 or newer, your virtual environment will also use Python 3.10+. If you want to confirm the version, you can run `python3 --version` after activating the virtual environment. 
+  To use uv, you'll first need to install it. See the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for detailed installation instructions for your platform.
+  ```bash
+  uv venv .venv
+  source .venv/bin/activate # On Windows: .venv\Scripts\activate
+  uv pip install -r requirements.txt
+  ```
+  **Note:** The virtual environment will use the Python version that was used to create it. If you run the command with Python 3.10 or newer, your virtual environment will also use Python 3.10+. If you want to confirm the version, you can run `python3 --version` after activating the virtual environment. 
 
 
 ### Project Structure
