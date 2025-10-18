@@ -391,15 +391,16 @@ async def get_open_position(symbol: str) -> str:
 # ============================================================================
 
 @mcp.tool()
-async def get_stock_quote(symbol: str) -> str:
+async def get_stock_quote(symbol_or_symbols: Union[str, List[str]]) -> str:
     """
-    Retrieves and formats the latest quote for a stock.
+    Retrieves and formats the latest quote for one or more stocks.
     
     Args:
-        symbol (str): Stock ticker symbol (e.g., AAPL, MSFT)
+        symbol_or_symbols (Union[str, List[str]]): Single stock ticker symbol (e.g., "AAPL")
+            or a list of symbols (e.g., ["AAPL", "MSFT"]).
     
     Returns:
-        str: Formatted string containing:
+        str: Formatted string containing for each requested symbol:
             - Ask Price
             - Bid Price
             - Ask Size
@@ -408,24 +409,39 @@ async def get_stock_quote(symbol: str) -> str:
     """
     _ensure_clients()
     try:
-        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol_or_symbols)
         quotes = stock_historical_data_client.get_stock_latest_quote(request_params)
-        
-        if symbol in quotes:
-            quote = quotes[symbol]
-            return f"""
-                    Latest Quote for {symbol}:
-                    ------------------------
-                    Ask Price: ${quote.ask_price:.2f}
-                    Bid Price: ${quote.bid_price:.2f}
-                    Ask Size: {quote.ask_size}
-                    Bid Size: {quote.bid_size}
-                    Timestamp: {quote.timestamp}
-                    """ 
-        else:
-            return f"No quote data found for {symbol}."
+
+        symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        if not symbols:
+            return "No symbols provided."
+
+        results: List[str] = ["Latest Stock Quotes:", "====================", ""]
+        for symbol in symbols:
+            quote = quotes.get(symbol)
+            if not quote:
+                results.extend([f"Symbol: {symbol}", "------------------", f"No quote data found for {symbol}.", ""])
+                continue
+
+            timestamp_value = getattr(quote, "timestamp", None)
+            timestamp = timestamp_value.isoformat() if hasattr(timestamp_value, "isoformat") else timestamp_value or "N/A"
+
+            results.extend([
+                f"Symbol: {symbol}",
+                "------------------",
+                f"Ask Price: ${quote.ask_price:.2f}",
+                f"Bid Price: ${quote.bid_price:.2f}",
+                f"Ask Size: {quote.ask_size}",
+                f"Bid Size: {quote.bid_size}",
+                f"Timestamp: {timestamp}",
+                "",
+            ])
+
+        return "\n".join(results).strip()
     except Exception as e:
-        return f"Error fetching quote for {symbol}: {str(e)}"
+        symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        requested = ", ".join(symbols) if symbols else ""
+        return f"Error fetching quote for {requested}: {str(e)}"
 
 @mcp.tool()
 async def get_stock_bars(
