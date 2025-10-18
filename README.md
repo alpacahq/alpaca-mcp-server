@@ -920,7 +920,7 @@ Update your Claude Desktop configuration to use HTTP:
 
 ### Stock Market Data
 
-* `get_stock_quote(symbol)` – Real-time bid/ask quote
+* `get_stock_quote(symbol_or_symbols)` – Real-time bid/ask quote for one or more symbols
 * `get_stock_bars(symbol, days=5, timeframe="1Day", limit=None, start=None, end=None)` – OHLCV historical bars with flexible timeframes (1Min, 5Min, 1Hour, 1Day, etc.)
 * `get_stock_latest_trade(symbol, feed=None, currency=None)` – Latest market trade price
 * `get_stock_latest_bar(symbol, feed=None, currency=None)` – Most recent OHLC bar
