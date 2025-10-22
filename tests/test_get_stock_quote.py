@@ -14,6 +14,7 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
+from alpaca.data.requests import StockLatestQuoteRequest
 from alpaca_mcp_server import server
 
 
@@ -61,3 +62,35 @@ async def test_get_stock_quote_missing_symbol_reports_message():
 
     assert "Symbol: MSFT" in result
     assert "No quote data found for MSFT." in result
+
+
+@pytest.mark.asyncio
+async def test_get_stock_quote_builds_expected_request_payload():
+    quotes = {
+        "AAPL": _sample_quote(ask=190.25, bid=189.95),
+        "MSFT": _sample_quote(ask=420.10, bid=419.75),
+    }
+
+    with patch.object(server, "_ensure_clients"), patch.object(
+        server, "stock_historical_data_client"
+    ) as mock_client:
+        mock_client.get_stock_latest_quote.return_value = quotes
+
+        await server.get_stock_quote(["AAPL", "MSFT"])
+
+    mock_client.get_stock_latest_quote.assert_called_once()
+    request_arg = mock_client.get_stock_latest_quote.call_args.args[0]
+    expected_request = StockLatestQuoteRequest(symbol_or_symbols=["AAPL", "MSFT"])
+
+    def serialize(request: StockLatestQuoteRequest) -> dict:
+        if hasattr(request, "model_dump"):
+            return request.model_dump()
+        if hasattr(request, "dict"):
+            return request.dict()
+        return {
+            key: value
+            for key, value in vars(request).items()
+            if not key.startswith("_")
+        }
+
+    assert serialize(request_arg) == serialize(expected_request)
