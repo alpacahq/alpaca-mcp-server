@@ -35,11 +35,13 @@
 
 ## Prerequisites
 You need the following prerequisites to configure and run the Alpaca MCP Server.
-- **Python 3.10+**
+- **Terminal** (macOS/Linux) | **Command Prompt or PowerShell** (Windows)
+- **Python 3.10+** (Check the [official installation guide](https://www.python.org/downloads/) and confirm the version by typing the following command: `python3 --version` in Terminal)
 - **uv** (Install using the [official guide](https://docs.astral.sh/uv/getting-started/installation/))\
   **Tip:** `uv` can be installed either through a package manager (like `Homebrew`) or directly using `curl | sh`.
 - **Alpaca Trading API keys** (free paper trading account available)
 - **MCP client** (Claude Desktop, Cursor, VS Code, etc.)
+
 
 
 ## Start here
