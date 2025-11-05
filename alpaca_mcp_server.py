@@ -3109,7 +3109,12 @@ async def screen_filtered_options(
                 for _, row in top_options.iterrows():
                     result += f"  {row['type']:<4} ${row['strike_price']:<7.2f} "
                     result += f"Exp: {row['expiration_date']} ({row['days_to_expiry']}d) "
+                    result += f"%OTM: {row['percent_otm']:<5.2f}% "
                     result += f"Delta: {row['delta']:<6.3f} "
+                    result += f"IV: {row['implied_volatility']:<5.1%} " if pd.notna(row['implied_volatility']) else f"IV: N/A "
+                    result += f"Gamma: {row['gamma']:<7.4f} " if pd.notna(row['gamma']) else f"Gamma: N/A "
+                    result += f"Theta: {row['theta']:<7.3f} " if pd.notna(row['theta']) else f"Theta: N/A "
+                    result += f"Vega: {row['vega']:<6.3f} " if pd.notna(row['vega']) else f"Vega: N/A "
                     result += f"Return30d: {row['return_30_day']:<5.2f}% "
                     result += f"Spread: {row['spread_percent']:<5.2f}% "
                     result += f"OI: {row['open_interest']}\n"
