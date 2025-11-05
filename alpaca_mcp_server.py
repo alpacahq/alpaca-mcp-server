@@ -2969,8 +2969,10 @@ async def screen_filtered_options(
                 bb_upper = df.iloc[0]['bb_upper']
                 bb_middle = df.iloc[0]['bb_middle']
                 bb_lower = df.iloc[0]['bb_lower']
+                current_price = df.iloc[0]['underlying_price']
 
-                result += f"\n{symbol} | Earnings: {earnings_date} | BB: {bb_signal}/{bb_upper:.2f}/{bb_middle:.2f}/{bb_lower:.2f}\n"
+                result += f"\n{symbol} | Price: ${current_price:.2f} | Earnings: {earnings_date}\n"
+                result += f"BB Signal: {bb_signal} | Upper: ${bb_upper:.2f} | Middle(MA): ${bb_middle:.2f} | Lower: ${bb_lower:.2f}\n"
                 result += f"{'-' * 80}\n"
 
                 # Show top 5 options for each symbol
@@ -3034,13 +3036,15 @@ async def get_bollinger_band_signal(
         result = f"""
 Bollinger Band Analysis for {symbol}
 {'=' * 60}
-Current Price:    ${bb_data['current_price']:.2f}
-Upper Band:       ${bb_data['upper_band']:.2f}
-Middle Band (MA): ${bb_data['middle_band']:.2f}
-Lower Band:       ${bb_data['lower_band']:.2f}
+CURRENT STOCK PRICE: ${bb_data['current_price']:.2f}
+
+Bollinger Bands:
+  Upper Band:        ${bb_data['upper_band']:.2f}
+  Middle Band (20MA): ${bb_data['middle_band']:.2f}
+  Lower Band:        ${bb_data['lower_band']:.2f}
 
 Band Width:       ${bb_data['bb_width']:.2f}
-Position:         {bb_data['bb_position']:.1%} (0=lower, 50%=middle, 100%=upper)
+Price Position:   {bb_data['bb_position']:.1%} (0%=at lower band, 100%=at upper band)
 
 Signal:           {bb_data['bb_signal']}
 {'=' * 60}
