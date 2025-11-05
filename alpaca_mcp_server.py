@@ -53,6 +53,7 @@ from alpaca.trading.requests import (
     GetCalendarRequest,
     GetOptionContractsRequest,
     GetOrdersRequest,
+    GetPortfolioHistoryRequest,
     LimitOrderRequest,
     MarketOrderRequest,
     OptionLegRequest,
@@ -358,9 +359,137 @@ async def get_open_position(symbol: str) -> str:
                 Average Entry Price: ${float(position.avg_entry_price):.2f}
                 Current Price: ${float(position.current_price):.2f}
                 Unrealized P/L: ${float(position.unrealized_pl):.2f}
-                """ 
+                """
     except Exception as e:
         return f"Error fetching position: {str(e)}"
+
+@mcp.tool()
+async def get_portfolio_history(
+    period: Optional[str] = None,
+    timeframe: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    extended_hours: Optional[bool] = None
+) -> str:
+    """
+    Retrieves and formats portfolio history including equity values, profit/loss, and performance metrics over time.
+
+    Args:
+        period (Optional[str]): Duration of data as number + unit (e.g., "1D", "1W", "1M", "3M", "1A").
+            Units: D=day, W=week, M=month, A=year. Default: "1M"
+        timeframe (Optional[str]): Resolution of time windows - "1Min", "5Min", "15Min", "1H", or "1D".
+            Auto-selected if omitted: 1Min for <7 days, 15Min for <30 days, 1D otherwise
+        start (Optional[str]): Start timestamp in ISO format (e.g., "2024-01-01" or "2024-01-01T09:30:00")
+        end (Optional[str]): End timestamp in ISO format (e.g., "2024-12-31" or "2024-12-31T16:00:00")
+        extended_hours (Optional[bool]): Include extended hours data (only effective for timeframe < 1D)
+
+    Returns:
+        str: Formatted string containing:
+            - Time period and resolution
+            - Equity values over time
+            - Profit/loss in dollars and percentage
+            - Base value for P&L calculations
+            - Summary statistics (start/end equity, total P&L, return %)
+
+    Examples:
+        - Last month daily: period="1M", timeframe="1D"
+        - Last week hourly: period="1W", timeframe="1H"
+        - Custom range: start="2024-01-01", end="2024-12-31", timeframe="1D"
+        - Intraday with pre/post market: period="1D", timeframe="5Min", extended_hours=True
+    """
+    try:
+        # Parse datetime strings if provided
+        start_dt = None
+        end_dt = None
+
+        if start:
+            try:
+                start_dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
+            except ValueError:
+                return f"Error: Invalid start time format '{start}'. Use ISO format like '2024-01-01' or '2024-01-01T09:30:00'"
+
+        if end:
+            try:
+                end_dt = datetime.fromisoformat(end.replace('Z', '+00:00'))
+            except ValueError:
+                return f"Error: Invalid end time format '{end}'. Use ISO format like '2024-12-31' or '2024-12-31T16:00:00'"
+
+        # Create request with provided parameters
+        request = GetPortfolioHistoryRequest(
+            period=period,
+            timeframe=timeframe,
+            start=start_dt,
+            end=end_dt,
+            extended_hours=extended_hours
+        )
+
+        # Get portfolio history
+        history = trade_client.get_portfolio_history(request)
+
+        if not history.timestamp or len(history.timestamp) == 0:
+            return "No portfolio history data available for the specified period."
+
+        # Convert timestamps to readable format
+        timestamps = [datetime.fromtimestamp(ts) for ts in history.timestamp]
+
+        # Build formatted response
+        result = f"""
+Portfolio History:
+==================
+Period: {period or 'default (1M)'}
+Timeframe: {history.timeframe}
+Data Points: {len(history.timestamp)}
+Time Range: {timestamps[0].strftime('%Y-%m-%d %H:%M')} to {timestamps[-1].strftime('%Y-%m-%d %H:%M')}
+"""
+
+        if history.base_value is not None:
+            result += f"Base Value: ${history.base_value:.2f}\n"
+
+        result += "\nEquity & P/L Over Time:\n"
+        result += "-" * 80 + "\n"
+
+        # Show data points (limit to reasonable number for readability)
+        max_display = 50
+        step = max(1, len(timestamps) // max_display)
+
+        for i in range(0, len(timestamps), step):
+            timestamp = timestamps[i]
+            equity = history.equity[i]
+            pl = history.profit_loss[i]
+            pl_pct = history.profit_loss_pct[i]
+
+            # Format based on timeframe
+            if history.timeframe in ['1Min', '5Min', '15Min', '1H']:
+                time_str = timestamp.strftime('%Y-%m-%d %H:%M')
+            else:
+                time_str = timestamp.strftime('%Y-%m-%d')
+
+            pl_pct_str = f"{pl_pct:.2%}" if pl_pct is not None else "N/A"
+            result += f"{time_str}: Equity=${equity:.2f}, P/L=${pl:+.2f} ({pl_pct_str})\n"
+
+        # Add summary statistics
+        start_equity = history.equity[0]
+        end_equity = history.equity[-1]
+        total_pl = end_equity - start_equity
+        total_pl_pct = (total_pl / start_equity * 100) if start_equity != 0 else 0
+
+        result += "\n" + "=" * 80 + "\n"
+        result += f"""
+Summary Statistics:
+-------------------
+Starting Equity: ${start_equity:.2f}
+Ending Equity: ${end_equity:.2f}
+Total P/L: ${total_pl:+.2f} ({total_pl_pct:+.2f}%)
+Highest Equity: ${max(history.equity):.2f}
+Lowest Equity: ${min(history.equity):.2f}
+"""
+
+        return result
+
+    except APIError as api_error:
+        return f"API Error fetching portfolio history: {str(api_error)}"
+    except Exception as e:
+        return f"Error fetching portfolio history: {str(e)}"
 
 # ============================================================================
 # Stock Market Data Tools
