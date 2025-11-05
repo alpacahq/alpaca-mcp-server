@@ -18,9 +18,34 @@
   A comprehensive Model Context Protocol (MCP) server for Alpaca's Trading API. Enable natural language trading operations through AI assistants like Claude, Cursor, and VS Code. Supports stocks, options, crypto, portfolio management, and real-time market data.
 </p>
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Start here](#start-here)
+- [Getting Your API Keys](#getting-your-api-keys)
+- [Switching API Keys for Live Trading](#switching-api-keys-for-live-trading)
+- [Quick Local Installation for MCP Server](#quick-local-installation-for-mcp-server)
+- [Features](#features)
+- [Example Natural Language Queries](#example-natural-language-queries)
+- [Example Outputs](#example-outputs)
+- [MCP Client Configuration](#mcp-client-configuration)
+- [HTTP Transport for Remote Usage](#http-transport-for-remote-usage)
+- [Available Tools](#available-tools)
+
+
+## Prerequisites
+You need the following prerequisites to configure and run the Alpaca MCP Server.
+- **Terminal** (macOS/Linux) | **Command Prompt or PowerShell** (Windows)
+- **Python 3.10+** (Check the [official installation guide](https://www.python.org/downloads/) and confirm the version by typing the following command: `python3 --version` in Terminal)
+- **uv** (Install using the [official guide](https://docs.astral.sh/uv/getting-started/installation/))\
+  **Tip:** `uv` can be installed either through a package manager (like `Homebrew`) or directly using `curl | sh`.
+- **Alpaca Trading API keys** (free paper trading account available)
+- **MCP client** (Claude Desktop, Cursor, VS Code, etc.)
+
+
 
 ## Start here
-
+**Note:** These steps assume all [Prerequisites](#prerequisites) have been installed.
 - **Claude Desktop**
   - **Local**: Use `uvx` (recommended) or `install.py` → see [Claude Desktop Configuration](#claude-desktop-configuration)
 - **Claude Code**
@@ -39,37 +64,73 @@
 - Windows File Explorer: Alt, V, H
 - Terminal (macOS/Linux): `ls -a`
 
-
-## Table of Contents
-
-- [Prerequisites](#prerequisites)
-- [Getting Your API Keys](#getting-your-api-keys)
-- [Quick Start](#quick-start)
-- [Features](#features)
-- [Example Natural Language Queries](#example-natural-language-queries)
-- [Example Outputs](#example-outputs)
-- [Installation Methods](#installation-methods)
-- [MCP Client Configuration](#mcp-client-configuration)
-- [HTTP Transport for Remote Usage](#http-transport-for-remote-usage)
-- [Available Tools](#available-tools)
-
-
-## Prerequisites
-
-- **Python 3.10+**
-- **uv** (for `uvx` commands). Install via the official guide: https://docs.astral.sh/uv/getting-started/installation/. Then, restart your terminal
-- **Alpaca Trading API keys** (free paper trading account available)
-- **MCP client** (Claude Desktop, Cursor, VS Code, etc.)
-
 ## Getting Your API Keys
 
 1. Visit [Alpaca Trading API Account Dashboard](https://app.alpaca.markets/paper/dashboard/overview)
 2. Create a free paper trading account
 3. Generate API keys from the dashboard
 
-## Quick Start (Local Installation)
+## Switching API Keys for Live Trading
 
-**One-click installation with uvx from PyPI:**
+To enable **live trading with real funds** or switch between different accounts, you need to update API credentials in **two places**:
+
+1. **`.env` file** (used by MCP server)
+2. **MCP client config JSON** (used by MCP client like Claude Desktop, Cursor, etc.)
+
+**Important:** The MCP client configuration overrides the `.env` file. When using an MCP client, the credentials in the client's JSON config take precedence.
+
+<details>
+<summary><b>Step 1: Update MCP Server Config .env file</b></summary>
+
+Method 1: Run the init command again to update your `.env` file
+```bash
+# Follow the prompts to update your keys and toggle paper/live trading
+uvx alpaca-mcp-server init
+```
+Method 2: Manually Update
+
+```
+ALPACA_API_KEY = "your_alpaca_api_key_for_live_account"
+ALPACA_SECRET_KEY = "your_alpaca_secret_key_for_live_account"
+ALPACA_PAPER_TRADE = False
+TRADE_API_URL = None
+TRADE_API_WSS = None
+DATA_API_URL = None
+STREAM_DATA_WSS = None
+```
+</details>
+
+<details>
+<summary><b>Step 2: Update MCP Client Config Json file</b></summary>
+
+Step 2-1: Edit your MCP client configuration file:
+   - **Claude Desktop**: `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
+   - **Cursor**: `~/.cursor/mcp.json`
+   - **VS Code**: `.vscode/mcp.json` (workspace) or user `settings.json`
+
+Step 2-2: Update the API keys in the `env` section:
+
+   For uvx installations:
+   ```json
+   {
+     "mcpServers": {
+       "alpaca": {
+         "command": "uvx",
+         "args": ["alpaca-mcp-server", "serve"],
+         "env": {
+           "ALPACA_API_KEY": "your_alpaca_api_key_for_live_account",
+           "ALPACA_SECRET_KEY": "your_alpaca_secret_key_for_live_account"
+         }
+       }
+     }
+   }
+   ```
+**Then, restart your MCP client (Claude Desktop, Cursor, etc.)**
+</details>
+
+## Quick Local Installation for MCP Server
+<details>
+<summary><b>Method 1: One-click installation with uvx from PyPI</b></summary>
 
 ```bash
 # Install and configure
@@ -100,13 +161,100 @@ uvx alpaca-mcp-server init
 }
 ```
 
-**One-click installation from Cursor Directory:**\
+</details>
+
+<details>
+<summary><b>Method 2: Install.py for Cursor or Claude Desktop</b></summary>
+
+  Clone the repository and navigate to the directory:
+  ```bash
+  git clone https://github.com/alpacahq/alpaca-mcp-server.git
+  cd alpaca-mcp-server
+  ```
+  Execute the following commands in your terminal:
+  ```bash
+  cd alpaca-mcp-server
+  python3 install.py
+  ```
+
+</details>
+
+<details>
+<summary><b>Method 3: One-click installation from Cursor Directory for Cursor IDE</b></summary>
+
+**Note:** These steps assume all [Prerequisites](#prerequisites) have been installed.
 For Cursor users, you can quickly install Alpaca from the Cursor Directory in just a few clicks.
 
 **1. Find Alpaca in the [Cursor Directory](https://cursor.directory/mcp/alpaca)**\
 **2. Click "Add to Cursor" to launch Cursor on your computer**\
 **3. Enter your API Key and Secret Key**\
 **4. You’re all set to start using it**
+
+</details>
+
+<details>
+<summary><b>Method 4: Docker</b></summary>
+
+  ```bash
+  # Clone and build
+  git clone https://github.com/alpacahq/alpaca-mcp-server.git
+  cd alpaca-mcp-server
+  docker build -t mcp/alpaca:latest .
+  ```
+
+  Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+  ```json
+  {
+    "mcpServers": {
+      "alpaca-docker": {
+        "command": "docker",
+        "args": [
+          "run", "--rm", "-i",
+          "-e", "ALPACA_API_KEY=your_key",
+          "-e", "ALPACA_SECRET_KEY=your_secret",
+          "-e", "ALPACA_PAPER_TRADE=True",
+          "mcp/alpaca:latest"
+        ]
+      }
+    }
+  }
+  ```
+</details>
+
+<details>
+<summary><b>Project Structure</b></summary>
+
+After installing/cloning and activating the virtual environment, your directory structure should look like this:
+```
+alpaca-mcp-server/          ← This is the workspace folder (= project root)
+├── src/                    ← Source code package
+│   └── alpaca_mcp_server/  ← Main package directory
+│       ├── __init__.py
+│       ├── cli.py          ← Command-line interface
+│       ├── config.py       ← Configuration management
+│       ├── helper.py       ← Helper function management
+│       └── server.py       ← MCP server implementation
+├── tests/                  ← Test files
+│   └── test_get_stock_quote.py
+├── .github/                ← GitHub settings
+│   ├── core/               ← Core utility modules
+│   └── workflows/          ← GitHub Actions workflows
+├── .vscode/                ← VS Code settings (for VS Code users)
+│   └── mcp.json
+├── .venv/                   ← Virtual environment folder
+│   └── bin/python
+├── .env.example            ← Environment template (use this to create `.env` file)
+├── .gitignore              
+├── Dockerfile              ← Docker configuration (for Docker use)
+├── .dockerignore           ← Docker ignore (for Docker use)
+├── pyproject.toml          ← Package configuration
+├── requirements.txt        ← Python dependencies
+├── install.py              ← Installation script
+└── README.md
+```
+
+</details>
+
 
 ## Features
 
@@ -147,7 +295,7 @@ For Cursor users, you can quickly install Alpaca from the Cursor Directory in ju
 
 ## Example Natural Language Queries
 
-<details open>
+<details>
 <summary><b>Basic Trading</b></summary>
 
 
@@ -316,195 +464,6 @@ These examples demonstrate the server's ability to provide:
 
 </details>
 
-## Installation Methods
-
-### 1. Choose Your Installation Method
-This section shows manual installation of Alpaca MCP Server.
-
-#### Method 1: uvx
-
-  ```bash
-  # Install and configure
-  uvx alpaca-mcp-server init
-  ```
-
-#### Method 2: Install.py
-
-  Clone the repository and navigate to the directory:
-  ```bash
-  git clone https://github.com/alpacahq/alpaca-mcp-server.git
-  cd alpaca-mcp-server
-  ```
-  Execute the following commands in your terminal:
-  ```bash
-  cd alpaca-mcp-server
-  python3 install.py
-  ```
-
-#### Method 3: Docker
-
-  ```bash
-  # Clone and build
-  git clone https://github.com/alpacahq/alpaca-mcp-server.git
-  cd alpaca-mcp-server
-  docker build -t mcp/alpaca:latest .
-  ```
-
-  Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-  ```json
-  {
-    "mcpServers": {
-      "alpaca-docker": {
-        "command": "docker",
-        "args": [
-          "run", "--rm", "-i",
-          "-e", "ALPACA_API_KEY=your_key",
-          "-e", "ALPACA_SECRET_KEY=your_secret",
-          "-e", "ALPACA_PAPER_TRADE=True",
-          "mcp/alpaca:latest"
-        ]
-      }
-    }
-  }
-  ```
-
-
-</details>
-
-### Project Structure
-
-After installing/cloning and activating the virtual environment, your directory structure should look like this:
-```
-alpaca-mcp-server/          ← This is the workspace folder (= project root)
-├── src/                    ← Source code package
-│   └── alpaca_mcp_server/  ← Main package directory
-│       ├── __init__.py
-│       ├── cli.py          ← Command-line interface
-│       ├── config.py       ← Configuration management
-│       └── server.py       ← MCP server implementation
-├── tests/                  ← Test files
-│   └── test_get_stock_quote.py
-├── .github/                ← GitHub settings
-│   ├── core/               ← Core utility modules
-│   └── workflows/          ← GitHub Actions workflows
-├── .vscode/                ← VS Code settings (for VS Code users)
-│   └── mcp.json
-├── .venv/                   ← Virtual environment folder
-│   └── bin/python
-├── .env.example            ← Environment template (use this to create `.env` file)
-├── .gitignore              
-├── Dockerfile              ← Docker configuration (for Docker use)
-├── .dockerignore           ← Docker ignore (for Docker use)
-├── pyproject.toml          ← Package configuration
-├── requirements.txt        ← Python dependencies
-├── install.py              ← Installation script
-└── README.md
-```
-
-### 2. Create and edit a .env file for your credentials in the project directory
-
-1. Copy the example environment file in the project root by running this command:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Replace the credentials (e.g. API keys) in the `.env` file:
-
-   ```
-   ALPACA_API_KEY = "your_alpaca_api_key_for_paper_account"
-   ALPACA_SECRET_KEY = "your_alpaca_secret_key_for_paper_account"
-   ALPACA_PAPER_TRADE = True
-   TRADE_API_URL = None
-   TRADE_API_WSS = None
-   DATA_API_URL = None
-   STREAM_DATA_WSS = None
-   DEBUG = False
-   ```
-
-### 3. Start the MCP Server (Remote Setup Only)
-
-**Note:** You typically **don't need to manually start the server** for local usage. MCP clients like Claude Desktop and Cursor will automatically start the server when configured. 
-
-You only need to manually start the server if you're setting it up for **remote access** (e.g., running the server on a remote machine and connecting from a different computer).
-
-**For remote usage (HTTP transport):**
-```bash
-# Start with default settings (localhost:8000)
-alpaca-mcp-server serve --transport http
-
-# Or specify custom host and port
-alpaca-mcp-server serve --transport http --host 0.0.0.0 --port 9000
-```
-
-**Available transport options:**
-- `--transport stdio` (default): Standard input/output for local client connections (automatically used by MCP clients)
-- `--transport http`: HTTP transport for remote client connections (default: 127.0.0.1:8000)
-- `--transport sse`: Server-Sent Events transport for remote connections (deprecated)
-- `--host HOST`: Host to bind the server to for HTTP/SSE transport (default: 127.0.0.1)
-- `--port PORT`: Port to bind the server to for HTTP/SSE transport (default: 8000)
-
-**Note:** For more information about MCP transport methods, see the [official MCP transport documentation](https://modelcontextprotocol.io/docs/concepts/transports).
-
-### 4. Switching API Keys for Live Trading
-
-This MCP server connects to Alpaca's **paper Trading API** by default for safe testing.
-To enable **live trading with real funds** or switch between different accounts, you need to update API credentials in **two places**:
-
-1. **`.env` file** (used by MCP server)
-2. **MCP client config JSON** (used by MCP client like Claude Desktop, Cursor, etc.)
-
-**Important:** The MCP client configuration overrides the `.env` file. When using an MCP client, the credentials in the client's JSON config take precedence.
-
-#### Place 1: Update `.env` File (Used by MCP Server)
-
-**For direct CLI usage or when running the server directly:**
-
-**Option 1: Run the init command again** to update your `.env` file:
-```bash
-uvx alpaca-mcp-server init
-# Follow the prompts to update your keys and toggle paper/live trading
-```
-
-**Option 2: Manually edit** the `.env` file in your current directory:
-```
-ALPACA_API_KEY = "your_alpaca_api_key_for_live_account"
-ALPACA_SECRET_KEY = "your_alpaca_secret_key_for_live_account"
-ALPACA_PAPER_TRADE = False
-TRADE_API_URL = None
-TRADE_API_WSS = None
-DATA_API_URL = None
-STREAM_DATA_WSS = None
-```
-
-#### Place 2: Update MCP Client Config (Used by MCP Client)
-
-**For MCP client users (Claude Desktop, Cursor, VS Code, etc.):**
-
-**Step 1: Edit your MCP client configuration file**:
-   - **Claude Desktop**: `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
-   - **Cursor**: `~/.cursor/mcp.json`
-   - **VS Code**: `.vscode/mcp.json` (workspace) or user `settings.json`
-
-**Step 2: Update the API keys** in the `env` section:
-
-   **For uvx installations:**
-   ```json
-   {
-     "mcpServers": {
-       "alpaca": {
-         "command": "uvx",
-         "args": ["alpaca-mcp-server", "serve"],
-         "env": {
-           "ALPACA_API_KEY": "your_alpaca_api_key_for_live_account",
-           "ALPACA_SECRET_KEY": "your_alpaca_secret_key_for_live_account"
-         }
-       }
-     }
-   }
-   ```
-
-**Step 3: Restart your MCP client** (Claude Desktop, Cursor, etc.)
-
 
 ## MCP Client Configuration
 
@@ -515,6 +474,7 @@ Below you'll find step-by-step guides for connecting the Alpaca MCP server to va
 <summary><b>Claude Desktop Configuration</b></summary>
 
 ### Claude Desktop Configuration
+**Note: These steps assume all [Prerequisites](#prerequisites) have been installed.**
 
 #### Method 1: uvx (Recommended)
 
@@ -622,9 +582,7 @@ claude mcp add alpaca-docker --scope user --transport stdio \
 
 To use Alpaca MCP Server with Cursor, please follow the steps below. The official Cursor MCP setup document is available here: https://docs.cursor.com/context/mcp
 
-**Prerequisites**
-- Cursor IDE installed with Claude AI enabled
-- Python and virtual environment set up (follow Installation steps above)
+**Note: These steps assume all [Prerequisites](#prerequisites) have been installed.**
 
 #### Local setup via install.py (recommended for local)
 
@@ -681,10 +639,7 @@ To use Alpaca MCP Server with VS Code, please follow the steps below.
 VS Code supports MCP servers through GitHub Copilot's agent mode.
 The official VS Code setup document is available here: https://code.visualstudio.com/docs/copilot/chat/mcp-servers
 
-**Prerequisites**
-- VS Code with GitHub Copilot extension installed and active subscription
-- Python and virtual environment set up (follow Installation steps above)
-- MCP support enabled in VS Code (see below)
+**Note: These steps assume all [Prerequisites](#prerequisites) have been installed.**
 
 #### 1. Enable MCP Support in VS Code
 
@@ -758,6 +713,8 @@ To use the Alpaca MCP Server with PyCharm, please follow the steps below. The of
 
 PyCharm supports MCP servers through its integrated MCP client functionality. This configuration ensures proper logging behavior and prevents common startup issues.
 
+**Note: These steps assume all [Prerequisites](#prerequisites) have been installed.**
+
 1. **Open PyCharm Settings**
    - Go to `File → Settings`
    - Navigate to `Tools → Model Context Protocol (MCP)` (or similar location depending on PyCharm version)
@@ -784,6 +741,9 @@ PyCharm supports MCP servers through its integrated MCP client functionality. Th
 <summary><b>Docker Configuration</b></summary>
 
 ### Docker Configuration (locally)
+
+**Note: These steps assume all [Prerequisites](#prerequisites) have been installed.**
+
 **Build the image:**
 ```bash
 git clone https://github.com/alpacahq/alpaca-mcp-server.git
@@ -814,6 +774,8 @@ Replace `your_alpaca_api_key` and `your_alpaca_secret_key` with your actual Alpa
 </details>
 
 ## HTTP Transport for Remote Usage
+
+**Note:** You typically don't need to manually start the server for local usage. MCP clients like Claude Desktop and Cursor will automatically start the server when configured. Use this section only for remote access setups.
 
 <details>
 <summary><b>Expand for Remote Server Setup Instructions</b></summary>
@@ -865,7 +827,17 @@ Update your Claude Desktop configuration to use HTTP:
 - **Remote access**: Use `--host 0.0.0.0` for direct access, or SSH tunneling for localhost binding
 - **Port conflicts**: Use `--port <PORT>` to specify a different port if default is busy
 
+**Available transport options:**
+- `--transport stdio` (default): Standard input/output for local client connections (automatically used by MCP clients)
+- `--transport http`: HTTP transport for remote client connections (default: 127.0.0.1:8000)
+- `--transport sse`: Server-Sent Events transport for remote connections (deprecated)
+- `--host HOST`: Host to bind the server to for HTTP/SSE transport (default: 127.0.0.1)
+- `--port PORT`: Port to bind the server to for HTTP/SSE transport (default: 8000)
+
+**Note:** For more information about MCP transport methods, see the [official MCP transport documentation](https://modelcontextprotocol.io/docs/concepts/transports).
+
 </details>
+
 
 ## Available Tools
 
