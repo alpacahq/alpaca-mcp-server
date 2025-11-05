@@ -3107,6 +3107,7 @@ async def screen_filtered_options(
                 # Show top 5 options for each symbol
                 top_options = df.head(5)
                 for _, row in top_options.iterrows():
+                    result += f"  Symbol: {row['symbol']}\n"
                     result += f"  {row['type']:<4} ${row['strike_price']:<7.2f} "
                     result += f"Exp: {row['expiration_date']} ({row['days_to_expiry']}d) "
                     result += f"%OTM: {row['percent_otm']:<5.2f}% "
