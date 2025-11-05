@@ -45,296 +45,48 @@
   },
 
   "tools": [
-    {
-      "name": "get_account_info",
-      "description": "Retrieves current account information including balances, buying power, and account status",
-      "parameters": {}
-    },
-    {
-      "name": "get_positions",
-      "description": "Retrieves all current positions in the portfolio with details like quantity, market value, and P&L",
-      "parameters": {}
-    },
-    {
-      "name": "get_open_position",
-      "description": "Retrieves detailed information for a specific open position",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "The symbol name of the asset (e.g., 'AAPL', 'MSFT')"}
-      }
-    },
-    {
-      "name": "get_stock_quote",
-      "description": "Retrieves the latest quote for a stock including bid/ask prices and volumes",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "Stock ticker symbol (e.g., AAPL, MSFT)"}
-      }
-    },
-    {
-      "name": "get_stock_bars",
-      "description": "Retrieves historical stock price bars (OHLCV data) with flexible timeframes",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "Stock ticker symbol"},
-        "days": {"type": "integer", "required": false, "description": "Number of days of history (default: 5)"},
-        "timeframe": {"type": "string", "required": false, "description": "Bar timeframe: 1Min, 5Min, 1Hour, 1Day, etc. (default: 1Day)"},
-        "limit": {"type": "integer", "required": false, "description": "Maximum number of bars to return"},
-        "start": {"type": "string", "required": false, "description": "Start date in YYYY-MM-DD format"},
-        "end": {"type": "string", "required": false, "description": "End date in YYYY-MM-DD format"}
-      }
-    },
-    {
-      "name": "get_stock_trades",
-      "description": "Retrieves historical trade data for a stock with individual trade details",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "Stock ticker symbol"},
-        "days": {"type": "integer", "required": false, "description": "Number of days of history (default: 5)"},
-        "limit": {"type": "integer", "required": false, "description": "Maximum number of trades to return"},
-        "sort": {"type": "string", "required": false, "description": "Sort order: ASC or DESC (default: ASC)"},
-        "feed": {"type": "string", "required": false, "description": "Data feed type"},
-        "currency": {"type": "string", "required": false, "description": "Currency for the data"},
-        "asof": {"type": "string", "required": false, "description": "As-of date in YYYY-MM-DD format"}
-      }
-    },
-    {
-      "name": "get_stock_latest_trade",
-      "description": "Retrieves the latest trade information for a stock",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "Stock ticker symbol"},
-        "feed": {"type": "string", "required": false, "description": "Data feed type"},
-        "currency": {"type": "string", "required": false, "description": "Currency for the data"}
-      }
-    },
-    {
-      "name": "get_stock_latest_bar",
-      "description": "Retrieves the most recent minute bar for a stock",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "Stock ticker symbol"},
-        "feed": {"type": "string", "required": false, "description": "Data feed type"},
-        "currency": {"type": "string", "required": false, "description": "Currency for the data"}
-      }
-    },
-    {
-      "name": "get_stock_snapshot",
-      "description": "Retrieves comprehensive snapshot with latest quote, trade, minute bar, daily bar, and previous daily bar",
-      "parameters": {
-        "symbol_or_symbols": {"type": "string|array", "required": true, "description": "Single symbol or list of symbols"},
-        "feed": {"type": "string", "required": false, "description": "Data feed type"},
-        "currency": {"type": "string", "required": false, "description": "Currency for the data"}
-      }
-    },
-    {
-      "name": "get_crypto_bars",
-      "description": "Retrieves historical cryptocurrency price bars with OHLCV data",
-      "parameters": {
-        "symbol": {"type": "string|array", "required": true, "description": "Crypto symbol(s) (e.g., BTC/USD, ETH/USD)"},
-        "days": {"type": "integer", "required": false, "description": "Number of days of history (default: 1)"},
-        "timeframe": {"type": "string", "required": false, "description": "Bar timeframe (default: 1Day)"},
-        "limit": {"type": "integer", "required": false, "description": "Maximum number of bars"},
-        "start": {"type": "string", "required": false, "description": "Start date"},
-        "end": {"type": "string", "required": false, "description": "End date"},
-        "feed": {"type": "string", "required": false, "description": "Crypto data feed"},
-        "currency": {"type": "string", "required": false, "description": "Currency for the data"}
-      }
-    },
-    {
-      "name": "get_crypto_quotes",
-      "description": "Retrieves historical cryptocurrency quote data with bid/ask information",
-      "parameters": {
-        "symbol": {"type": "string|array", "required": true, "description": "Crypto symbol(s)"},
-        "days": {"type": "integer", "required": false, "description": "Number of days of history (default: 3)"},
-        "limit": {"type": "integer", "required": false, "description": "Maximum number of quotes"},
-        "start": {"type": "string", "required": false, "description": "Start date"},
-        "end": {"type": "string", "required": false, "description": "End date"},
-        "feed": {"type": "string", "required": false, "description": "Crypto data feed"},
-        "currency": {"type": "string", "required": false, "description": "Currency for the data"}
-      }
-    },
-    {
-      "name": "get_orders",
-      "description": "Retrieves order history with filtering options by status, date range, and limits",
-      "parameters": {
-        "status": {"type": "string", "required": false, "description": "Filter by order status: all, open, closed, filled, etc. (default: all)"},
-        "limit": {"type": "integer", "required": false, "description": "Maximum number of orders to return (default: 10)"},
-        "after": {"type": "string", "required": false, "description": "Show orders after this date (YYYY-MM-DD)"},
-        "until": {"type": "string", "required": false, "description": "Show orders until this date (YYYY-MM-DD)"},
-        "direction": {"type": "string", "required": false, "description": "Sort direction: asc or desc"},
-        "nested": {"type": "boolean", "required": false, "description": "Include nested orders"}
-      }
-    },
-    {
-      "name": "place_stock_order",
-      "description": "Places a stock order with support for market, limit, stop, stop-limit, and trailing-stop orders",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "Stock symbol (e.g., AAPL)"},
-        "side": {"type": "string", "required": true, "description": "Order side: buy or sell"},
-        "quantity": {"type": "number", "required": true, "description": "Number of shares"},
-        "order_type": {"type": "string", "required": false, "description": "Order type: market, limit, stop, stop_limit, trailing_stop (default: market)"},
-        "limit_price": {"type": "number", "required": false, "description": "Limit price for limit and stop_limit orders"},
-        "stop_price": {"type": "number", "required": false, "description": "Stop price for stop and stop_limit orders"},
-        "trail_price": {"type": "number", "required": false, "description": "Trail amount for trailing_stop orders"},
-        "trail_percent": {"type": "number", "required": false, "description": "Trail percentage for trailing_stop orders"},
-        "time_in_force": {"type": "string", "required": false, "description": "Time in force: day, gtc, ioc, fok (default: day)"},
-        "extended_hours": {"type": "boolean", "required": false, "description": "Allow extended hours trading (default: false)"},
-        "client_order_id": {"type": "string", "required": false, "description": "Custom order ID"}
-      }
-    },
-    {
-      "name": "place_crypto_order",
-      "description": "Places a cryptocurrency order with support for market, limit, and stop-limit orders",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "Crypto symbol (e.g., BTC/USD, ETH/USD)"},
-        "side": {"type": "string", "required": true, "description": "Order side: buy or sell"},
-        "order_type": {"type": "string", "required": true, "description": "Order type: market, limit, stop_limit"},
-        "time_in_force": {"type": "string", "required": false, "description": "Time in force: gtc, ioc (default: gtc)"},
-        "qty": {"type": "number", "required": false, "description": "Quantity in base currency"},
-        "notional": {"type": "number", "required": false, "description": "Notional amount in quote currency"},
-        "limit_price": {"type": "number", "required": false, "description": "Limit price for limit and stop_limit orders"},
-        "stop_price": {"type": "number", "required": false, "description": "Stop price for stop_limit orders"},
-        "client_order_id": {"type": "string", "required": false, "description": "Custom order ID"}
-      }
-    },
-    {
-      "name": "cancel_all_orders",
-      "description": "Cancels all open orders and returns the status of each cancellation",
-      "parameters": {}
-    },
-    {
-      "name": "cancel_order_by_id",
-      "description": "Cancels a specific order by its ID",
-      "parameters": {
-        "order_id": {"type": "string", "required": true, "description": "The UUID of the order to cancel"}
-      }
-    },
-    {
-      "name": "close_position",
-      "description": "Closes a specific position for a single symbol, either partially or completely",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "Symbol of the position to close"},
-        "qty": {"type": "string", "required": false, "description": "Specific quantity to close (optional)"},
-        "percentage": {"type": "string", "required": false, "description": "Percentage of position to close (optional)"}
-      }
-    },
-    {
-      "name": "close_all_positions",
-      "description": "Closes all open positions in the portfolio",
-      "parameters": {
-        "cancel_orders": {"type": "boolean", "required": false, "description": "Whether to cancel all open orders before liquidating positions (default: false)"}
-      }
-    },
-    {
-      "name": "exercise_options_position",
-      "description": "Exercises a held option contract, converting it into the underlying asset",
-      "parameters": {
-        "symbol_or_contract_id": {"type": "string", "required": true, "description": "Option contract symbol (e.g., 'NVDA250919C001680') or contract ID"}
-      }
-    },
-    {
-      "name": "get_asset_info",
-      "description": "Retrieves detailed information about a specific asset including trading status and attributes",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "The symbol of the asset to get information for"}
-      }
-    },
-    {
-      "name": "get_all_assets",
-      "description": "Retrieves all available assets with optional filtering by status, class, and exchange",
-      "parameters": {
-        "status": {"type": "string", "required": false, "description": "Filter by asset status (e.g., active, inactive)"},
-        "asset_class": {"type": "string", "required": false, "description": "Filter by asset class (e.g., us_equity, crypto)"},
-        "exchange": {"type": "string", "required": false, "description": "Filter by exchange"},
-        "attributes": {"type": "string", "required": false, "description": "Filter by asset attributes"}
-      }
-    },
-    {
-      "name": "create_watchlist",
-      "description": "Creates a new watchlist with specified symbols for tracking assets",
-      "parameters": {
-        "name": {"type": "string", "required": true, "description": "Name of the watchlist"},
-        "symbols": {"type": "array", "required": true, "description": "List of symbols to add to the watchlist"}
-      }
-    },
-    {
-      "name": "get_watchlists",
-      "description": "Retrieves all watchlists for the account with their symbols",
-      "parameters": {}
-    },
-    {
-      "name": "update_watchlist",
-      "description": "Updates an existing watchlist by modifying name or symbols",
-      "parameters": {
-        "watchlist_id": {"type": "string", "required": true, "description": "ID of the watchlist to update"},
-        "name": {"type": "string", "required": false, "description": "New name for the watchlist"},
-        "symbols": {"type": "array", "required": false, "description": "New list of symbols for the watchlist"}
-      }
-    },
-    {
-      "name": "get_market_clock",
-      "description": "Retrieves current market status and next open/close times",
-      "parameters": {}
-    },
-    {
-      "name": "get_market_calendar",
-      "description": "Retrieves market calendar for specified date range showing trading days and holidays",
-      "parameters": {
-        "start_date": {"type": "string", "required": true, "description": "Start date in YYYY-MM-DD format"},
-        "end_date": {"type": "string", "required": true, "description": "End date in YYYY-MM-DD format"}
-      }
-    },
-    {
-      "name": "get_corporate_announcements",
-      "description": "Retrieves corporate action announcements like earnings, dividends, and stock splits",
-      "parameters": {
-        "ca_types": {"type": "array", "required": false, "description": "Types of corporate actions to filter by"},
-        "start": {"type": "string", "required": false, "description": "Start date for announcements"},
-        "end": {"type": "string", "required": false, "description": "End date for announcements"},
-        "symbols": {"type": "array", "required": false, "description": "List of symbols to filter by"},
-        "since": {"type": "string", "required": false, "description": "Return announcements since this ID"},
-        "until": {"type": "string", "required": false, "description": "Return announcements until this ID"}
-      }
-    },
-    {
-      "name": "get_option_contracts",
-      "description": "Searches for option contracts with flexible filtering by expiration, strike price, and type",
-      "parameters": {
-        "underlying_symbol": {"type": "string", "required": true, "description": "Underlying stock symbol (e.g., AAPL)"},
-        "expiration_date": {"type": "string", "required": false, "description": "Specific expiration date (YYYY-MM-DD)"},
-        "expiration_date_gte": {"type": "string", "required": false, "description": "Expiration date greater than or equal to"},
-        "expiration_date_lte": {"type": "string", "required": false, "description": "Expiration date less than or equal to"},
-        "expiration_expression": {"type": "string", "required": false, "description": "Expiration expression for complex filtering"},
-        "strike_price_gte": {"type": "number", "required": false, "description": "Minimum strike price"},
-        "strike_price_lte": {"type": "number", "required": false, "description": "Maximum strike price"},
-        "type": {"type": "string", "required": false, "description": "Option type: call or put"},
-        "status": {"type": "string", "required": false, "description": "Contract status filter"},
-        "root_symbol": {"type": "string", "required": false, "description": "Root symbol for the option"},
-        "limit": {"type": "integer", "required": false, "description": "Maximum number of contracts to return"}
-      }
-    },
-    {
-      "name": "get_option_latest_quote",
-      "description": "Retrieves the latest quote for an option contract with bid/ask prices and Greeks",
-      "parameters": {
-        "symbol": {"type": "string", "required": true, "description": "Option contract symbol (e.g., AAPL240315C00150000)"},
-        "feed": {"type": "string", "required": false, "description": "Options data feed type"}
-      }
-    },
-    {
-      "name": "get_option_snapshot",
-      "description": "Retrieves comprehensive snapshots of option contracts including latest trade, quote, implied volatility, and Greeks",
-      "parameters": {
-        "symbol_or_symbols": {"type": "string|array", "required": true, "description": "Single option symbol or list of option symbols"},
-        "feed": {"type": "string", "required": false, "description": "Options data feed type"}
-      }
-    },
-    {
-      "name": "place_option_market_order",
-      "description": "Places option orders including single-leg and multi-leg strategies like spreads and straddles",
-      "parameters": {
-        "legs": {"type": "array", "required": true, "description": "List of option legs with symbol, side, and quantity"},
-        "order_class": {"type": "string", "required": false, "description": "Order class: simple, bracket, oco, or mleg"},
-        "quantity": {"type": "integer", "required": false, "description": "Number of contracts (default: 1)"},
-        "time_in_force": {"type": "string", "required": false, "description": "Time in force: day, gtc, ioc, fok (default: day)"},
-        "extended_hours": {"type": "boolean", "required": false, "description": "Allow extended hours trading (default: false)"}
-      }
-    }
+    {"name":"get_account_info","description":"Retrieves current account information including balances, buying power, and account status","parameters":{}},
+    {"name":"get_positions","description":"Retrieves all current positions in the portfolio with details like quantity, market value, and P&L","parameters":{}},
+    {"name":"get_open_position","description":"Retrieves detailed information for a specific open position","parameters":{"symbol":{"type":"string","required":true,"description":"The symbol name of the asset (e.g., 'AAPL', 'MSFT')"}}},
+    {"name":"get_asset_info","description":"Retrieves detailed information about a specific asset including trading status and attributes","parameters":{"symbol":{"type":"string","required":true,"description":"The symbol of the asset to get information for"}}},
+    {"name":"get_all_assets","description":"Retrieves all available assets with optional filtering by status, class, and exchange","parameters":{"status":{"type":"string","required":false,"description":"Filter by asset status (e.g., active, inactive)"},"asset_class":{"type":"string","required":false,"description":"Filter by asset class (e.g., us_equity, crypto)"},"exchange":{"type":"string","required":false,"description":"Filter by exchange"},"attributes":{"type":"string","required":false,"description":"Filter by asset attributes"}}},
+    {"name":"get_corporate_announcements","description":"Retrieves corporate action announcements like earnings, dividends, and stock splits","parameters":{"ca_types":{"type":"array","required":false,"description":"Types of corporate actions to filter by"},"start":{"type":"string","required":false,"description":"Start date for announcements"},"end":{"type":"string","required":false,"description":"End date for announcements"},"symbols":{"type":"array","required":false,"description":"List of symbols to filter by"},"since":{"type":"string","required":false,"description":"Return announcements since this ID"},"until":{"type":"string","required":false,"description":"Return announcements until this ID"}}},
+    {"name":"get_portfolio_history","description":"Retrieves account portfolio history (equity and P/L) over a requested time window","parameters":{"timeframe":{"type":"string","required":false,"description":"Resolution per point (e.g., 1Min, 5Min, 1H, 1D)"},"period":{"type":"string","required":false,"description":"Window length (e.g., 1W, 1M, 3M, 6M, 1Y, all)"},"start":{"type":"string","required":false,"description":"Start time ISO (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)"},"end":{"type":"string","required":false,"description":"End time ISO (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)"},"date_end":{"type":"string","required":false,"description":"Alternative end as ISO date or datetime"},"intraday_reporting":{"type":"string","required":false,"description":"market_hours, extended_hours, or continuous"},"pnl_reset":{"type":"string","required":false,"description":"P/L reset behavior (daily, weekly, no_reset)"},"extended_hours":{"type":"boolean","required":false,"description":"Include extended hours where applicable"},"cashflow_types":{"type":"array","required":false,"description":"Optional cashflow categories to include"}}},
+    {"name":"create_watchlist","description":"Creates a new watchlist with specified symbols for tracking assets","parameters":{"name":{"type":"string","required":true,"description":"Name of the watchlist"},"symbols":{"type":"array","required":true,"description":"List of symbols to add to the watchlist"}}},
+    {"name":"get_watchlists","description":"Retrieves all watchlists for the account with their symbols","parameters":{}},
+    {"name":"update_watchlist","description":"Updates an existing watchlist by modifying name or symbols","parameters":{"watchlist_id":{"type":"string","required":true,"description":"ID of the watchlist to update"},"name":{"type":"string","required":false,"description":"New name for the watchlist"},"symbols":{"type":"array","required":false,"description":"New list of symbols for the watchlist"}}},
+    {"name":"get_watchlist_by_id","description":"Get a specific watchlist by its ID","parameters":{"watchlist_id":{"type":"string","required":true,"description":"ID of the watchlist"}}},
+    {"name":"add_asset_to_watchlist_by_id","description":"Add an asset by symbol to a specific watchlist by ID","parameters":{"watchlist_id":{"type":"string","required":true,"description":"ID of the watchlist"},"symbol":{"type":"string","required":true,"description":"Asset symbol to add"}}},
+    {"name":"remove_asset_from_watchlist_by_id","description":"Remove an asset by symbol from a specific watchlist by ID","parameters":{"watchlist_id":{"type":"string","required":true,"description":"ID of the watchlist"},"symbol":{"type":"string","required":true,"description":"Asset symbol to remove"}}},
+    {"name":"delete_watchlist_by_id","description":"Delete a specific watchlist by its ID","parameters":{"watchlist_id":{"type":"string","required":true,"description":"ID of the watchlist"}}},
+    {"name":"get_market_calendar","description":"Retrieves market calendar for specified date range showing trading days and holidays","parameters":{"start_date":{"type":"string","required":true,"description":"Start date in YYYY-MM-DD format"},"end_date":{"type":"string","required":true,"description":"End date in YYYY-MM-DD format"}}},
+    {"name":"get_market_clock","description":"Retrieves current market status and next open/close times","parameters":{}},
+    {"name":"get_stock_quote","description":"Retrieves the latest quote for a stock including bid/ask prices and volumes","parameters":{"symbol":{"type":"string","required":true,"description":"Stock ticker symbol (e.g., AAPL, MSFT)"}}},
+    {"name":"get_stock_bars","description":"Retrieves historical stock price bars (OHLCV data) with flexible timeframes","parameters":{"symbol":{"type":"string","required":true,"description":"Stock ticker symbol"},"days":{"type":"integer","required":false,"description":"Number of days of history (default: 5)"},"timeframe":{"type":"string","required":false,"description":"Bar timeframe: 1Min, 5Min, 1Hour, 1Day, etc. (default: 1Day)"},"limit":{"type":"integer","required":false,"description":"Maximum number of bars to return"},"start":{"type":"string","required":false,"description":"Start date in YYYY-MM-DD format"},"end":{"type":"string","required":false,"description":"End date in YYYY-MM-DD format"}}},
+    {"name":"get_stock_trades","description":"Retrieves historical trade data for a stock with individual trade details","parameters":{"symbol":{"type":"string","required":true,"description":"Stock ticker symbol"},"days":{"type":"integer","required":false,"description":"Number of days of history (default: 5)"},"limit":{"type":"integer","required":false,"description":"Maximum number of trades to return"},"sort":{"type":"string","required":false,"description":"Sort order: ASC or DESC (default: ASC)"},"feed":{"type":"string","required":false,"description":"Data feed type"},"currency":{"type":"string","required":false,"description":"Currency for the data"},"asof":{"type":"string","required":false,"description":"As-of date in YYYY-MM-DD format"}}},
+    {"name":"get_stock_latest_trade","description":"Retrieves the latest trade information for a stock","parameters":{"symbol":{"type":"string","required":true,"description":"Stock ticker symbol"},"feed":{"type":"string","required":false,"description":"Data feed type"},"currency":{"type":"string","required":false,"description":"Currency for the data"}}},
+    {"name":"get_stock_latest_bar","description":"Retrieves the most recent minute bar for a stock","parameters":{"symbol":{"type":"string","required":true,"description":"Stock ticker symbol"},"feed":{"type":"string","required":false,"description":"Data feed type"},"currency":{"type":"string","required":false,"description":"Currency for the data"}}},
+    {"name":"get_stock_snapshot","description":"Retrieves comprehensive snapshot with latest quote, trade, minute bar, daily bar, and previous daily bar","parameters":{"symbol_or_symbols":{"type":["string","array"],"required":true,"description":"Single symbol or list of symbols"},"feed":{"type":"string","required":false,"description":"Data feed type"},"currency":{"type":"string","required":false,"description":"Currency for the data"}}},
+    {"name":"get_crypto_bars","description":"Retrieves historical cryptocurrency price bars with OHLCV data","parameters":{"symbol":{"type":["string","array"],"required":true,"description":"Crypto symbol(s) (e.g., BTC/USD, ETH/USD)"},"days":{"type":"integer","required":false,"description":"Number of days of history (default: 1)"},"timeframe":{"type":"string","required":false,"description":"Bar timeframe (default: 1Hour)"},"limit":{"type":"integer","required":false,"description":"Maximum number of bars"},"start":{"type":"string","required":false,"description":"Start date"},"end":{"type":"string","required":false,"description":"End date"},"feed":{"type":"string","required":false,"description":"Crypto data feed"},"currency":{"type":"string","required":false,"description":"Currency for the data"}}},
+    {"name":"get_crypto_quotes","description":"Retrieves historical cryptocurrency quote data with bid/ask information","parameters":{"symbol":{"type":["string","array"],"required":true,"description":"Crypto symbol(s)"},"days":{"type":"integer","required":false,"description":"Number of days of history (default: 3)"},"limit":{"type":"integer","required":false,"description":"Maximum number of quotes"},"start":{"type":"string","required":false,"description":"Start date"},"end":{"type":"string","required":false,"description":"End date"},"feed":{"type":"string","required":false,"description":"Crypto data feed"},"currency":{"type":"string","required":false,"description":"Currency for the data"}}},
+    {"name":"get_crypto_trades","description":"Retrieves historical trade prints for one or more cryptocurrencies","parameters":{"symbol":{"type":["string","array"],"required":true,"description":"Crypto symbol(s) (e.g., BTC/USD)"},"days":{"type":"integer","required":false,"description":"Number of days of history (default: 1)"},"limit":{"type":"integer","required":false,"description":"Maximum number of trades"},"start":{"type":"string","required":false,"description":"ISO start time"},"end":{"type":"string","required":false,"description":"ISO end time"},"sort":{"type":"string","required":false,"description":"asc or desc (default: asc)"},"feed":{"type":"string","required":false,"description":"Crypto data feed (default: US)"}}},
+    {"name":"get_crypto_latest_quote","description":"Returns the latest quote for one or more crypto symbols","parameters":{"symbol":{"type":["string","array"],"required":true,"description":"Crypto symbol(s)"},"feed":{"type":"string","required":false,"description":"Crypto data feed (default: US)"}}},
+    {"name":"get_crypto_latest_bar","description":"Returns the latest minute bar for one or more crypto symbols","parameters":{"symbol":{"type":["string","array"],"required":true,"description":"Crypto symbol(s)"},"feed":{"type":"string","required":false,"description":"Crypto data feed (default: US)"}}},
+    {"name":"get_crypto_latest_trade","description":"Returns the latest trade for one or more crypto symbols","parameters":{"symbol":{"type":["string","array"],"required":true,"description":"Crypto symbol(s)"},"feed":{"type":"string","required":false,"description":"Crypto data feed (default: US)"}}},
+    {"name":"get_crypto_snapshot","description":"Returns snapshots including latest trade, quote, minute bar, daily and previous daily bars for crypto symbols","parameters":{"symbol":{"type":["string","array"],"required":true,"description":"Crypto symbol(s)"},"feed":{"type":"string","required":false,"description":"Crypto data feed (default: US)"}}},
+    {"name":"get_crypto_latest_orderbook","description":"Returns the latest orderbook for one or more crypto symbols","parameters":{"symbol":{"type":["string","array"],"required":true,"description":"Crypto symbol(s)"},"feed":{"type":"string","required":false,"description":"Crypto data feed (default: US)"}}},
+    {"name":"get_option_contracts","description":"Searches for option contracts with flexible filtering by expiration, strike price, and type","parameters":{"underlying_symbol":{"type":"string","required":true,"description":"Underlying stock symbol (e.g., AAPL)"},"expiration_date":{"type":"string","required":false,"description":"Specific expiration date (YYYY-MM-DD)"},"expiration_date_gte":{"type":"string","required":false,"description":"Expiration date greater than or equal to"},"expiration_date_lte":{"type":"string","required":false,"description":"Expiration date less than or equal to"},"expiration_expression":{"type":"string","required":false,"description":"Expiration expression for complex filtering"},"strike_price_gte":{"type":"number","required":false,"description":"Minimum strike price"},"strike_price_lte":{"type":"number","required":false,"description":"Maximum strike price"},"type":{"type":"string","required":false,"description":"Option type: call or put"},"status":{"type":"string","required":false,"description":"Contract status filter"},"root_symbol":{"type":"string","required":false,"description":"Root symbol for the option"},"limit":{"type":"integer","required":false,"description":"Maximum number of contracts to return"}}},
+    {"name":"get_option_latest_quote","description":"Retrieves the latest quote for an option contract with bid/ask prices and Greeks","parameters":{"symbol":{"type":"string","required":true,"description":"Option contract symbol (e.g., AAPL240315C00150000)"},"feed":{"type":"string","required":false,"description":"Options data feed type"}}},
+    {"name":"get_option_snapshot","description":"Retrieves comprehensive snapshots of option contracts including latest trade, quote, implied volatility, and Greeks","parameters":{"symbol_or_symbols":{"type":["string","array"],"required":true,"description":"Single option symbol or list of option symbols"},"feed":{"type":"string","required":false,"description":"Options data feed type"}}},
+    {"name":"get_orders","description":"Retrieves order history with filtering options by status, date range, and limits","parameters":{"status":{"type":"string","required":false,"description":"Filter by order status: all, open, closed, filled, etc. (default: all)"},"limit":{"type":"integer","required":false,"description":"Maximum number of orders to return (default: 10)"},"after":{"type":"string","required":false,"description":"Show orders after this date (YYYY-MM-DD)"},"until":{"type":"string","required":false,"description":"Show orders until this date (YYYY-MM-DD)"},"direction":{"type":"string","required":false,"description":"Sort direction: asc or desc"},"nested":{"type":"boolean","required":false,"description":"Include nested orders"}}},
+    {"name":"place_stock_order","description":"Places a stock order with support for market, limit, stop, stop-limit, and trailing-stop orders","parameters":{"symbol":{"type":"string","required":true,"description":"Stock symbol (e.g., AAPL)"},"side":{"type":"string","required":true,"description":"Order side: buy or sell"},"quantity":{"type":"number","required":true,"description":"Number of shares"},"order_type":{"type":"string","required":false,"description":"Order type: market, limit, stop, stop_limit, trailing_stop (default: market)"},"limit_price":{"type":"number","required":false,"description":"Limit price for limit and stop_limit orders"},"stop_price":{"type":"number","required":false,"description":"Stop price for stop and stop_limit orders"},"trail_price":{"type":"number","required":false,"description":"Trail amount for trailing_stop orders"},"trail_percent":{"type":"number","required":false,"description":"Trail percentage for trailing_stop orders"},"time_in_force":{"type":"string","required":false,"description":"Time in force: day, gtc, ioc, fok (default: day)"},"extended_hours":{"type":"boolean","required":false,"description":"Allow extended hours trading (default: false)"},"client_order_id":{"type":"string","required":false,"description":"Custom order ID"}}},
+    {"name":"place_crypto_order","description":"Places a cryptocurrency order with support for market, limit, and stop-limit orders","parameters":{"symbol":{"type":"string","required":true,"description":"Crypto symbol (e.g., BTC/USD, ETH/USD)"},"side":{"type":"string","required":true,"description":"Order side: buy or sell"},"order_type":{"type":"string","required":true,"description":"Order type: market, limit, stop_limit"},"time_in_force":{"type":"string","required":false,"description":"Time in force: gtc, ioc (default: gtc)"},"qty":{"type":"number","required":false,"description":"Quantity in base currency"},"notional":{"type":"number","required":false,"description":"Notional amount in quote currency"},"limit_price":{"type":"number","required":false,"description":"Limit price for limit and stop_limit orders"},"stop_price":{"type":"number","required":false,"description":"Stop price for stop_limit orders"},"client_order_id":{"type":"string","required":false,"description":"Custom order ID"}}},
+    {"name":"cancel_all_orders","description":"Cancels all open orders and returns the status of each cancellation","parameters":{}},
+    {"name":"cancel_order_by_id","description":"Cancels a specific order by its ID","parameters":{"order_id":{"type":"string","required":true,"description":"The UUID of the order to cancel"}}},
+    {"name":"close_position","description":"Closes a specific position for a single symbol, either partially or completely","parameters":{"symbol":{"type":"string","required":true,"description":"Symbol of the position to close"},"qty":{"type":"number","required":false,"description":"Specific quantity to close (optional)"},"percentage":{"type":"number","required":false,"description":"Percentage of position to close (optional)"}}},
+    {"name":"close_all_positions","description":"Closes all open positions in the portfolio","parameters":{"cancel_orders":{"type":"boolean","required":false,"description":"Whether to cancel all open orders before liquidating positions (default: false)"}}},
+    {"name":"exercise_options_position","description":"Exercises a held option contract, converting it into the underlying asset","parameters":{"symbol_or_contract_id":{"type":"string","required":true,"description":"Option contract symbol (e.g., 'NVDA250919C001680') or contract ID"}}},
+    {"name":"place_option_market_order","description":"Places option orders including single-leg and multi-leg strategies like spreads and straddles","parameters":{"legs":{"type":"array","required":true,"description":"List of option legs with symbol, side, and quantity"},"order_class":{"type":"string","required":false,"description":"Order class: simple, bracket, oco, or mleg"},"quantity":{"type":"integer","required":false,"description":"Number of contracts (default: 1)"},"time_in_force":{"type":"string","required":false,"description":"Time in force: day, gtc, ioc, fok (default: day)"},"extended_hours":{"type":"boolean","required":false,"description":"Allow extended hours trading (default: false)"}}}
   ],
 
   "capabilities": {

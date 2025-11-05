@@ -26,7 +26,7 @@
 - [Switching API Keys for Live Trading](#switching-api-keys-for-live-trading)
 - [Quick Local Installation for MCP Server](#quick-local-installation-for-mcp-server)
 - [Features](#features)
-- [Example Natural Language Queries](#example-natural-language-queries)
+- [Example Prompts](#example-prompts)
 - [Example Outputs](#example-outputs)
 - [MCP Client Configuration](#mcp-client-configuration)
 - [HTTP Transport for Remote Usage](#http-transport-for-remote-usage)
@@ -293,9 +293,9 @@ alpaca-mcp-server/          ← This is the workspace folder (= project root)
   - Query details for stocks, ETFs, crypto, and options
   - Filter assets by status, class, exchange, and attributes
 
-## Example Natural Language Queries
+## Example Prompts
 
-<details>
+<details open>
 <summary><b>Basic Trading</b></summary>
 
 
@@ -470,7 +470,7 @@ These examples demonstrate the server's ability to provide:
 Below you'll find step-by-step guides for connecting the Alpaca MCP server to various MCP clients. Choose the section that matches your preferred development environment or AI assistant.
 
 <a id="claude-desktop-configuration"></a>
-<details>
+<details open>
 <summary><b>Claude Desktop Configuration</b></summary>
 
 ### Claude Desktop Configuration

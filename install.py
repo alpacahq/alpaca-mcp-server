@@ -68,8 +68,54 @@ UV_INSTALL_DOC_URL = "https://docs.astral.sh/uv/getting-started/installation/"
 
 
 def is_uv_installed() -> Optional[str]:
-    """Return the path to uv if installed."""
-    return shutil.which("uv")
+    """Return the path to uv if installed.
+
+    This probes common installation locations and augments PATH in-process
+    so the current script can use uv immediately after installation
+    without requiring a shell restart.
+    """
+    # Fast path: respect current PATH first
+    found = shutil.which("uv")
+    if found:
+        return found
+
+    system = platform.system()
+    home = Path.home()
+
+    # Candidate directories commonly used by installers
+    candidate_dirs = []
+    if system == "Windows":
+        candidate_dirs = [
+            str(home / ".local" / "bin"),
+            # Common Scripts location for per-user installs
+            str(Path(os.environ.get("USERPROFILE", str(home))) / "AppData" / "Local" / "Programs" / "Python" / "Scripts"),
+        ]
+        candidate_files = [str(Path(d) / "uv.exe") for d in candidate_dirs]
+    else:
+        candidate_dirs = [
+            "/opt/homebrew/bin",  # Apple Silicon Homebrew default
+            "/usr/local/bin",     # Intel macOS and many Linux distros
+            str(home / ".local" / "bin"),  # astral install.sh default
+        ]
+        candidate_files = [str(Path(d) / "uv") for d in candidate_dirs]
+
+    # Temporarily augment PATH for this process and retry which()
+    current_path = os.environ.get("PATH", "")
+    for d in candidate_dirs:
+        if d and d not in current_path:
+            current_path = f"{d}{os.pathsep}{current_path}" if current_path else d
+    os.environ["PATH"] = current_path
+
+    found = shutil.which("uv")
+    if found:
+        return found
+
+    # Direct file existence check as a fallback
+    for p in candidate_files:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+
+    return None
 
 
 def install_uv(method: str) -> bool:

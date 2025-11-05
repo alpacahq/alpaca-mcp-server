@@ -4,16 +4,17 @@ Alpaca MCP Server - Standalone Implementation
 This is a standalone MCP server that provides comprehensive Alpaca Trading API integration
 for stocks, options, crypto, portfolio management, and real-time market data.
 
-Supports 31+ tools including:
+Supports 38+ tools including:
 - Account management and portfolio tracking
 - Order placement and management (stocks, crypto, options)
 - Position tracking and closing
 - Market data retrieval (quotes, bars, trades, snapshots)
+- Crypto trading strategies and analytics
 - Options trading strategies and analytics
 - Watchlist management
 - Market calendar and corporate actions
 """
-
+import json
 import os
 import re
 import sys
@@ -47,7 +48,12 @@ from alpaca.data.requests import (
     CorporateActionsRequest,
     CryptoBarsRequest,
     CryptoQuoteRequest,
-    CryptoLatestQuoteRequest
+    CryptoLatestQuoteRequest,
+    CryptoTradesRequest,
+    CryptoLatestBarRequest,
+    CryptoLatestTradeRequest,
+    CryptoSnapshotRequest,
+    CryptoLatestOrderbookRequest
 )
 
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
@@ -58,7 +64,6 @@ from alpaca.trading.enums import (
     OrderClass,
     OrderSide,
     OrderType,
-    PositionIntent,
     QueryOrderStatus,
     TimeInForce,
 )
@@ -68,6 +73,7 @@ from alpaca.trading.requests import (
     CreateWatchlistRequest,
     GetAssetsRequest,
     GetCalendarRequest,
+    GetPortfolioHistoryRequest,
     GetOptionContractsRequest,
     GetOrdersRequest,
     LimitOrderRequest,
@@ -77,6 +83,24 @@ from alpaca.trading.requests import (
     StopOrderRequest,
     TrailingStopOrderRequest,
     UpdateWatchlistRequest,
+)
+
+# Import shared helpers
+from .helpers import (
+    parse_timeframe_with_enums,
+    _validate_amount,
+    _parse_iso_datetime,
+    _parse_date_ymd,
+    _format_ohlcv_bar,
+    _format_quote_data,
+    _format_trade_data,
+    _parse_expiration_expression,
+    _validate_option_order_inputs,
+    _convert_order_class_string,
+    _process_option_legs,
+    _create_option_market_order_request,
+    _format_option_order_response,
+    _handle_option_api_error,
 )
 
 from mcp.server.fastmcp import FastMCP
@@ -131,12 +155,6 @@ log_level = "DEBUG" if DEBUG.lower() == "true" else log_level
 # Initialize FastMCP server
 mcp = FastMCP("alpaca-trading", log_level=log_level)
 
-# Check if keys are available
-# COMMENTED OUT: Allow server to start without credentials for MCP discovery and CLI init
-# The Alpaca SDK will raise appropriate errors when API calls are made without valid credentials
-# if not TRADE_API_KEY or not TRADE_API_SECRET:
-#     raise ValueError("Alpaca API credentials not found in environment variables.")
-
 # Convert string to boolean
 ALPACA_PAPER_TRADE_BOOL = ALPACA_PAPER_TRADE.lower() not in ['false', '0', 'no', 'off']
 
@@ -164,123 +182,8 @@ def _ensure_clients():
         _clients_initialized = True
 
 # ============================================================================
-# Helper Functions
+# Account and Positions Tools
 # ============================================================================
-
-def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
-    """Parse an ISO-like datetime string into a datetime.
-
-    Supports:
-      - Strings ending with 'Z' by converting to '+00:00'
-      - Date-only strings 'YYYY-MM-DD' by assuming midnight
-    Returns:
-      - datetime when a non-empty valid string is provided
-      - None when value is falsy or empty
-    Raises:
-      - ValueError if a non-empty string is provided but cannot be parsed
-    """
-    if not value:
-        return None
-    s = value.strip()
-    if not s:
-        return None
-    # Allow pure dates
-    if re.match(r'^\d{4}-\d{2}-\d{2}$', s):
-        s = s + 'T00:00:00'
-    s = s.replace('Z', '+00:00')
-    try:
-        return datetime.fromisoformat(s)
-    except Exception as e:
-        raise ValueError(f"Invalid ISO datetime: {value}") from e
-
-
-def _parse_date_ymd(value: str) -> date:
-    """Parse 'YYYY-MM-DD' into a date object.
-    Raises ValueError on invalid input."""
-    return datetime.strptime(value, '%Y-%m-%d').date()
-
-
-def _month_name_to_number(name: str) -> int:
-    """Convert month name to month number. Accepts full and abbreviated names."""
-    try:
-        return datetime.strptime(name.title(), '%B').month
-    except ValueError:
-        return datetime.strptime(name.title(), '%b').month
-
-
-def parse_timeframe_with_enums(timeframe_str: str) -> Optional[TimeFrame]:
-    """Parse timeframe string to TimeFrame object with validation."""
-    try:
-        match = re.match(r'^(\d+)(Min|Hour|Day|Week|Month)$', timeframe_str, re.IGNORECASE)
-        if not match:
-            return None
-
-        amount = int(match.group(1))
-        unit = match.group(2).lower()
-
-        unit_map = {
-            'min': TimeFrameUnit.Minute,
-            'hour': TimeFrameUnit.Hour,
-            'day': TimeFrameUnit.Day,
-            'week': TimeFrameUnit.Week,
-            'month': TimeFrameUnit.Month
-        }
-
-        if unit not in unit_map:
-            return None
-
-        return TimeFrame(amount=amount, unit=unit_map[unit])
-    except Exception:
-        return None
-
-
-def _format_ohlcv_bar(bar, bar_type: str, include_time: bool = True) -> str:
-    """Helper function to format OHLCV bar data consistently."""
-    if not bar:
-        return ""
-
-    time_format = '%Y-%m-%d %H:%M:%S %Z' if include_time else '%Y-%m-%d'
-    time_label = "Timestamp" if include_time else "Date"
-
-    return f"""{bar_type}:
-  Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}
-  Volume: {bar.volume:,}, {time_label}: {bar.timestamp.strftime(time_format)}
-
-"""
-
-
-def _format_quote_data(quote) -> str:
-    """Helper function to format quote data consistently."""
-    if not quote:
-        return ""
-
-    return f"""Latest Quote:
-  Bid: ${quote.bid_price:.2f} x {quote.bid_size}, Ask: ${quote.ask_price:.2f} x {quote.ask_size}
-  Timestamp: {quote.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}
-
-"""
-
-
-def _format_trade_data(trade) -> str:
-    """Helper function to format trade data consistently."""
-    if not trade:
-        return ""
-
-    optional_fields = []
-    if hasattr(trade, 'exchange') and trade.exchange:
-        optional_fields.append(f"Exchange: {trade.exchange}")
-    if hasattr(trade, 'conditions') and trade.conditions:
-        optional_fields.append(f"Conditions: {trade.conditions}")
-    if hasattr(trade, 'id') and trade.id:
-        optional_fields.append(f"ID: {trade.id}")
-
-    optional_str = f", {', '.join(optional_fields)}" if optional_fields else ""
-
-    return f"""Latest Trade:
-            Price: ${trade.price:.2f}, Size: {trade.size}{optional_str}
-            Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}
-            """
-
 
 @mcp.tool()
 async def get_account_info() -> str:
@@ -385,6 +288,470 @@ async def get_open_position(symbol: str) -> str:
                 """ 
     except Exception as e:
         return f"Error fetching position: {str(e)}"
+
+# ============================================================================
+# Asset Information Tools
+# ============================================================================
+
+@mcp.tool()
+async def get_asset_info(symbol: str) -> str:
+    """
+    Retrieves and formats detailed information about a specific asset.
+    
+    Args:
+        symbol (str): The symbol of the asset to get information for
+    
+    Returns:
+        str: Formatted string containing asset details including:
+            - Name
+            - Exchange
+            - Class
+            - Status
+            - Trading Properties
+    """
+    _ensure_clients()
+    try:
+        asset = trade_client.get_asset(symbol)
+        return f"""
+                Asset Information for {symbol}:
+                ----------------------------
+                Name: {asset.name}
+                Exchange: {asset.exchange}
+                Class: {asset.asset_class}
+                Status: {asset.status}
+                Tradable: {'Yes' if asset.tradable else 'No'}
+                Marginable: {'Yes' if asset.marginable else 'No'}
+                Shortable: {'Yes' if asset.shortable else 'No'}
+                Easy to Borrow: {'Yes' if asset.easy_to_borrow else 'No'}
+                Fractionable: {'Yes' if asset.fractionable else 'No'}
+                """
+    except Exception as e:
+        return f"Error fetching asset information: {str(e)}"
+
+@mcp.tool()
+async def get_all_assets(
+    status: Optional[str] = None,
+    asset_class: Optional[str] = None,
+    exchange: Optional[str] = None,
+    attributes: Optional[str] = None
+) -> str:
+    """
+    Get all available assets with optional filtering.
+    
+    Args:
+        status: Filter by asset status (e.g., 'active', 'inactive')
+        asset_class: Filter by asset class (e.g., 'us_equity', 'crypto')
+        exchange: Filter by exchange (e.g., 'NYSE', 'NASDAQ')
+        attributes: Comma-separated values to query for multiple attributes
+    """
+    _ensure_clients()
+    try:
+        # Create filter if any parameters are provided
+        filter_params = None
+        if any([status, asset_class, exchange, attributes]):
+            filter_params = GetAssetsRequest(
+                status=status,
+                asset_class=asset_class,
+                exchange=exchange,
+                attributes=attributes
+            )
+        
+        # Get all assets
+        assets = trade_client.get_all_assets(filter_params)
+        
+        if not assets:
+            return "No assets found matching the criteria."
+        
+        # Format the response
+        response_parts = ["Available Assets:"]
+        response_parts.append("-" * 30)
+        
+        for asset in assets:
+            response_parts.append(f"Symbol: {asset.symbol}")
+            response_parts.append(f"Name: {asset.name}")
+            response_parts.append(f"Exchange: {asset.exchange}")
+            response_parts.append(f"Class: {asset.asset_class}")
+            response_parts.append(f"Status: {asset.status}")
+            response_parts.append(f"Tradable: {'Yes' if asset.tradable else 'No'}")
+            response_parts.append("-" * 30)
+        
+        return "\n".join(response_parts)
+        
+    except Exception as e:
+        return f"Error fetching assets: {str(e)}"
+
+# ============================================================================
+# Corporate Actions Tools
+# ============================================================================
+
+@mcp.tool()
+async def get_corporate_announcements(
+    ca_types: Optional[List[CorporateActionsType]] = None,
+    start: Optional[date] = None,
+    end: Optional[date] = None,
+    symbols: Optional[List[str]] = None,
+    cusips: Optional[List[str]] = None,
+    ids: Optional[List[str]] = None,
+    limit: Optional[int] = 1000,
+    sort: Optional[str] = "asc"
+) -> str:
+    """
+    Retrieves and formats corporate action announcements.
+    
+    Args:
+        ca_types (Optional[List[CorporateActionsType]]): List of corporate action types to filter by (default: all types)
+            Available types from https://alpaca.markets/sdks/python/api_reference/data/enums.html#corporateactionstype:
+            - CorporateActionsType.REVERSE_SPLIT: Reverse split
+            - CorporateActionsType.FORWARD_SPLIT: Forward split  
+            - CorporateActionsType.UNIT_SPLIT: Unit split
+            - CorporateActionsType.CASH_DIVIDEND: Cash dividend
+            - CorporateActionsType.STOCK_DIVIDEND: Stock dividend
+            - CorporateActionsType.SPIN_OFF: Spin off
+            - CorporateActionsType.CASH_MERGER: Cash merger
+            - CorporateActionsType.STOCK_MERGER: Stock merger
+            - CorporateActionsType.STOCK_AND_CASH_MERGER: Stock and cash merger
+            - CorporateActionsType.REDEMPTION: Redemption
+            - CorporateActionsType.NAME_CHANGE: Name change
+            - CorporateActionsType.WORTHLESS_REMOVAL: Worthless removal
+            - CorporateActionsType.RIGHTS_DISTRIBUTION: Rights distribution
+        start (Optional[date]): Start date for the announcements (default: current day)
+        end (Optional[date]): End date for the announcements (default: current day)
+        symbols (Optional[List[str]]): Optional list of stock symbols to filter by
+        cusips (Optional[List[str]]): Optional list of CUSIPs to filter by
+        ids (Optional[List[str]]): Optional list of corporate action IDs (mutually exclusive with other filters)
+        limit (Optional[int]): Maximum number of results to return (default: 1000)
+        sort (Optional[str]): Sort order (asc or desc, default: asc)
+    
+    Returns:
+        str: Formatted string containing corporate announcement details
+        
+    References:
+        - API Documentation: https://docs.alpaca.markets/reference/corporateactions-1
+        - CorporateActionsType Enum: https://alpaca.markets/sdks/python/api_reference/data/enums.html#corporateactionstype
+        - CorporateActionsRequest: https://alpaca.markets/sdks/python/api_reference/data/corporate_actions/requests.html#corporateactionsrequest
+    """
+    _ensure_clients()
+    try:
+        request = CorporateActionsRequest(
+            symbols=symbols,
+            cusips=cusips,
+            types=ca_types,
+            start=start,
+            end=end,
+            ids=ids,
+            limit=limit,
+            sort=sort
+        )
+        announcements = corporate_actions_client.get_corporate_actions(request)
+        
+        if not announcements or not announcements.data:
+            return "No corporate announcements found for the specified criteria."
+        
+        result = "Corporate Announcements:\n----------------------\n"
+        
+        # The response.data contains action types as keys (e.g., 'cash_dividends', 'forward_splits')
+        # Each value is a list of corporate actions
+        for action_type, actions_list in announcements.data.items():
+            if not actions_list:
+                continue
+                
+            result += f"\n{action_type.replace('_', ' ').title()}:\n"
+            result += "=" * 30 + "\n"
+            
+            for action in actions_list:
+                # Group by symbol for better organization
+                symbol = getattr(action, 'symbol', 'Unknown')
+                result += f"\nSymbol: {symbol}\n"
+                result += "-" * 15 + "\n"
+                
+                # Display action details based on available attributes
+                if hasattr(action, 'corporate_action_type'):
+                    result += f"Type: {action.corporate_action_type}\n"
+                
+                if hasattr(action, 'ex_date') and action.ex_date:
+                    result += f"Ex Date: {action.ex_date}\n"
+                    
+                if hasattr(action, 'record_date') and action.record_date:
+                    result += f"Record Date: {action.record_date}\n"
+                    
+                if hasattr(action, 'payable_date') and action.payable_date:
+                    result += f"Payable Date: {action.payable_date}\n"
+                    
+                if hasattr(action, 'process_date') and action.process_date:
+                    result += f"Process Date: {action.process_date}\n"
+                
+                # Cash dividend specific fields
+                if hasattr(action, 'rate') and action.rate:
+                    result += f"Rate: ${action.rate:.6f}\n"
+                    
+                if hasattr(action, 'foreign') and hasattr(action, 'special'):
+                    result += f"Foreign: {action.foreign}, Special: {action.special}\n"
+                
+                # Split specific fields
+                if hasattr(action, 'old_rate') and action.old_rate:
+                    result += f"Old Rate: {action.old_rate}\n"
+                    
+                if hasattr(action, 'new_rate') and action.new_rate:
+                    result += f"New Rate: {action.new_rate}\n"
+                
+                # Due bill dates
+                if hasattr(action, 'due_bill_on_date') and action.due_bill_on_date:
+                    result += f"Due Bill On Date: {action.due_bill_on_date}\n"
+                    
+                if hasattr(action, 'due_bill_off_date') and action.due_bill_off_date:
+                    result += f"Due Bill Off Date: {action.due_bill_off_date}\n"
+                
+                result += "\n"
+        return result
+    except Exception as e:
+        return f"Error fetching corporate announcements: {str(e)}"
+
+# ============================================================================
+# Portfolio History Tool
+# ============================================================================
+
+@mcp.tool()
+async def get_portfolio_history(
+    timeframe: Optional[str] = None,
+    period: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    date_end: Optional[str] = None,
+    intraday_reporting: Optional[str] = None,
+    pnl_reset: Optional[str] = None,
+    extended_hours: Optional[bool] = None,
+    cashflow_types: Optional[List[str]] = None,
+) -> str:
+    """
+    Retrieves account portfolio history (equity and P/L) over a requested time window.
+
+    Args:
+        timeframe (Optional[str]): Resolution of each data point (e.g., "1Min", "5Min", "15Min", "1H", "1D").
+        period (Optional[str]): Window length (e.g., "1W", "1M", "3M", "6M", "1Y", "all").
+        start (Optional[str]): Start time in ISO (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
+        end (Optional[str]): End time in ISO (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
+        date_end (Optional[str]): End date (alternative to end) as ISO date or datetime.
+        intraday_reporting (Optional[str]): "market_hours", "extended_hours", or "continuous".
+        pnl_reset (Optional[str]): P/L reset behavior (e.g., "daily", "weekly", "no_reset").
+        extended_hours (Optional[bool]): Include extended hours where applicable.
+        cashflow_types (Optional[List[str]]): Optional cashflow categories to include.
+
+    Returns:
+        str: JSON string with keys: timestamp, equity, profit_loss, profit_loss_pct, base_value, timeframe, and optional cashflow.
+    """
+    _ensure_clients()
+
+    # Parse optional datetime inputs with explicit errors (for consistency with other tools)
+    try:
+        start_dt = _parse_iso_datetime(start) if start else None
+    except ValueError:
+        return f"Invalid start timestamp: {start}. Use ISO like '2023-01-01' or '2023-01-01T09:30:00'"
+    try:
+        end_dt = _parse_iso_datetime(end) if end else None
+    except ValueError:
+        return f"Invalid end timestamp: {end}. Use ISO like '2023-01-01' or '2023-01-01T16:00:00'"
+    try:
+        date_end_dt = _parse_iso_datetime(date_end) if date_end else None
+    except ValueError:
+        return f"Invalid date_end: {date_end}. Use ISO like '2023-01-31' or '2023-01-31T00:00:00'"
+
+    request = GetPortfolioHistoryRequest(
+        period=period,
+        timeframe=timeframe,
+        intraday_reporting=intraday_reporting,
+        start=start_dt,
+        end=end_dt,
+        date_end=date_end_dt,
+        pnl_reset=pnl_reset,
+        extended_hours=extended_hours,
+        cashflow_types=cashflow_types,
+    )
+
+    try:
+        resp = trade_client.get_portfolio_history(request)
+
+        payload = {
+            "timestamp": getattr(resp, "timestamp", []) or [],
+            "equity": getattr(resp, "equity", []) or [],
+            "profit_loss": getattr(resp, "profit_loss", []) or [],
+            "profit_loss_pct": getattr(resp, "profit_loss_pct", []) or [],
+            "base_value": getattr(resp, "base_value", None),
+            "timeframe": getattr(resp, "timeframe", timeframe or ""),
+        }
+
+        cf = getattr(resp, "cashflow", None)
+        if cf is not None:
+            payload["cashflow"] = cf
+
+        if timeframe and period in {"2M", "3M", "6M", "1Y", "all"} and timeframe != "1D":
+            payload["note"] = "For period > 30 days, timeframe should be '1D'."
+
+        return json.dumps(payload, separators=(",", ":"))
+    except Exception as e:
+        return f"Error fetching portfolio history: {str(e)}"
+
+# ============================================================================
+# Watchlist Management Tools
+# ============================================================================
+
+@mcp.tool()
+async def create_watchlist(name: str, symbols: List[str]) -> str:
+    """
+    Creates a new watchlist with specified symbols.
+    
+    Args:
+        name (str): Name of the watchlist
+        symbols (List[str]): List of symbols to include in the watchlist
+    
+    Returns:
+        str: Confirmation message with watchlist creation status
+    """
+    _ensure_clients()
+    try:
+        watchlist_data = CreateWatchlistRequest(name=name, symbols=symbols)
+        watchlist = trade_client.create_watchlist(watchlist_data)
+        return f"Watchlist '{name}' created successfully with {len(symbols)} symbols."
+    except Exception as e:
+        return f"Error creating watchlist: {str(e)}"
+
+@mcp.tool()
+async def get_watchlists() -> str:
+    """Get all watchlists for the account."""
+    _ensure_clients()
+    try:
+        watchlists = trade_client.get_watchlists()
+        result = "Watchlists:\n------------\n"
+        for wl in watchlists:
+            result += f"Name: {wl.name}\n"
+            result += f"ID: {wl.id}\n"
+            result += f"Created: {wl.created_at}\n"
+            result += f"Updated: {wl.updated_at}\n\n"
+        return result
+    except Exception as e:
+        return f"Error fetching watchlists: {str(e)}"
+
+@mcp.tool()
+async def update_watchlist(watchlist_id: str, name: str = None, symbols: List[str] = None) -> str:
+    """Update an existing watchlist."""
+    _ensure_clients()
+    try:
+        update_request = UpdateWatchlistRequest(name=name, symbols=symbols)
+        watchlist = trade_client.update_watchlist_by_id(watchlist_id, update_request)
+        return f"Watchlist updated successfully: {watchlist.name}"
+    except Exception as e:
+        return f"Error updating watchlist: {str(e)}"
+
+@mcp.tool()
+async def get_watchlist_by_id(watchlist_id: str) -> str:
+    """Get a specific watchlist by its ID."""
+    _ensure_clients()
+    try:
+        wl = trade_client.get_watchlist_by_id(watchlist_id)
+        result = "Watchlist:\n----------\n"
+        result += f"Name: {wl.name}\n"
+        result += f"ID: {wl.id}\n"
+        result += f"Created: {wl.created_at}\n"
+        result += f"Updated: {wl.updated_at}\n"
+        symbols_list = [a.symbol for a in (getattr(wl, 'assets', []) or [])]
+        result += f"Symbols: {', '.join(symbols_list)}\n"
+        return result
+    except Exception as e:
+        return f"Error fetching watchlist by id: {str(e)}"
+
+@mcp.tool()
+async def add_asset_to_watchlist_by_id(watchlist_id: str, symbol: str) -> str:
+    """Add an asset by symbol to a specific watchlist by ID."""
+    _ensure_clients()
+    try:
+        wl = trade_client.add_asset_to_watchlist_by_id(watchlist_id, symbol)
+        symbols_str = ", ".join([a.symbol for a in (getattr(wl, 'assets', []) or [])])
+        return f"Added {symbol} to watchlist '{wl.name}'. Symbols: {symbols_str}"
+    except Exception as e:
+        return f"Error adding asset to watchlist: {str(e)}"
+
+@mcp.tool()
+async def remove_asset_from_watchlist_by_id(watchlist_id: str, symbol: str) -> str:
+    """Remove an asset by symbol from a specific watchlist by ID."""
+    _ensure_clients()
+    try:
+        wl = trade_client.remove_asset_from_watchlist_by_id(watchlist_id, symbol)
+        symbols_str = ", ".join([a.symbol for a in (getattr(wl, 'assets', []) or [])])
+        return f"Removed {symbol} from watchlist '{wl.name}'. Symbols: {symbols_str}"
+    except Exception as e:
+        return f"Error removing asset from watchlist: {str(e)}"
+
+@mcp.tool()
+async def delete_watchlist_by_id(watchlist_id: str) -> str:
+    """Delete a specific watchlist by its ID."""
+    _ensure_clients()
+    try:
+        trade_client.delete_watchlist_by_id(watchlist_id)
+        return "Watchlist deleted successfully."
+    except Exception as e:
+        return f"Error deleting watchlist: {str(e)}"
+
+# ============================================================================
+# Market Calendar Tools
+# ============================================================================
+
+@mcp.tool()
+async def get_market_calendar(start_date: str, end_date: str) -> str:
+    """
+    Retrieves and formats market calendar for specified date range.
+    
+    Args:
+        start_date (str): Start date in YYYY-MM-DD format
+        end_date (str): End date in YYYY-MM-DD format
+    
+    Returns:
+        str: Formatted string containing market calendar information
+    """
+    _ensure_clients()
+    try:
+        # Convert string dates to date objects
+        start_dt = _parse_date_ymd(start_date)
+        end_dt = _parse_date_ymd(end_date)
+        
+        # Create the request object with the correct parameters
+        calendar_request = GetCalendarRequest(start=start_dt, end=end_dt)
+        calendar = trade_client.get_calendar(calendar_request)
+        
+        result = f"Market Calendar ({start_date} to {end_date}):\n----------------------------\n"
+        for day in calendar:
+            result += f"Date: {day.date}, Open: {day.open}, Close: {day.close}\n"
+        return result
+    except Exception as e:
+        return f"Error fetching market calendar: {str(e)}"
+
+# ============================================================================
+# Market Clock Tools
+# ============================================================================
+
+@mcp.tool()
+async def get_market_clock() -> str:
+    """
+    Retrieves and formats current market status and next open/close times.
+    
+    Returns:
+        str: Formatted string containing:
+            - Current Time
+            - Market Open Status
+            - Next Open Time
+            - Next Close Time
+    """
+    _ensure_clients()
+    try:
+        clock = trade_client.get_clock()
+        return f"""
+                Market Status:
+                -------------
+                Current Time: {clock.timestamp}
+                Is Open: {'Yes' if clock.is_open else 'No'}
+                Next Open: {clock.next_open}
+                Next Close: {clock.next_close}
+                """
+    except Exception as e:
+        return f"Error fetching market clock: {str(e)}"
 
 # ============================================================================
 # Stock Market Data Tools
@@ -697,55 +1064,6 @@ async def get_stock_latest_bar(
     except Exception as e:
         return f"Error fetching latest bar: {str(e)}"
 
-# ============================================================================
-# Stock Market Data Tools - Stock Snapshot Data with Helper Functions
-# ============================================================================
-
-def _format_ohlcv_bar(bar, bar_type: str, include_time: bool = True) -> str:
-    """Helper function to format OHLCV bar data consistently."""
-    if not bar:
-        return ""
-    
-    time_format = '%Y-%m-%d %H:%M:%S %Z' if include_time else '%Y-%m-%d'
-    time_label = "Timestamp" if include_time else "Date"
-    
-    return f"""{bar_type}:
-  Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}
-  Volume: {bar.volume:,}, {time_label}: {bar.timestamp.strftime(time_format)}
-
-"""
-
-def _format_quote_data(quote) -> str:
-    """Helper function to format quote data consistently."""
-    if not quote:
-        return ""
-    
-    return f"""Latest Quote:
-  Bid: ${quote.bid_price:.2f} x {quote.bid_size}, Ask: ${quote.ask_price:.2f} x {quote.ask_size}
-  Timestamp: {quote.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}
-
-    """
-
-def _format_trade_data(trade) -> str:
-    """Helper function to format trade data consistently."""
-    if not trade:
-        return ""
-    
-    optional_fields = []
-    if hasattr(trade, 'exchange') and trade.exchange:
-        optional_fields.append(f"Exchange: {trade.exchange}")
-    if hasattr(trade, 'conditions') and trade.conditions:
-        optional_fields.append(f"Conditions: {trade.conditions}")
-    if hasattr(trade, 'id') and trade.id:
-        optional_fields.append(f"ID: {trade.id}")
-    
-    optional_str = f", {', '.join(optional_fields)}" if optional_fields else ""
-    
-    return f"""Latest Trade:
-  Price: ${trade.price:.2f}, Size: {trade.size}{optional_str}
-  Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}
-
-    """
 
 @mcp.tool()
 async def get_stock_snapshot(
@@ -826,7 +1144,7 @@ async def get_stock_snapshot(
         return f"Error retrieving stock snapshots: {str(e)}"
 
 # ============================================================================
-# CryptoMarket Data Tools
+# Crypto Market Data Tools
 # ============================================================================
 
 @mcp.tool()
@@ -883,29 +1201,15 @@ async def get_crypto_bars(
             except ValueError:
                 return f"Error: Invalid end time format '{end}'. Use ISO format like '2023-01-01T16:00:00' or '2023-01-01'"
         
-        # If no start/end provided, calculate from days parameter OR limit+timeframe
-        if not start_time:
-            if limit and timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
-                # Calculate based on limit and timeframe for intraday data
-                if timeframe_obj.unit_value == TimeFrameUnit.Minute:
-                    minutes_back = limit * timeframe_obj.amount
-                    start_time = datetime.now() - timedelta(minutes=minutes_back)
-                elif timeframe_obj.unit_value == TimeFrameUnit.Hour:
-                    hours_back = limit * timeframe_obj.amount
-                    start_time = datetime.now() - timedelta(hours=hours_back)
-            elif timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
-                # For intraday timeframes without limit, use a reasonable default
-                if timeframe_obj.unit_value == TimeFrameUnit.Minute:
-                    # Default to last 2 hours for minute timeframes
-                    start_time = datetime.now() - timedelta(hours=2)
-                elif timeframe_obj.unit_value == TimeFrameUnit.Hour:
-                    # Default to last 24 hours for hour timeframes
-                    start_time = datetime.now() - timedelta(hours=24)
-            else:
-                # Fall back to days parameter for daily+ timeframes
-                start_time = datetime.now() - timedelta(days=days)
-        if not end_time:
-            end_time = datetime.now()
+        # Compute fallbacks concisely (Option A: no special 2h/24h intraday defaults)
+        start_time = start_time or (
+            datetime.now() - timedelta(minutes=limit * timeframe_obj.amount)
+            if limit and timeframe_obj.unit_value == TimeFrameUnit.Minute else
+            datetime.now() - timedelta(hours=limit * timeframe_obj.amount)
+            if limit and timeframe_obj.unit_value == TimeFrameUnit.Hour else
+            datetime.now() - timedelta(days=days)
+        )
+        end_time = end_time or datetime.now()
         
         request_params = CryptoBarsRequest(
             symbol_or_symbols=symbol,
@@ -916,24 +1220,30 @@ async def get_crypto_bars(
         )
         
         bars = crypto_historical_data_client.get_crypto_bars(request_params, feed=feed)
-        
-        if bars[symbol]:
-            time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
-            result = f"Historical Crypto Data for {symbol} ({timeframe} bars, {time_range}):\n"
+
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        outputs: List[str] = []
+        time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
+
+        # Prefer the underlying mapping ('.data') when present; fallback to indexed access
+        mapping_bars = getattr(bars, 'data', None) or bars
+        for sym in symbols_list:
+            sym_bars = mapping_bars.get(sym) if hasattr(mapping_bars, 'get') else None
+            if not sym_bars:
+                outputs.append(f"No historical crypto data found for {sym} with {timeframe} timeframe in the specified time range.")
+                continue
+
+            result = f"Historical Crypto Data for {sym} ({timeframe} bars, {time_range}):\n"
             result += "---------------------------------------------------\n"
-            
-            for bar in bars[symbol]:
-                # Format timestamp based on timeframe unit
+            for bar in sym_bars:
                 if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
                     time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S')
                 else:
                     time_str = bar.timestamp.date()
-                
                 result += f"Time: {time_str}, Open: ${bar.open:.6f}, High: ${bar.high:.6f}, Low: ${bar.low:.6f}, Close: ${bar.close:.6f}, Volume: {bar.volume}\n"
-            
-            return result
-        else:
-            return f"No historical crypto data found for {symbol} with {timeframe} timeframe in the specified time range."
+            outputs.append(result)
+
+        return "\n".join(outputs)
     except Exception as e:
         return f"Error fetching historical crypto data for {symbol}: {str(e)}"
 
@@ -971,7 +1281,6 @@ async def get_crypto_quotes(
                 start_time = _parse_iso_datetime(start)
             except ValueError:
                 return f"Error: Invalid start time format '{start}'. Use ISO format like '2023-01-01T09:30:00' or '2023-01-01'"
-                
         if end:
             try:
                 end_time = _parse_iso_datetime(end)
@@ -992,22 +1301,570 @@ async def get_crypto_quotes(
         )
         
         quotes = crypto_historical_data_client.get_crypto_quotes(request_params, feed=feed)
-        
-        # Use the exact same simple pattern as crypto bars
-        if quotes[symbol]:
-            time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
-            result = f"Historical Crypto Quotes for {symbol} ({time_range}):\n"
+
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        outputs: List[str] = []
+        time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
+
+        mapping_quotes = getattr(quotes, 'data', None) or quotes
+        for sym in symbols_list:
+            sym_quotes = mapping_quotes.get(sym) if hasattr(mapping_quotes, 'get') else None
+            if not sym_quotes:
+                outputs.append(f"No historical crypto quotes found for {sym} in the specified time range.")
+                continue
+
+            result = f"Historical Crypto Quotes for {sym} ({time_range}):\n"
             result += "---------------------------------------------------\n"
-            
-            for quote in quotes[symbol]:
-                time_str = quote.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Include milliseconds
+            for quote in sym_quotes:
+                time_str = quote.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                 result += f"Time: {time_str}, Bid: ${quote.bid_price:.6f} (Size: {quote.bid_size:.6f}), Ask: ${quote.ask_price:.6f} (Size: {quote.ask_size:.6f})\n"
-            
-            return result
-        else:
-            return f"No historical crypto quotes found for {symbol} in the specified time range."
+            outputs.append(result)
+
+        return "\n".join(outputs)
     except Exception as e:
         return f"Error fetching historical crypto quotes for {symbol}: {str(e)}"
+
+@mcp.tool()
+async def get_crypto_trades(
+    symbol: Union[str, List[str]],
+    days: int = 1,
+    limit: Optional[int] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    sort: Optional[str] = None,
+    feed: CryptoFeed = CryptoFeed.US
+) -> str:
+    """
+    Retrieves and formats historical trade prints for a cryptocurrency.
+
+    Args:
+        symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD' or ['BTC/USD','ETH/USD'])
+        days (int): Number of days to look back (default: 1, ignored if start/end provided)
+        limit (Optional[int]): Maximum number of trades to return
+        start (Optional[str]): ISO start time (e.g., "2023-01-01T09:30:00")
+        end (Optional[str]): ISO end time (e.g., "2023-01-01T16:00:00")
+        sort (Optional[str]): 'asc' or 'desc' chronological order
+        feed (CryptoFeed): Crypto data feed (default: US)
+
+    Returns:
+        str: Formatted trade history
+    """
+    _ensure_clients()
+    try:
+        # Parse start/end times or calculate from days
+        start_time = None
+        end_time = None
+
+        if start:
+            try:
+                start_time = _parse_iso_datetime(start)
+            except ValueError:
+                return f"Error: Invalid start time format '{start}'. Use ISO format like '2023-01-01T09:30:00'"
+
+        if end:
+            try:
+                end_time = _parse_iso_datetime(end)
+            except ValueError:
+                return f"Error: Invalid end time format '{end}'. Use ISO format like '2023-01-01T16:00:00'"
+
+        if not start_time:
+            start_time = datetime.now() - timedelta(days=days)
+        if not end_time:
+            end_time = datetime.now()
+
+        # Sort mapping (default to ascending)
+        sort_enum = Sort.ASC
+        if sort:
+            if sort.lower() == "asc":
+                sort_enum = Sort.ASC
+            elif sort.lower() == "desc":
+                sort_enum = Sort.DESC
+            else:
+                return f"Invalid sort: {sort}. Must be 'asc' or 'desc'."
+
+        request_params = CryptoTradesRequest(
+            symbol_or_symbols=symbol,
+            start=start_time,
+            end=end_time,
+            limit=limit,
+            sort=sort_enum,
+        )
+
+        trades = crypto_historical_data_client.get_crypto_trades(request_params, feed=feed)
+
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        outputs: List[str] = []
+        time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
+
+        mapping_trades = getattr(trades, 'data', None) or trades
+        for sym in symbols_list:
+            sym_trades = mapping_trades.get(sym) if hasattr(mapping_trades, 'get') else None
+            if not sym_trades:
+                outputs.append(f"No historical crypto trades found for {sym} in the specified time range.")
+                continue
+            result = f"Historical Crypto Trades for {sym} ({time_range}):\n"
+            result += "---------------------------------------------------\n"
+            for t in sym_trades:
+                time_str = t.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                line = f"Time: {time_str}, Price: ${t.price:.6f}, Size: {t.size}"
+                if hasattr(t, 'exchange') and t.exchange:
+                    line += f", Exchange: {t.exchange}"
+                result += line + "\n"
+            outputs.append(result)
+
+        return "\n".join(outputs)
+    except Exception as e:
+        return f"Error fetching historical crypto trades for {symbol}: {str(e)}"
+
+
+@mcp.tool()
+async def get_crypto_latest_quote(
+    symbol: Union[str, List[str]],
+    feed: CryptoFeed = CryptoFeed.US
+) -> str:
+    """
+    Returns the latest quote for one or more crypto symbols.
+
+    Args:
+        symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD' or ['BTC/USD','ETH/USD'])
+        feed (CryptoFeed): The crypto data feed (default: US)
+
+    Returns:
+        str: Formatted latest quote(s)
+    """
+    _ensure_clients()
+    try:
+        request_params = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
+        latest = crypto_historical_data_client.get_crypto_latest_quote(request_params, feed=feed)
+
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        outputs: List[str] = []
+        mapping_latest_quotes = getattr(latest, 'data', None) or latest
+        for sym in symbols_list:
+            quote = mapping_latest_quotes.get(sym) if hasattr(mapping_latest_quotes, 'get') else None
+            if not quote:
+                outputs.append(f"No latest crypto quote available for {sym}.")
+                continue
+            outputs.append(
+                _format_quote_data(quote).replace("Latest Quote:", f"Latest Crypto Quote for {sym}:")
+            )
+        return "\n".join(outputs)
+    except Exception as e:
+        return f"Error retrieving latest crypto quote for {symbol}: {str(e)}"
+
+
+@mcp.tool()
+async def get_crypto_latest_bar(
+    symbol: Union[str, List[str]],
+    feed: CryptoFeed = CryptoFeed.US
+) -> str:
+    """
+    Returns the latest minute bar for one or more crypto symbols.
+    """
+    _ensure_clients()
+    try:
+        request_params = CryptoLatestBarRequest(symbol_or_symbols=symbol)
+        latest = crypto_historical_data_client.get_crypto_latest_bar(request_params, feed=feed)
+
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        outputs: List[str] = []
+        mapping_latest_bars = getattr(latest, 'data', None) or latest
+        for sym in symbols_list:
+            bar = mapping_latest_bars.get(sym) if hasattr(mapping_latest_bars, 'get') else None
+            if not bar:
+                outputs.append(f"No latest crypto bar available for {sym}.")
+                continue
+            outputs.append(
+                _format_ohlcv_bar(bar, f"Latest Crypto Bar for {sym}", True)
+            )
+        return "\n".join(outputs)
+    except Exception as e:
+        return f"Error retrieving latest crypto bar for {symbol}: {str(e)}"
+
+
+@mcp.tool()
+async def get_crypto_latest_trade(
+    symbol: Union[str, List[str]],
+    feed: CryptoFeed = CryptoFeed.US
+) -> str:
+    """
+    Returns the latest trade for one or more crypto symbols.
+    """
+    _ensure_clients()
+    try:
+        request_params = CryptoLatestTradeRequest(symbol_or_symbols=symbol)
+        latest = crypto_historical_data_client.get_crypto_latest_trade(request_params, feed=feed)
+
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        outputs: List[str] = []
+        mapping_latest_trades = getattr(latest, 'data', None) or latest
+        for sym in symbols_list:
+            trade = mapping_latest_trades.get(sym) if hasattr(mapping_latest_trades, 'get') else None
+            if not trade:
+                outputs.append(f"No latest crypto trade available for {sym}.")
+                continue
+            formatted = _format_trade_data(trade).replace("Latest Trade:", f"Latest Crypto Trade for {sym}:")
+            outputs.append(formatted)
+        return "\n".join(outputs)
+    except Exception as e:
+        return f"Error retrieving latest crypto trade for {symbol}: {str(e)}"
+
+
+@mcp.tool()
+async def get_crypto_snapshot(
+    symbol: Union[str, List[str]],
+    feed: CryptoFeed = CryptoFeed.US
+) -> str:
+    """
+    Returns a snapshot for one or more crypto symbols including latest trade, quote,
+    latest minute bar, daily and previous daily bars.
+    """
+    _ensure_clients()
+    try:
+        request_params = CryptoSnapshotRequest(symbol_or_symbols=symbol)
+        snapshots = crypto_historical_data_client.get_crypto_snapshot(request_params, feed=feed)
+
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        outputs: List[str] = []
+        mapping_snapshots = getattr(snapshots, 'data', None) or snapshots
+        for sym in symbols_list:
+            snap = mapping_snapshots.get(sym) if hasattr(mapping_snapshots, 'get') else None
+            if not snap:
+                outputs.append(f"No crypto snapshot available for {sym}.")
+                continue
+            parts: List[str] = [f"Crypto Snapshot for {sym}:"]
+            parts.append(_format_ohlcv_bar(getattr(snap, 'minute_bar', None), "Latest Minute Bar", True))
+            parts.append(_format_ohlcv_bar(getattr(snap, 'daily_bar', None), "Latest Daily Bar", False))
+            parts.append(_format_ohlcv_bar(getattr(snap, 'previous_daily_bar', None), "Previous Daily Bar", False))
+            parts.append(_format_quote_data(getattr(snap, 'latest_quote', None)))
+            trade = getattr(snap, 'latest_trade', None)
+            if trade:
+                parts.append(
+                    f"Latest Trade:\n  Price: ${trade.price:.2f}, Size: {trade.size}\n  Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}\n\n"
+                )
+            outputs.append("".join(filter(None, parts)))
+        return "\n".join(outputs)
+    except APIError as api_error:
+        error_message = str(api_error)
+        return f"API Error retrieving crypto snapshots: {error_message}"
+    except Exception as e:
+        return f"Error retrieving crypto snapshots: {str(e)}"
+
+
+@mcp.tool()
+async def get_crypto_latest_orderbook(
+    symbol: Union[str, List[str]],
+    feed: CryptoFeed = CryptoFeed.US
+) -> str:
+    """
+    Returns the latest orderbook for one or more crypto symbols.
+    """
+    _ensure_clients()
+    try:
+        request_params = CryptoLatestOrderbookRequest(symbol_or_symbols=symbol)
+        books = crypto_historical_data_client.get_crypto_latest_orderbook(request_params, feed=feed)
+
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        outputs: List[str] = []
+        mapping_books = getattr(books, 'data', None) or books
+        for sym in symbols_list:
+            ob = mapping_books.get(sym) if hasattr(mapping_books, 'get') else None
+            if not ob:
+                outputs.append(f"No latest crypto orderbook available for {sym}.")
+                continue
+            best_bid = ob.bids[0] if getattr(ob, 'bids', None) else None
+            best_ask = ob.asks[0] if getattr(ob, 'asks', None) else None
+            ts = getattr(ob, 'timestamp', None)
+            ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if ts else ""
+            line = f"Latest Crypto Orderbook for {sym}:\n"
+            if best_bid:
+                line += f"Bid: ${best_bid.price:.6f} x {best_bid.size} | "
+            line += f"Ask: ${best_ask.price:.6f} x {best_ask.size}\n" if best_ask else "No asks available\n"
+            if ts_str:
+                line += f"Timestamp: {ts_str}\n"
+            outputs.append(line)
+        return "\n".join(outputs)
+    except Exception as e:
+        return f"Error retrieving latest crypto orderbook for {symbol}: {str(e)}"
+
+# ============================================================================
+# Options Market Data Tools
+# ============================================================================
+
+@mcp.tool()
+async def get_option_contracts(
+    underlying_symbol: str,
+    expiration_date: Optional[date] = None,
+    expiration_date_gte: Optional[date] = None,
+    expiration_date_lte: Optional[date] = None,
+    expiration_expression: Optional[str] = None,
+    strike_price_gte: Optional[str] = None,
+    strike_price_lte: Optional[str] = None,
+    type: Optional[ContractType] = None,
+    status: Optional[AssetStatus] = None,
+    root_symbol: Optional[str] = None,
+    limit: Optional[int] = None
+) -> str:
+    """
+    Retrieves option contracts - direct mapping to GetOptionContractsRequest.
+    
+    Args:
+        underlying_symbol (str): Underlying asset symbol (e.g., 'SPY', 'AAPL')
+        expiration_date (Optional[date]): Specific expiration date
+        expiration_date_gte (Optional[date]): Expiration date greater than or equal to
+        expiration_date_lte (Optional[date]): Expiration date less than or equal to
+        expiration_expression (Optional[str]): Natural language (e.g., "week of September 2, 2025")
+        strike_price_gte/lte (Optional[str]): Strike price range
+        type (Optional[ContractType]): "call" or "put"
+        status (Optional[AssetStatus]): "active" (default)
+        root_symbol (Optional[str]): Root symbol filter
+        limit (Optional[int]): Maximum number of contracts to return
+    
+    Examples:
+        get_option_contracts("NVDA", expiration_expression="week of September 2, 2025")
+        get_option_contracts("SPY", expiration_date_gte=date(2025,9,1), expiration_date_lte=date(2025,9,5))
+    """
+    _ensure_clients()
+    try:
+        # Handle natural language expression
+        if expiration_expression:
+            parsed = _parse_expiration_expression(expiration_expression)
+            if parsed.get('error'):
+                return f"Error: {parsed['error']}"
+            
+            # Map parsed results directly to API parameters
+            if 'expiration_date' in parsed:
+                expiration_date = parsed['expiration_date']
+            elif 'expiration_date_gte' in parsed:
+                expiration_date_gte = parsed['expiration_date_gte']
+                expiration_date_lte = parsed['expiration_date_lte']
+        
+        # Create API request - direct mapping like your baseline example
+        request = GetOptionContractsRequest(
+            underlying_symbols=[underlying_symbol],
+            expiration_date=expiration_date,
+            expiration_date_gte=expiration_date_gte,
+            expiration_date_lte=expiration_date_lte,
+            strike_price_gte=strike_price_gte,
+            strike_price_lte=strike_price_lte,
+            type=type,
+            status=status,
+            root_symbol=root_symbol,
+            limit=limit
+        )
+        
+        # Execute API call
+        response = trade_client.get_option_contracts(request)
+        
+        if not response or not response.option_contracts:
+            return f"No option contracts found for {underlying_symbol}."
+        
+        # Format results
+        contracts = response.option_contracts
+        result = [f"Option Contracts for {underlying_symbol}:", "=" * 50]
+
+        for contract in contracts:  # Show ALL contracts returned by API
+            contract_type = "Call" if contract.type == ContractType.CALL else "Put"
+            result.extend([
+                f"ID: {contract.id}",
+                f"Symbol: {contract.symbol}",
+                f"  Name: {contract.name}",
+                f"  Type: {contract_type}",
+                f"  Strike: ${contract.strike_price}",
+                f"  Expiration: {contract.expiration_date}",
+                f"  Style: {contract.style}",
+                f"  Contract Size: {contract.size}",
+                f"  Open Interest: {contract.open_interest or 'N/A'}",
+                f"  Open Interest Date: {contract.open_interest_date or 'N/A'}",
+                f"  Close Price: ${contract.close_price or 'N/A'}",
+                f"  Close Price Date: {contract.close_price_date or 'N/A'}",
+                f"  Tradable: {contract.tradable}",
+                f"  Status: {contract.status}",
+                f"  Root Symbol: {contract.root_symbol}",
+                f"  Underlying Asset ID: {contract.underlying_asset_id}",
+                f"  Underlying Symbol: {contract.underlying_symbol}",
+                "-" * 40
+            ])
+
+        result.append(f"\nTotal: {len(contracts)} contracts")
+        return "\n".join(result)
+        
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+@mcp.tool()
+async def get_option_latest_quote(
+    symbol: str,
+    feed: Optional[OptionsFeed] = None
+) -> str:
+    """
+    Retrieves and formats the latest quote for an option contract. This endpoint returns real-time
+    pricing and market data, including bid/ask prices, sizes, and exchange information.
+    
+    Args:
+        symbol (str): The option contract symbol (e.g., 'AAPL230616C00150000')
+        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative).
+            Default: opra if the user has the options subscription, indicative otherwise.
+    
+    Returns:
+        str: Formatted string containing the latest quote information including:
+            - Ask Price and Ask Size
+            - Bid Price and Bid Size
+            - Ask Exchange and Bid Exchange
+            - Trade Conditions
+            - Tape Information
+            - Timestamp (in UTC)
+    
+    Note:
+        This endpoint returns real-time market data. For contract specifications and static data,
+        use get_option_contracts instead.
+    """
+    _ensure_clients()
+    try:
+        # Create the request object
+        request = OptionLatestQuoteRequest(
+            symbol_or_symbols=symbol,
+            feed=feed
+        )
+        
+        # Get the latest quote
+        quotes = option_historical_data_client.get_option_latest_quote(request)
+        
+        if symbol in quotes:
+            quote = quotes[symbol]
+            return f"""
+                Latest Quote for {symbol}:
+                ------------------------
+                Ask Price: ${float(quote.ask_price):.2f}
+                Ask Size: {quote.ask_size}
+                Ask Exchange: {quote.ask_exchange}
+                Bid Price: ${float(quote.bid_price):.2f}
+                Bid Size: {quote.bid_size}
+                Bid Exchange: {quote.bid_exchange}
+                Conditions: {quote.conditions}
+                Tape: {quote.tape}
+                Timestamp: {quote.timestamp}
+                """
+        else:
+            return f"No quote data found for {symbol}."
+            
+    except Exception as e:
+        return f"Error fetching option quote: {str(e)}"
+
+
+@mcp.tool()
+async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Optional[OptionsFeed] = None) -> str:
+    """
+    Retrieves comprehensive snapshots of option contracts including latest trade, quote, implied volatility, and Greeks.
+    This endpoint provides a complete view of an option's current market state and theoretical values.
+    
+    Args:
+        symbol_or_symbols (Union[str, List[str]]): Single option symbol or list of option symbols
+            (e.g., 'AAPL250613P00205000')
+        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative).
+            Default: opra if the user has the options subscription, indicative otherwise.
+    
+    Returns:
+        str: Formatted string containing a comprehensive snapshot including:
+            - Symbol Information
+            - Latest Quote:
+                * Bid/Ask Prices and Sizes
+                * Exchange Information
+                * Trade Conditions
+                * Tape Information
+                * Timestamp (UTC)
+            - Latest Trade:
+                * Price and Size
+                * Exchange and Conditions
+                * Trade ID
+                * Timestamp (UTC)
+            - Implied Volatility (as percentage)
+            - Greeks:
+                * Delta (directional risk)
+                * Gamma (delta sensitivity)
+                * Rho (interest rate sensitivity)
+                * Theta (time decay)
+                * Vega (volatility sensitivity)
+    """
+    _ensure_clients()
+    try:
+        # Create snapshot request
+        request = OptionSnapshotRequest(
+            symbol_or_symbols=symbol_or_symbols,
+            feed=feed
+        )
+        
+        # Get snapshots
+        snapshots = option_historical_data_client.get_option_snapshot(request)
+        
+        # Format the response
+        result = "Option Snapshots:\n"
+        result += "================\n\n"
+        
+        # Handle both single symbol and list of symbols
+        symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else symbol_or_symbols
+        
+        for symbol in symbols:
+            snapshot = snapshots.get(symbol)
+            if snapshot is None:
+                result += f"No data available for {symbol}\n"
+                continue
+                
+            result += f"Symbol: {symbol}\n"
+            result += "-----------------\n"
+            
+            # Latest Quote
+            if snapshot.latest_quote:
+                quote = snapshot.latest_quote
+                result += f"Latest Quote:\n"
+                result += f"  Bid Price: ${quote.bid_price:.6f}\n"
+                result += f"  Bid Size: {quote.bid_size}\n"
+                result += f"  Bid Exchange: {quote.bid_exchange}\n"
+                result += f"  Ask Price: ${quote.ask_price:.6f}\n"
+                result += f"  Ask Size: {quote.ask_size}\n"
+                result += f"  Ask Exchange: {quote.ask_exchange}\n"
+                if quote.conditions:
+                    result += f"  Conditions: {quote.conditions}\n"
+                if quote.tape:
+                    result += f"  Tape: {quote.tape}\n"
+                result += f"  Timestamp: {quote.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f %Z')}\n"
+            
+            # Latest Trade
+            if snapshot.latest_trade:
+                trade = snapshot.latest_trade
+                result += f"Latest Trade:\n"
+                result += f"  Price: ${trade.price:.6f}\n"
+                result += f"  Size: {trade.size}\n"
+                if trade.exchange:
+                    result += f"  Exchange: {trade.exchange}\n"
+                if trade.conditions:
+                    result += f"  Conditions: {trade.conditions}\n"
+                if trade.tape:
+                    result += f"  Tape: {trade.tape}\n"
+                if trade.id:
+                    result += f"  Trade ID: {trade.id}\n"
+                result += f"  Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f %Z')}\n"
+            
+            # Implied Volatility
+            if snapshot.implied_volatility is not None:
+                result += f"Implied Volatility: {snapshot.implied_volatility:.2%}\n"
+            
+            # Greeks
+            if snapshot.greeks:
+                greeks = snapshot.greeks
+                result += f"Greeks:\n"
+                result += f"  Delta: {greeks.delta:.4f}\n"
+                result += f"  Gamma: {greeks.gamma:.4f}\n"
+                result += f"  Rho: {greeks.rho:.4f}\n"
+                result += f"  Theta: {greeks.theta:.4f}\n"
+                result += f"  Vega: {greeks.vega:.4f}\n"
+            
+            result += "\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"Error retrieving option snapshots: {str(e)}"
 
 # ============================================================================
 # Order Management Tools
@@ -1684,1010 +2541,8 @@ async def exercise_options_position(symbol_or_contract_id: str) -> str:
     except Exception as e:
         return f"Error exercising option contract '{symbol_or_contract_id}': {str(e)}"
 
-
-# ============================================================================
-# Asset Information Tools
-# ============================================================================
-
-@mcp.tool()
-async def get_asset_info(symbol: str) -> str:
-    """
-    Retrieves and formats detailed information about a specific asset.
-    
-    Args:
-        symbol (str): The symbol of the asset to get information for
-    
-    Returns:
-        str: Formatted string containing asset details including:
-            - Name
-            - Exchange
-            - Class
-            - Status
-            - Trading Properties
-    """
-    _ensure_clients()
-    try:
-        asset = trade_client.get_asset(symbol)
-        return f"""
-                Asset Information for {symbol}:
-                ----------------------------
-                Name: {asset.name}
-                Exchange: {asset.exchange}
-                Class: {asset.asset_class}
-                Status: {asset.status}
-                Tradable: {'Yes' if asset.tradable else 'No'}
-                Marginable: {'Yes' if asset.marginable else 'No'}
-                Shortable: {'Yes' if asset.shortable else 'No'}
-                Easy to Borrow: {'Yes' if asset.easy_to_borrow else 'No'}
-                Fractionable: {'Yes' if asset.fractionable else 'No'}
-                """
-    except Exception as e:
-        return f"Error fetching asset information: {str(e)}"
-
-@mcp.tool()
-async def get_all_assets(
-    status: Optional[str] = None,
-    asset_class: Optional[str] = None,
-    exchange: Optional[str] = None,
-    attributes: Optional[str] = None
-) -> str:
-    """
-    Get all available assets with optional filtering.
-    
-    Args:
-        status: Filter by asset status (e.g., 'active', 'inactive')
-        asset_class: Filter by asset class (e.g., 'us_equity', 'crypto')
-        exchange: Filter by exchange (e.g., 'NYSE', 'NASDAQ')
-        attributes: Comma-separated values to query for multiple attributes
-    """
-    _ensure_clients()
-    try:
-        # Create filter if any parameters are provided
-        filter_params = None
-        if any([status, asset_class, exchange, attributes]):
-            filter_params = GetAssetsRequest(
-                status=status,
-                asset_class=asset_class,
-                exchange=exchange,
-                attributes=attributes
-            )
-        
-        # Get all assets
-        assets = trade_client.get_all_assets(filter_params)
-        
-        if not assets:
-            return "No assets found matching the criteria."
-        
-        # Format the response
-        response_parts = ["Available Assets:"]
-        response_parts.append("-" * 30)
-        
-        for asset in assets:
-            response_parts.append(f"Symbol: {asset.symbol}")
-            response_parts.append(f"Name: {asset.name}")
-            response_parts.append(f"Exchange: {asset.exchange}")
-            response_parts.append(f"Class: {asset.asset_class}")
-            response_parts.append(f"Status: {asset.status}")
-            response_parts.append(f"Tradable: {'Yes' if asset.tradable else 'No'}")
-            response_parts.append("-" * 30)
-        
-        return "\n".join(response_parts)
-        
-    except Exception as e:
-        return f"Error fetching assets: {str(e)}"
-
-# ============================================================================
-# Watchlist Management Tools
-# ============================================================================
-
-@mcp.tool()
-async def create_watchlist(name: str, symbols: List[str]) -> str:
-    """
-    Creates a new watchlist with specified symbols.
-    
-    Args:
-        name (str): Name of the watchlist
-        symbols (List[str]): List of symbols to include in the watchlist
-    
-    Returns:
-        str: Confirmation message with watchlist creation status
-    """
-    _ensure_clients()
-    try:
-        watchlist_data = CreateWatchlistRequest(name=name, symbols=symbols)
-        watchlist = trade_client.create_watchlist(watchlist_data)
-        return f"Watchlist '{name}' created successfully with {len(symbols)} symbols."
-    except Exception as e:
-        return f"Error creating watchlist: {str(e)}"
-
-@mcp.tool()
-async def get_watchlists() -> str:
-    """Get all watchlists for the account."""
-    _ensure_clients()
-    try:
-        watchlists = trade_client.get_watchlists()
-        result = "Watchlists:\n------------\n"
-        for wl in watchlists:
-            result += f"Name: {wl.name}\n"
-            result += f"ID: {wl.id}\n"
-            result += f"Created: {wl.created_at}\n"
-            result += f"Updated: {wl.updated_at}\n"
-            # Use wl.symbols, fallback to empty list if missing
-            result += f"Symbols: {', '.join(getattr(wl, 'symbols', []) or [])}\n\n"
-        return result
-    except Exception as e:
-        return f"Error fetching watchlists: {str(e)}"
-
-@mcp.tool()
-async def update_watchlist(watchlist_id: str, name: str = None, symbols: List[str] = None) -> str:
-    """Update an existing watchlist."""
-    _ensure_clients()
-    try:
-        update_request = UpdateWatchlistRequest(name=name, symbols=symbols)
-        watchlist = trade_client.update_watchlist_by_id(watchlist_id, update_request)
-        return f"Watchlist updated successfully: {watchlist.name}"
-    except Exception as e:
-        return f"Error updating watchlist: {str(e)}"
-
-# ============================================================================
-# Market Information Tools
-# ============================================================================
-
-@mcp.tool()
-async def get_market_clock() -> str:
-    """
-    Retrieves and formats current market status and next open/close times.
-    
-    Returns:
-        str: Formatted string containing:
-            - Current Time
-            - Market Open Status
-            - Next Open Time
-            - Next Close Time
-    """
-    _ensure_clients()
-    try:
-        clock = trade_client.get_clock()
-        return f"""
-                Market Status:
-                -------------
-                Current Time: {clock.timestamp}
-                Is Open: {'Yes' if clock.is_open else 'No'}
-                Next Open: {clock.next_open}
-                Next Close: {clock.next_close}
-                """
-    except Exception as e:
-        return f"Error fetching market clock: {str(e)}"
-
-@mcp.tool()
-async def get_market_calendar(start_date: str, end_date: str) -> str:
-    """
-    Retrieves and formats market calendar for specified date range.
-    
-    Args:
-        start_date (str): Start date in YYYY-MM-DD format
-        end_date (str): End date in YYYY-MM-DD format
-    
-    Returns:
-        str: Formatted string containing market calendar information
-    """
-    _ensure_clients()
-    try:
-        # Convert string dates to date objects
-        start_dt = _parse_date_ymd(start_date)
-        end_dt = _parse_date_ymd(end_date)
-        
-        # Create the request object with the correct parameters
-        calendar_request = GetCalendarRequest(start=start_dt, end=end_dt)
-        calendar = trade_client.get_calendar(calendar_request)
-        
-        result = f"Market Calendar ({start_date} to {end_date}):\n----------------------------\n"
-        for day in calendar:
-            result += f"Date: {day.date}, Open: {day.open}, Close: {day.close}\n"
-        return result
-    except Exception as e:
-        return f"Error fetching market calendar: {str(e)}"
-
-# ============================================================================
-# Corporate Actions Tools
-# ============================================================================
-
-@mcp.tool()
-async def get_corporate_announcements(
-    ca_types: Optional[List[CorporateActionsType]] = None,
-    start: Optional[date] = None,
-    end: Optional[date] = None,
-    symbols: Optional[List[str]] = None,
-    cusips: Optional[List[str]] = None,
-    ids: Optional[List[str]] = None,
-    limit: Optional[int] = 1000,
-    sort: Optional[str] = "asc"
-) -> str:
-    """
-    Retrieves and formats corporate action announcements.
-    
-    Args:
-        ca_types (Optional[List[CorporateActionsType]]): List of corporate action types to filter by (default: all types)
-            Available types from https://alpaca.markets/sdks/python/api_reference/data/enums.html#corporateactionstype:
-            - CorporateActionsType.REVERSE_SPLIT: Reverse split
-            - CorporateActionsType.FORWARD_SPLIT: Forward split  
-            - CorporateActionsType.UNIT_SPLIT: Unit split
-            - CorporateActionsType.CASH_DIVIDEND: Cash dividend
-            - CorporateActionsType.STOCK_DIVIDEND: Stock dividend
-            - CorporateActionsType.SPIN_OFF: Spin off
-            - CorporateActionsType.CASH_MERGER: Cash merger
-            - CorporateActionsType.STOCK_MERGER: Stock merger
-            - CorporateActionsType.STOCK_AND_CASH_MERGER: Stock and cash merger
-            - CorporateActionsType.REDEMPTION: Redemption
-            - CorporateActionsType.NAME_CHANGE: Name change
-            - CorporateActionsType.WORTHLESS_REMOVAL: Worthless removal
-            - CorporateActionsType.RIGHTS_DISTRIBUTION: Rights distribution
-        start (Optional[date]): Start date for the announcements (default: current day)
-        end (Optional[date]): End date for the announcements (default: current day)
-        symbols (Optional[List[str]]): Optional list of stock symbols to filter by
-        cusips (Optional[List[str]]): Optional list of CUSIPs to filter by
-        ids (Optional[List[str]]): Optional list of corporate action IDs (mutually exclusive with other filters)
-        limit (Optional[int]): Maximum number of results to return (default: 1000)
-        sort (Optional[str]): Sort order (asc or desc, default: asc)
-    
-    Returns:
-        str: Formatted string containing corporate announcement details
-        
-    References:
-        - API Documentation: https://docs.alpaca.markets/reference/corporateactions-1
-        - CorporateActionsType Enum: https://alpaca.markets/sdks/python/api_reference/data/enums.html#corporateactionstype
-        - CorporateActionsRequest: https://alpaca.markets/sdks/python/api_reference/data/corporate_actions/requests.html#corporateactionsrequest
-    """
-    _ensure_clients()
-    try:
-        request = CorporateActionsRequest(
-            symbols=symbols,
-            cusips=cusips,
-            types=ca_types,
-            start=start,
-            end=end,
-            ids=ids,
-            limit=limit,
-            sort=sort
-        )
-        announcements = corporate_actions_client.get_corporate_actions(request)
-        
-        if not announcements or not announcements.data:
-            return "No corporate announcements found for the specified criteria."
-        
-        result = "Corporate Announcements:\n----------------------\n"
-        
-        # The response.data contains action types as keys (e.g., 'cash_dividends', 'forward_splits')
-        # Each value is a list of corporate actions
-        for action_type, actions_list in announcements.data.items():
-            if not actions_list:
-                continue
-                
-            result += f"\n{action_type.replace('_', ' ').title()}:\n"
-            result += "=" * 30 + "\n"
-            
-            for action in actions_list:
-                # Group by symbol for better organization
-                symbol = getattr(action, 'symbol', 'Unknown')
-                result += f"\nSymbol: {symbol}\n"
-                result += "-" * 15 + "\n"
-                
-                # Display action details based on available attributes
-                if hasattr(action, 'corporate_action_type'):
-                    result += f"Type: {action.corporate_action_type}\n"
-                
-                if hasattr(action, 'ex_date') and action.ex_date:
-                    result += f"Ex Date: {action.ex_date}\n"
-                    
-                if hasattr(action, 'record_date') and action.record_date:
-                    result += f"Record Date: {action.record_date}\n"
-                    
-                if hasattr(action, 'payable_date') and action.payable_date:
-                    result += f"Payable Date: {action.payable_date}\n"
-                    
-                if hasattr(action, 'process_date') and action.process_date:
-                    result += f"Process Date: {action.process_date}\n"
-                
-                # Cash dividend specific fields
-                if hasattr(action, 'rate') and action.rate:
-                    result += f"Rate: ${action.rate:.6f}\n"
-                    
-                if hasattr(action, 'foreign') and hasattr(action, 'special'):
-                    result += f"Foreign: {action.foreign}, Special: {action.special}\n"
-                
-                # Split specific fields
-                if hasattr(action, 'old_rate') and action.old_rate:
-                    result += f"Old Rate: {action.old_rate}\n"
-                    
-                if hasattr(action, 'new_rate') and action.new_rate:
-                    result += f"New Rate: {action.new_rate}\n"
-                
-                # Due bill dates
-                if hasattr(action, 'due_bill_on_date') and action.due_bill_on_date:
-                    result += f"Due Bill On Date: {action.due_bill_on_date}\n"
-                    
-                if hasattr(action, 'due_bill_off_date') and action.due_bill_off_date:
-                    result += f"Due Bill Off Date: {action.due_bill_off_date}\n"
-                
-                result += "\n"
-        return result
-    except Exception as e:
-        return f"Error fetching corporate announcements: {str(e)}"
-
-# ============================================================================
-# Options Trading Helper Functions
-# ============================================================================
-
-def _parse_expiration_expression(expression: str) -> Dict[str, Any]:
-    """
-    Parse natural language expiration expressions into date parameters.
-    
-    Args:
-        expression (str): Natural language expression like "week of September 7, 2025"
-    
-    Returns:
-        Dict[str, Any]: Parsed parameters or error message
-    """
-    import re
-    from datetime import datetime, timedelta
-    
-    expression = expression.strip().lower()
-    
-    # Pattern for "week of [date]"
-    week_pattern = r'week\s+of\s+(\w+)\s+(\d{1,2}),?\s+(\d{4})'
-    week_match = re.search(week_pattern, expression)
-    
-    if week_match:
-        month_name, day_str, year_str = week_match.groups()
-        try:
-            # Parse the date
-            month_num = _month_name_to_number(month_name)
-            day = int(day_str)
-            year = int(year_str)
-            
-            # Create the anchor date
-            anchor_date = datetime(year, month_num, day).date()
-            
-            # Calculate the week range (Monday to Friday trading days)
-            # Find the Monday of the week containing the anchor date
-            days_since_monday = anchor_date.weekday()  # Monday=0, Sunday=6
-            week_start = anchor_date - timedelta(days=days_since_monday)  # Go to Monday
-            week_end = week_start + timedelta(days=4)  # Friday
-            
-            return {
-                'expiration_date_gte': week_start,
-                'expiration_date_lte': week_end,
-                'description': f"week of {month_name.title()} {day}, {year}"
-            }
-            
-        except (ValueError, AttributeError) as e:
-            return {'error': f"Invalid date in expression: {str(e)}"}
-    
-    # Pattern for "month of [month] [year]"
-    month_pattern = r'month\s+of\s+(\w+)\s+(\d{4})'
-    month_match = re.search(month_pattern, expression)
-    
-    if month_match:
-        month_name, year_str = month_match.groups()
-        try:
-            month_num = _month_name_to_number(month_name)
-            year = int(year_str)
-            
-            start_date = datetime(year, month_num, 1).date()
-            if month_num == 12:
-                end_date = datetime(year + 1, 1, 1).date() - timedelta(days=1)
-            else:
-                end_date = datetime(year, month_num + 1, 1).date() - timedelta(days=1)
-
-            return {
-                'expiration_date_gte': start_date,
-                'expiration_date_lte': end_date,
-                'description': f"month of {month_name.title()} {year}"
-            }
-            
-        except (ValueError, AttributeError) as e:
-            return {'error': f"Invalid month/year in expression: {str(e)}"}
-    
-    # Pattern for specific date like "September 7, 2025"
-    date_pattern = r'(\w+)\s+(\d{1,2}),?\s+(\d{4})'
-    date_match = re.search(date_pattern, expression)
-    
-    if date_match:
-        month_name, day_str, year_str = date_match.groups()
-        try:
-            month_num = _month_name_to_number(month_name)
-            day = int(day_str)
-            year = int(year_str)
-            
-            specific_date = datetime(year, month_num, day).date()
-            
-            return {
-                'expiration_date': specific_date,
-                'description': f"{month_name.title()} {day}, {year}"
-            }
-            
-        except (ValueError, AttributeError) as e:
-            return {'error': f"Invalid date in expression: {str(e)}"}
-    
-    return {'error': f"Unable to parse expression '{expression}'. Supported formats: 'week of September 7, 2025', 'month of December 2025', 'September 7, 2025'"}
-
 # ============================================================================
 # Options Trading Tools
-# ============================================================================
-
-@mcp.tool()
-async def get_option_contracts(
-    underlying_symbol: str,
-    expiration_date: Optional[date] = None,
-    expiration_date_gte: Optional[date] = None,
-    expiration_date_lte: Optional[date] = None,
-    expiration_expression: Optional[str] = None,
-    strike_price_gte: Optional[str] = None,
-    strike_price_lte: Optional[str] = None,
-    type: Optional[ContractType] = None,
-    status: Optional[AssetStatus] = None,
-    root_symbol: Optional[str] = None,
-    limit: Optional[int] = None
-) -> str:
-    """
-    Retrieves option contracts - direct mapping to GetOptionContractsRequest.
-    
-    Args:
-        underlying_symbol (str): Underlying asset symbol (e.g., 'SPY', 'AAPL')
-        expiration_date (Optional[date]): Specific expiration date
-        expiration_date_gte (Optional[date]): Expiration date greater than or equal to
-        expiration_date_lte (Optional[date]): Expiration date less than or equal to
-        expiration_expression (Optional[str]): Natural language (e.g., "week of September 2, 2025")
-        strike_price_gte/lte (Optional[str]): Strike price range
-        type (Optional[ContractType]): "call" or "put"
-        status (Optional[AssetStatus]): "active" (default)
-        root_symbol (Optional[str]): Root symbol filter
-        limit (Optional[int]): Maximum number of contracts to return
-    
-    Examples:
-        get_option_contracts("NVDA", expiration_expression="week of September 2, 2025")
-        get_option_contracts("SPY", expiration_date_gte=date(2025,9,1), expiration_date_lte=date(2025,9,5))
-    """
-    _ensure_clients()
-    try:
-        # Handle natural language expression
-        if expiration_expression:
-            parsed = _parse_expiration_expression(expiration_expression)
-            if parsed.get('error'):
-                return f"Error: {parsed['error']}"
-            
-            # Map parsed results directly to API parameters
-            if 'expiration_date' in parsed:
-                expiration_date = parsed['expiration_date']
-            elif 'expiration_date_gte' in parsed:
-                expiration_date_gte = parsed['expiration_date_gte']
-                expiration_date_lte = parsed['expiration_date_lte']
-        
-        # Create API request - direct mapping like your baseline example
-        request = GetOptionContractsRequest(
-            underlying_symbols=[underlying_symbol],
-            expiration_date=expiration_date,
-            expiration_date_gte=expiration_date_gte,
-            expiration_date_lte=expiration_date_lte,
-            strike_price_gte=strike_price_gte,
-            strike_price_lte=strike_price_lte,
-            type=type,
-            status=status,
-            root_symbol=root_symbol,
-            limit=limit
-        )
-        
-        # Execute API call
-        response = trade_client.get_option_contracts(request)
-        
-        if not response or not response.option_contracts:
-            return f"No option contracts found for {underlying_symbol}."
-        
-        # Format results
-        contracts = response.option_contracts
-        result = [f"Option Contracts for {underlying_symbol}:", "=" * 50]
-
-        for contract in contracts:  # Show ALL contracts returned by API
-            contract_type = "Call" if contract.type == ContractType.CALL else "Put"
-            result.extend([
-                f"ID: {contract.id}",
-                f"Symbol: {contract.symbol}",
-                f"  Name: {contract.name}",
-                f"  Type: {contract_type}",
-                f"  Strike: ${contract.strike_price}",
-                f"  Expiration: {contract.expiration_date}",
-                f"  Style: {contract.style}",
-                f"  Contract Size: {contract.size}",
-                f"  Open Interest: {contract.open_interest or 'N/A'}",
-                f"  Open Interest Date: {contract.open_interest_date or 'N/A'}",
-                f"  Close Price: ${contract.close_price or 'N/A'}",
-                f"  Close Price Date: {contract.close_price_date or 'N/A'}",
-                f"  Tradable: {contract.tradable}",
-                f"  Status: {contract.status}",
-                f"  Root Symbol: {contract.root_symbol}",
-                f"  Underlying Asset ID: {contract.underlying_asset_id}",
-                f"  Underlying Symbol: {contract.underlying_symbol}",
-                "-" * 40
-            ])
-
-        result.append(f"\nTotal: {len(contracts)} contracts")
-        return "\n".join(result)
-        
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-@mcp.tool()
-async def get_option_latest_quote(
-    symbol: str,
-    feed: Optional[OptionsFeed] = None
-) -> str:
-    """
-    Retrieves and formats the latest quote for an option contract. This endpoint returns real-time
-    pricing and market data, including bid/ask prices, sizes, and exchange information.
-    
-    Args:
-        symbol (str): The option contract symbol (e.g., 'AAPL230616C00150000')
-        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative).
-            Default: opra if the user has the options subscription, indicative otherwise.
-    
-    Returns:
-        str: Formatted string containing the latest quote information including:
-            - Ask Price and Ask Size
-            - Bid Price and Bid Size
-            - Ask Exchange and Bid Exchange
-            - Trade Conditions
-            - Tape Information
-            - Timestamp (in UTC)
-    
-    Note:
-        This endpoint returns real-time market data. For contract specifications and static data,
-        use get_option_contracts instead.
-    """
-    _ensure_clients()
-    try:
-        # Create the request object
-        request = OptionLatestQuoteRequest(
-            symbol_or_symbols=symbol,
-            feed=feed
-        )
-        
-        # Get the latest quote
-        quotes = option_historical_data_client.get_option_latest_quote(request)
-        
-        if symbol in quotes:
-            quote = quotes[symbol]
-            return f"""
-                Latest Quote for {symbol}:
-                ------------------------
-                Ask Price: ${float(quote.ask_price):.2f}
-                Ask Size: {quote.ask_size}
-                Ask Exchange: {quote.ask_exchange}
-                Bid Price: ${float(quote.bid_price):.2f}
-                Bid Size: {quote.bid_size}
-                Bid Exchange: {quote.bid_exchange}
-                Conditions: {quote.conditions}
-                Tape: {quote.tape}
-                Timestamp: {quote.timestamp}
-                """
-        else:
-            return f"No quote data found for {symbol}."
-            
-    except Exception as e:
-        return f"Error fetching option quote: {str(e)}"
-
-
-@mcp.tool()
-async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Optional[OptionsFeed] = None) -> str:
-    """
-    Retrieves comprehensive snapshots of option contracts including latest trade, quote, implied volatility, and Greeks.
-    This endpoint provides a complete view of an option's current market state and theoretical values.
-    
-    Args:
-        symbol_or_symbols (Union[str, List[str]]): Single option symbol or list of option symbols
-            (e.g., 'AAPL250613P00205000')
-        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative).
-            Default: opra if the user has the options subscription, indicative otherwise.
-    
-    Returns:
-        str: Formatted string containing a comprehensive snapshot including:
-            - Symbol Information
-            - Latest Quote:
-                * Bid/Ask Prices and Sizes
-                * Exchange Information
-                * Trade Conditions
-                * Tape Information
-                * Timestamp (UTC)
-            - Latest Trade:
-                * Price and Size
-                * Exchange and Conditions
-                * Trade ID
-                * Timestamp (UTC)
-            - Implied Volatility (as percentage)
-            - Greeks:
-                * Delta (directional risk)
-                * Gamma (delta sensitivity)
-                * Rho (interest rate sensitivity)
-                * Theta (time decay)
-                * Vega (volatility sensitivity)
-    """
-    _ensure_clients()
-    try:
-        # Create snapshot request
-        request = OptionSnapshotRequest(
-            symbol_or_symbols=symbol_or_symbols,
-            feed=feed
-        )
-        
-        # Get snapshots
-        snapshots = option_historical_data_client.get_option_snapshot(request)
-        
-        # Format the response
-        result = "Option Snapshots:\n"
-        result += "================\n\n"
-        
-        # Handle both single symbol and list of symbols
-        symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else symbol_or_symbols
-        
-        for symbol in symbols:
-            snapshot = snapshots.get(symbol)
-            if snapshot is None:
-                result += f"No data available for {symbol}\n"
-                continue
-                
-            result += f"Symbol: {symbol}\n"
-            result += "-----------------\n"
-            
-            # Latest Quote
-            if snapshot.latest_quote:
-                quote = snapshot.latest_quote
-                result += f"Latest Quote:\n"
-                result += f"  Bid Price: ${quote.bid_price:.6f}\n"
-                result += f"  Bid Size: {quote.bid_size}\n"
-                result += f"  Bid Exchange: {quote.bid_exchange}\n"
-                result += f"  Ask Price: ${quote.ask_price:.6f}\n"
-                result += f"  Ask Size: {quote.ask_size}\n"
-                result += f"  Ask Exchange: {quote.ask_exchange}\n"
-                if quote.conditions:
-                    result += f"  Conditions: {quote.conditions}\n"
-                if quote.tape:
-                    result += f"  Tape: {quote.tape}\n"
-                result += f"  Timestamp: {quote.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f %Z')}\n"
-            
-            # Latest Trade
-            if snapshot.latest_trade:
-                trade = snapshot.latest_trade
-                result += f"Latest Trade:\n"
-                result += f"  Price: ${trade.price:.6f}\n"
-                result += f"  Size: {trade.size}\n"
-                if trade.exchange:
-                    result += f"  Exchange: {trade.exchange}\n"
-                if trade.conditions:
-                    result += f"  Conditions: {trade.conditions}\n"
-                if trade.tape:
-                    result += f"  Tape: {trade.tape}\n"
-                if trade.id:
-                    result += f"  Trade ID: {trade.id}\n"
-                result += f"  Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f %Z')}\n"
-            
-            # Implied Volatility
-            if snapshot.implied_volatility is not None:
-                result += f"Implied Volatility: {snapshot.implied_volatility:.2%}\n"
-            
-            # Greeks
-            if snapshot.greeks:
-                greeks = snapshot.greeks
-                result += f"Greeks:\n"
-                result += f"  Delta: {greeks.delta:.4f}\n"
-                result += f"  Gamma: {greeks.gamma:.4f}\n"
-                result += f"  Rho: {greeks.rho:.4f}\n"
-                result += f"  Theta: {greeks.theta:.4f}\n"
-                result += f"  Vega: {greeks.vega:.4f}\n"
-            
-            result += "\n"
-        
-        return result
-        
-    except Exception as e:
-        return f"Error retrieving option snapshots: {str(e)}"
-
-# ============================================================================
-# Options Trading Helper Functions
-# ============================================================================
-
-def _validate_option_order_inputs(legs: List[Dict[str, Any]], quantity: int, time_in_force: Union[str, TimeInForce]) -> Optional[str]:
-    """Validate inputs for option order placement."""
-    if not legs:
-        return "Error: No option legs provided"
-    if len(legs) > 4:
-        return "Error: Maximum of 4 legs allowed for option orders"
-    if quantity <= 0:
-        return "Error: Quantity must be positive"
-    
-    # Handle both string and enum inputs
-    if isinstance(time_in_force, str):
-        if time_in_force.lower() != "day":
-            return "Error: Only 'day' time_in_force is supported for options trading"
-    elif isinstance(time_in_force, TimeInForce):
-        if time_in_force != TimeInForce.DAY:
-            return "Error: Only DAY time_in_force is supported for options trading"
-    else:
-        return f"Error: Invalid time_in_force type: {type(time_in_force)}. Must be string or TimeInForce enum."
-    
-    return None
-
-def _convert_order_class_string(order_class: Optional[Union[str, OrderClass]]) -> Union[OrderClass, str]:
-    """Convert order class string to enum if needed."""
-    if order_class is None:
-        return order_class
-    if isinstance(order_class, OrderClass):
-        return order_class
-    if isinstance(order_class, str):
-        order_class_upper = order_class.upper()
-        class_mapping = {
-            'SIMPLE': OrderClass.SIMPLE,
-            'BRACKET': OrderClass.BRACKET,
-            'OCO': OrderClass.OCO,
-            'OTO': OrderClass.OTO,
-            'MLEG': OrderClass.MLEG
-        }
-        if order_class_upper in class_mapping:
-            return class_mapping[order_class_upper]
-        else:
-            return f"Invalid order class: {order_class}. Must be one of: simple, bracket, oco, oto, mleg"
-    else:
-        return f"Invalid order class type: {type(order_class)}. Must be string or OrderClass enum."
-
-def _process_option_legs(legs: List[Dict[str, Any]]) -> Union[List[OptionLegRequest], str]:
-    """Convert leg dictionaries to OptionLegRequest objects."""
-    order_legs = []
-    for leg in legs:
-        # Validate ratio_qty
-        if not isinstance(leg['ratio_qty'], int) or leg['ratio_qty'] <= 0:
-            return f"Error: Invalid ratio_qty for leg {leg['symbol']}. Must be positive integer."
-        
-        # Convert side string to enum
-        if leg['side'].lower() == "buy":
-            order_side = OrderSide.BUY
-        elif leg['side'].lower() == "sell":
-            order_side = OrderSide.SELL
-        else:
-            return f"Invalid order side: {leg['side']}. Must be 'buy' or 'sell'."
-        
-        order_legs.append(OptionLegRequest(
-            symbol=leg['symbol'],
-            side=order_side,
-            ratio_qty=leg['ratio_qty']
-        ))
-    return order_legs
-
-def _create_option_market_order_request(
-    order_legs: List[OptionLegRequest], 
-    order_class: OrderClass, 
-    quantity: int,
-    time_in_force: TimeInForce,
-    extended_hours: bool
-) -> MarketOrderRequest:
-    """Create the appropriate MarketOrderRequest based on order class."""
-    if order_class == OrderClass.MLEG:
-        return MarketOrderRequest(
-            qty=quantity,
-            order_class=order_class,
-            time_in_force=time_in_force,
-            extended_hours=extended_hours,
-            client_order_id=f"mcp_opt_{int(time.time())}",
-            type=OrderType.MARKET,
-            legs=order_legs
-        )
-    else:
-        # For single-leg orders
-        return MarketOrderRequest(
-            symbol=order_legs[0].symbol,
-            qty=quantity,
-            side=order_legs[0].side,
-            order_class=order_class,
-            time_in_force=time_in_force,
-            extended_hours=extended_hours,
-            client_order_id=f"mcp_opt_{int(time.time())}",
-            type=OrderType.MARKET
-        )
-
-def _format_option_order_response(order: Order, order_class: OrderClass, order_legs: List[OptionLegRequest]) -> str:
-    """Format the successful order response."""
-    result = f"""
-            Option Market Order Placed Successfully:
-            --------------------------------------
-            Order ID: {order.id}
-            Client Order ID: {order.client_order_id}
-            Order Class: {order.order_class}
-            Order Type: {order.type}
-            Time In Force: {order.time_in_force}
-            Status: {order.status}
-            Quantity: {order.qty}
-            Created At: {order.created_at}
-            Updated At: {order.updated_at}
-            """
-    
-    if order_class == OrderClass.MLEG and order.legs:
-        result += "\nLegs:\n"
-        for leg in order.legs:
-            result += f"""
-                    Symbol: {leg.symbol}
-                    Side: {leg.side}
-                    Ratio Quantity: {leg.ratio_qty}
-                    Status: {leg.status}
-                    Asset Class: {leg.asset_class}
-                    Created At: {leg.created_at}
-                    Updated At: {leg.updated_at}
-                    Filled Price: {leg.filled_avg_price if hasattr(leg, 'filled_avg_price') else 'Not filled'}
-                    Filled Time: {leg.filled_at if hasattr(leg, 'filled_at') else 'Not filled'}
-                    -------------------------
-                    """
-    else:
-        result += f"""
-                Symbol: {order.symbol}
-                Side: {order_legs[0].side}
-                Filled Price: {order.filled_avg_price if hasattr(order, 'filled_avg_price') else 'Not filled'}
-                Filled Time: {order.filled_at if hasattr(order, 'filled_at') else 'Not filled'}
-                -------------------------
-                """
-    
-    return result
-
-def _analyze_option_strategy_type(order_legs: List[OptionLegRequest], order_class: OrderClass) -> tuple[bool, bool, bool]:
-    """Analyze the option strategy type for error handling."""
-    is_short_straddle = False
-    is_short_strangle = False
-    is_short_calendar = False
-    
-    if order_class == OrderClass.MLEG and len(order_legs) == 2:
-        both_short = order_legs[0].side == OrderSide.SELL and order_legs[1].side == OrderSide.SELL
-        
-        if both_short:
-            # Check for short straddle (same strike, same expiration, both short)
-            if (order_legs[0].symbol.split('C')[0] == order_legs[1].symbol.split('P')[0]):
-                is_short_straddle = True
-            else:
-                is_short_strangle = True
-                
-            # Check for short calendar spread (same strike, different expirations, both short)
-            leg1_type = 'C' if 'C' in order_legs[0].symbol else 'P'
-            leg2_type = 'C' if 'C' in order_legs[1].symbol else 'P'
-            
-            if leg1_type == 'C' and leg2_type == 'C':
-                leg1_exp = order_legs[0].symbol.split(leg1_type)[1][:6]
-                leg2_exp = order_legs[1].symbol.split(leg2_type)[1][:6]
-                if leg1_exp != leg2_exp:
-                    is_short_calendar = True
-                    is_short_strangle = False  # Override strangle detection
-    
-    return is_short_straddle, is_short_strangle, is_short_calendar
-
-def _get_short_straddle_error_message() -> str:
-    """Get error message for short straddle permission issues."""
-    return """
-    Error: Account not eligible to trade short straddles.
-    
-    This error occurs because short straddles require Level 4 options trading permission.
-    A short straddle involves:
-    - Selling a call option
-    - Selling a put option
-    - Both options have the same strike price and expiration
-    
-    Required Account Level:
-    - Level 4 options trading permission is required
-    - Please contact your broker to upgrade your account level if needed
-    
-    Alternative Strategies:
-    - Consider using a long straddle instead
-    - Use a debit spread strategy
-    - Implement a covered call or cash-secured put
-    """
-
-def _get_short_strangle_error_message() -> str:
-    """Get error message for short strangle permission issues."""
-    return """
-    Error: Account not eligible to trade short strangles.
-    
-    This error occurs because short strangles require Level 4 options trading permission.
-    A short strangle involves:
-    - Selling an out-of-the-money call option
-    - Selling an out-of-the-money put option
-    - Both options have the same expiration
-    
-    Required Account Level:
-    - Level 4 options trading permission is required
-    - Please contact your broker to upgrade your account level if needed
-    
-    Alternative Strategies:
-    - Consider using a long strangle instead
-    - Use a debit spread strategy
-    - Implement a covered call or cash-secured put
-    """
-
-def _get_short_calendar_error_message() -> str:
-    """Get error message for short calendar spread permission issues."""
-    return """
-    Error: Account not eligible to trade short calendar spreads.
-    
-    This error occurs because short calendar spreads require Level 4 options trading permission.
-    A short calendar spread involves:
-    - Selling a longer-term option
-    - Selling a shorter-term option
-    - Both options have the same strike price
-    
-    Required Account Level:
-    - Level 4 options trading permission is required
-    - Please contact your broker to upgrade your account level if needed
-    
-    Alternative Strategies:
-    - Consider using a long calendar spread instead
-    - Use a debit spread strategy
-    - Implement a covered call or cash-secured put
-    """
-
-def _get_uncovered_options_error_message() -> str:
-    """Get error message for uncovered options permission issues."""
-    return """
-    Error: Account not eligible to trade uncovered option contracts.
-    
-    This error occurs when attempting to place an order that could result in an uncovered position.
-    Common scenarios include:
-    1. Selling naked calls
-    2. Calendar spreads where the short leg expires after the long leg
-    3. Other strategies that could leave uncovered positions
-    
-    Required Account Level:
-    - Level 4 options trading permission is required for uncovered options
-    - Please contact your broker to upgrade your account level if needed
-    
-    Alternative Strategies:
-    - Consider using covered calls instead of naked calls
-    - Use debit spreads instead of calendar spreads
-    - Ensure all positions are properly hedged
-    """
-
-def _handle_option_api_error(error_message: str, order_legs: List[OptionLegRequest], order_class: OrderClass) -> str:
-    """Handle API errors with specific option strategy analysis."""
-    if "40310000" in error_message and "not eligible to trade uncovered option contracts" in error_message:
-        is_short_straddle, is_short_strangle, is_short_calendar = _analyze_option_strategy_type(order_legs, order_class)
-        
-        if is_short_straddle:
-            return _get_short_straddle_error_message()
-        elif is_short_strangle:
-            return _get_short_strangle_error_message()
-        elif is_short_calendar:
-            return _get_short_calendar_error_message()
-        else:
-            return _get_uncovered_options_error_message()
-    elif "403" in error_message:
-        return f"""
-        Error: Permission denied for option trading.
-        
-        Possible reasons:
-        1. Insufficient account level for the requested strategy
-        2. Account restrictions on option trading
-        3. Missing required permissions
-        
-        Please check:
-        1. Your account's option trading level
-        2. Any specific restrictions on your account
-        3. Required permissions for the strategy you're trying to implement
-        
-        Original error: {error_message}
-        """
-    else:
-        return f"""
-        Error placing option order: {error_message}
-        
-        Please check:
-        1. All option symbols are valid
-        2. Your account has sufficient buying power
-        3. The market is open for trading
-        4. Your account has the required permissions
-        """
-
-# ============================================================================
-# Options Trading Tool
 # ============================================================================
 
 @mcp.tool()
@@ -2795,7 +2650,7 @@ async def place_option_market_order(
     except Exception as e:
         return f"""
         Unexpected error placing option order: {str(e)}
-        
+
         Please try:
         1. Verifying all input parameters
         2. Checking your account status
@@ -2803,130 +2658,9 @@ async def place_option_market_order(
         4. Contacting support if the issue persists
         """
 
-
 # ============================================================================
-# Helper Functions and Utilities
+# Compatibility wrapper for CLI
 # ============================================================================
-# The following functions are internal helper functions used by the MCP tools
-# for data parsing, validation, formatting, and other utility operations.
-# ============================================================================
-
-def parse_timeframe_with_enums(timeframe_str: str) -> Optional[TimeFrame]:
-    """
-    Parse timeframe string to Alpaca TimeFrame object using proper enumerations.
-    Supports standard Alpaca formats and common natural language variations.
-    
-    Args:
-        timeframe_str (str): Timeframe string (e.g., "1Min", "30 mins", "1 hour", "daily")
-        
-    Returns:
-        Optional[TimeFrame]: Parsed TimeFrame object using TimeFrameUnit enums or None if invalid
-        
-    Reference:
-        https://alpaca.markets/sdks/python/api_reference/data/timeframe.html#timeframeunit
-    """
-    
-    try:
-        if not timeframe_str or not isinstance(timeframe_str, str):
-            return None
-            
-        timeframe_str = timeframe_str.strip()
-        if not timeframe_str:
-            return None
-        
-        # Use predefined TimeFrame objects for common cases (most efficient)
-        predefined_timeframes = {
-            "1Min": TimeFrame.Minute,
-            "1Hour": TimeFrame.Hour, 
-            "1Day": TimeFrame.Day,
-            "1Week": TimeFrame.Week,
-            "1Month": TimeFrame.Month
-        }
-        
-        if timeframe_str in predefined_timeframes:
-            return predefined_timeframes[timeframe_str]
-        
-        # Normalize input for flexible parsing
-        normalized = re.sub(r'\s+', ' ', timeframe_str.lower().strip())
-        
-        # Common expressions that map directly to timeframes
-        direct_mappings = {
-            'half hour': (30, TimeFrameUnit.Minute),
-            'quarter hour': (15, TimeFrameUnit.Minute),
-            'hourly': (1, TimeFrameUnit.Hour),
-            'daily': (1, TimeFrameUnit.Day),
-            'weekly': (1, TimeFrameUnit.Week),
-            'monthly': (1, TimeFrameUnit.Month)
-        }
-        
-        if normalized in direct_mappings:
-            amount, unit = direct_mappings[normalized]
-            return TimeFrame(amount, unit)
-        
-        # Comprehensive pattern to handle most variations
-        # Matches: number + unit (with optional spaces, hyphens, plurals)
-        pattern = r'^(\d+)\s*[-\s]*\s*(min|minute|minutes|hr|hour|hours|day|days|week|weeks|month|months)s?$'
-        match = re.match(pattern, normalized)
-        
-        if match:
-            amount = int(match.group(1))
-            unit_str = match.group(2)
-            
-            # Map unit strings to TimeFrameUnit enums
-            unit_mapping = {
-                'min': TimeFrameUnit.Minute, 'minute': TimeFrameUnit.Minute, 'minutes': TimeFrameUnit.Minute,
-                'hr': TimeFrameUnit.Hour, 'hour': TimeFrameUnit.Hour, 'hours': TimeFrameUnit.Hour,
-                'day': TimeFrameUnit.Day, 'days': TimeFrameUnit.Day,
-                'week': TimeFrameUnit.Week, 'weeks': TimeFrameUnit.Week,
-                'month': TimeFrameUnit.Month, 'months': TimeFrameUnit.Month
-            }
-            
-            unit = unit_mapping.get(unit_str)
-            if unit and _validate_amount(amount, unit):
-                return TimeFrame(amount, unit)
-        
-        # Try case-insensitive standard Alpaca formats
-        alpaca_pattern = r'^(\d+)(min|hour|day|week|month)s?$'
-        match = re.match(alpaca_pattern, normalized)
-        
-        if match:
-            amount = int(match.group(1))
-            unit_str = match.group(2)
-            
-            unit_mapping = {
-                'min': TimeFrameUnit.Minute,
-                'hour': TimeFrameUnit.Hour,
-                'day': TimeFrameUnit.Day,
-                'week': TimeFrameUnit.Week,
-                'month': TimeFrameUnit.Month
-            }
-            
-            unit = unit_mapping.get(unit_str)
-            if unit and _validate_amount(amount, unit):
-                return TimeFrame(amount, unit)
-            
-        return None
-        
-    except (ValueError, AttributeError, TypeError):
-        return None
-
-
-def _validate_amount(amount: int, unit: TimeFrameUnit) -> bool:
-    """
-    Validate that the amount is reasonable for the given unit.
-    """
-    if amount <= 0:
-        return False
-        
-    if unit == TimeFrameUnit.Minute and amount > 59:
-        return False
-    elif unit == TimeFrameUnit.Hour and amount > 23:
-        return False
-    elif unit in [TimeFrameUnit.Day, TimeFrameUnit.Week, TimeFrameUnit.Month] and amount > 365:
-        return False
-        
-    return True
-
 
 def parse_arguments():
     """Parse command line arguments for transport configuration."""
@@ -2972,11 +2706,6 @@ def setup_transport_config(args):
             "transport": "stdio"
         }
 
-
-# ============================================================================
-# Compatibility wrapper for CLI
-# ============================================================================
-
 class AlpacaMCPServer:
     """Compatibility wrapper to maintain CLI interface."""
 
@@ -2995,7 +2724,6 @@ class AlpacaMCPServer:
             # Map 'http' to 'streamable-http' transport
             transport_type = "streamable-http" if transport == "http" else transport
             mcp.run(transport=transport_type)
-
 
 # Run the server
 if __name__ == "__main__":
