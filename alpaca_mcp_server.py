@@ -3,6 +3,7 @@ import re
 import sys
 import time
 import argparse
+import pandas as pd
 from datetime import datetime, timedelta, date
 from typing import Dict, Any, List, Optional, Union
 
@@ -3107,12 +3108,36 @@ async def screen_filtered_options(
                 # Show top 5 options for each symbol
                 top_options = df.head(5)
                 for _, row in top_options.iterrows():
+                    result += f"  Symbol: {row['symbol']}\n"
                     result += f"  {row['type']:<4} ${row['strike_price']:<7.2f} "
-                    result += f"Exp: {row['expiration_date']} ({row['days_to_expiry']}d) "
-                    result += f"Delta: {row['delta']:<6.3f} "
-                    result += f"Return30d: {row['return_30_day']:<5.2f}% "
-                    result += f"Spread: {row['spread_percent']:<5.2f}% "
-                    result += f"OI: {row['open_interest']}\n"
+                    result += f"Exp: {row['expiration_date']} "
+                    result += f"DTE: {row['days_to_expiry']}d "
+                    result += f"%OTM: {row['percent_otm']:<5.2f}%\n"
+
+                    # Premium & Pricing (what you'd receive/pay)
+                    result += f"    Premium: Bid=${row['bid_price']:.2f} " if pd.notna(row['bid_price']) else f"    Premium: Bid=N/A "
+                    result += f"Mid=${row['mid_price']:.2f} " if pd.notna(row['mid_price']) else f"Mid=N/A "
+                    result += f"Ask=${row['ask_price']:.2f} " if pd.notna(row['ask_price']) else f"Ask=N/A "
+                    result += f"Spread={row['spread_percent']:.2f}%\n" if pd.notna(row['spread_percent']) else f"Spread=N/A\n"
+
+                    # Returns & Risk
+                    result += f"    Returns: 30-day={row['return_30_day']:.2f}% " if pd.notna(row['return_30_day']) else f"    Returns: 30-day=N/A "
+                    result += f"Overall={row['overall_return']:.2f}%\n" if pd.notna(row['overall_return']) else f"Overall=N/A\n"
+
+                    # Greeks (option sensitivities)
+                    result += f"    Greeks: Delta={row['delta']:.3f} " if pd.notna(row['delta']) else f"    Greeks: Delta=N/A "
+                    result += f"Gamma={row['gamma']:.4f} " if pd.notna(row['gamma']) else f"Gamma=N/A "
+                    result += f"Theta={row['theta']:.3f} " if pd.notna(row['theta']) else f"Theta=N/A "
+                    result += f"Vega={row['vega']:.3f} " if pd.notna(row['vega']) else f"Vega=N/A "
+                    result += f"Rho={row['rho']:.4f}\n" if pd.notna(row['rho']) else f"Rho=N/A\n"
+
+                    # Volatility & Liquidity
+                    result += f"    Vol/Liquidity: IV={row['implied_volatility']:.1%} " if pd.notna(row['implied_volatility']) else f"    Vol/Liquidity: IV=N/A "
+                    result += f"ATR(14d)=${row['atr_14d_o90d']:.2f} " if pd.notna(row['atr_14d_o90d']) else f"ATR(14d)=N/A "
+                    result += f"OI={int(row['open_interest'])} " if pd.notna(row['open_interest']) else f"OI=N/A "
+                    result += f"BidSize={int(row['bid_size'])} " if pd.notna(row['bid_size']) else f"BidSize=N/A "
+                    result += f"AskSize={int(row['ask_size'])}\n" if pd.notna(row['ask_size']) else f"AskSize=N/A\n"
+                    result += "\n"
 
                 if len(df) > 5:
                     result += f"  ... and {len(df) - 5} more options\n"
