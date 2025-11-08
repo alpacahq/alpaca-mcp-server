@@ -12,6 +12,7 @@ __pycache__/
 env/
 venv/
 .venv/
+alpacaMcpVenv/
 
 # Build and distribution
 dist/

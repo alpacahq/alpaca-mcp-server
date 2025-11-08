@@ -3,6 +3,7 @@ import re
 import sys
 import time
 import argparse
+import pandas as pd
 from datetime import datetime, timedelta, date
 from typing import Dict, Any, List, Optional, Union
 
@@ -53,6 +54,7 @@ from alpaca.trading.requests import (
     GetCalendarRequest,
     GetOptionContractsRequest,
     GetOrdersRequest,
+    GetPortfolioHistoryRequest,
     LimitOrderRequest,
     MarketOrderRequest,
     OptionLegRequest,
@@ -183,6 +185,36 @@ option_historical_data_client = OptionHistoricalDataClientSigned(api_key=TRADE_A
 corporate_actions_client = CorporateActionsClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
 # For crypto historical data
 crypto_historical_data_client = CryptoHistoricalDataClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
+
+# ----------------------------------------------------------------------------
+# Configure path for alpacaWheel option screener imports
+# ----------------------------------------------------------------------------
+ALPACA_WHEEL_PATH = os.getenv('ALPACA_WHEEL_PATH', '/Users/johnodwyer/PycharmProjects/alpacaWheel')
+if os.path.exists(ALPACA_WHEEL_PATH):
+    if ALPACA_WHEEL_PATH not in sys.path:
+        sys.path.insert(0, ALPACA_WHEEL_PATH)
+    try:
+        from option_screener_functions import (
+            get_df_filtered_options,
+            get_bollinger_bands,
+            get_otm_options_by_expiration,
+            initialize_alpaca_clients
+        )
+        from option_execution_functions import (
+            buy_longer_put_then_sell_put,
+            buy_longer_call_then_sell_call,
+            sell_put_option,
+            buy_put_option,
+            sell_call_option,
+            buy_call_option
+        )
+        OPTION_SCREENER_AVAILABLE = True
+    except ImportError as e:
+        OPTION_SCREENER_AVAILABLE = False
+        print(f"Warning: Could not import option screener functions: {e}")
+else:
+    OPTION_SCREENER_AVAILABLE = False
+    print(f"Warning: ALPACA_WHEEL_PATH not found: {ALPACA_WHEEL_PATH}")
 
 # ----------------------------------------------------------------------------
 # Centralized date parsing helpers
@@ -328,9 +360,137 @@ async def get_open_position(symbol: str) -> str:
                 Average Entry Price: ${float(position.avg_entry_price):.2f}
                 Current Price: ${float(position.current_price):.2f}
                 Unrealized P/L: ${float(position.unrealized_pl):.2f}
-                """ 
+                """
     except Exception as e:
         return f"Error fetching position: {str(e)}"
+
+@mcp.tool()
+async def get_portfolio_history(
+    period: Optional[str] = None,
+    timeframe: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    extended_hours: Optional[bool] = None
+) -> str:
+    """
+    Retrieves and formats portfolio history including equity values, profit/loss, and performance metrics over time.
+
+    Args:
+        period (Optional[str]): Duration of data as number + unit (e.g., "1D", "1W", "1M", "3M", "1A").
+            Units: D=day, W=week, M=month, A=year. Default: "1M"
+        timeframe (Optional[str]): Resolution of time windows - "1Min", "5Min", "15Min", "1H", or "1D".
+            Auto-selected if omitted: 1Min for <7 days, 15Min for <30 days, 1D otherwise
+        start (Optional[str]): Start timestamp in ISO format (e.g., "2024-01-01" or "2024-01-01T09:30:00")
+        end (Optional[str]): End timestamp in ISO format (e.g., "2024-12-31" or "2024-12-31T16:00:00")
+        extended_hours (Optional[bool]): Include extended hours data (only effective for timeframe < 1D)
+
+    Returns:
+        str: Formatted string containing:
+            - Time period and resolution
+            - Equity values over time
+            - Profit/loss in dollars and percentage
+            - Base value for P&L calculations
+            - Summary statistics (start/end equity, total P&L, return %)
+
+    Examples:
+        - Last month daily: period="1M", timeframe="1D"
+        - Last week hourly: period="1W", timeframe="1H"
+        - Custom range: start="2024-01-01", end="2024-12-31", timeframe="1D"
+        - Intraday with pre/post market: period="1D", timeframe="5Min", extended_hours=True
+    """
+    try:
+        # Parse datetime strings if provided
+        start_dt = None
+        end_dt = None
+
+        if start:
+            try:
+                start_dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
+            except ValueError:
+                return f"Error: Invalid start time format '{start}'. Use ISO format like '2024-01-01' or '2024-01-01T09:30:00'"
+
+        if end:
+            try:
+                end_dt = datetime.fromisoformat(end.replace('Z', '+00:00'))
+            except ValueError:
+                return f"Error: Invalid end time format '{end}'. Use ISO format like '2024-12-31' or '2024-12-31T16:00:00'"
+
+        # Create request with provided parameters
+        request = GetPortfolioHistoryRequest(
+            period=period,
+            timeframe=timeframe,
+            start=start_dt,
+            end=end_dt,
+            extended_hours=extended_hours
+        )
+
+        # Get portfolio history
+        history = trade_client.get_portfolio_history(request)
+
+        if not history.timestamp or len(history.timestamp) == 0:
+            return "No portfolio history data available for the specified period."
+
+        # Convert timestamps to readable format
+        timestamps = [datetime.fromtimestamp(ts) for ts in history.timestamp]
+
+        # Build formatted response
+        result = f"""
+Portfolio History:
+==================
+Period: {period or 'default (1M)'}
+Timeframe: {history.timeframe}
+Data Points: {len(history.timestamp)}
+Time Range: {timestamps[0].strftime('%Y-%m-%d %H:%M')} to {timestamps[-1].strftime('%Y-%m-%d %H:%M')}
+"""
+
+        if history.base_value is not None:
+            result += f"Base Value: ${history.base_value:.2f}\n"
+
+        result += "\nEquity & P/L Over Time:\n"
+        result += "-" * 80 + "\n"
+
+        # Show data points (limit to reasonable number for readability)
+        max_display = 50
+        step = max(1, len(timestamps) // max_display)
+
+        for i in range(0, len(timestamps), step):
+            timestamp = timestamps[i]
+            equity = history.equity[i]
+            pl = history.profit_loss[i]
+            pl_pct = history.profit_loss_pct[i]
+
+            # Format based on timeframe
+            if history.timeframe in ['1Min', '5Min', '15Min', '1H']:
+                time_str = timestamp.strftime('%Y-%m-%d %H:%M')
+            else:
+                time_str = timestamp.strftime('%Y-%m-%d')
+
+            pl_pct_str = f"{pl_pct:.2%}" if pl_pct is not None else "N/A"
+            result += f"{time_str}: Equity=${equity:.2f}, P/L=${pl:+.2f} ({pl_pct_str})\n"
+
+        # Add summary statistics
+        start_equity = history.equity[0]
+        end_equity = history.equity[-1]
+        total_pl = end_equity - start_equity
+        total_pl_pct = (total_pl / start_equity * 100) if start_equity != 0 else 0
+
+        result += "\n" + "=" * 80 + "\n"
+        result += f"""
+Summary Statistics:
+-------------------
+Starting Equity: ${start_equity:.2f}
+Ending Equity: ${end_equity:.2f}
+Total P/L: ${total_pl:+.2f} ({total_pl_pct:+.2f}%)
+Highest Equity: ${max(history.equity):.2f}
+Lowest Equity: ${min(history.equity):.2f}
+"""
+
+        return result
+
+    except APIError as api_error:
+        return f"API Error fetching portfolio history: {str(api_error)}"
+    except Exception as e:
+        return f"Error fetching portfolio history: {str(e)}"
 
 # ============================================================================
 # Stock Market Data Tools
@@ -2845,6 +3005,291 @@ def _validate_amount(amount: int, unit: TimeFrameUnit) -> bool:
         return False
         
     return True
+
+
+# ============================================================================
+# OPTION SCREENER AND EXECUTION TOOLS
+# ============================================================================
+
+@mcp.tool()
+async def screen_filtered_options(
+    symbols: List[str],
+    min_days: int = 15,
+    max_days: int = 45,
+    max_percent_otm: float = 60.0,
+    min_percent_otm: float = 0.1,
+    min_open_interest: int = 200,
+    min_delta_put: float = -0.52,
+    max_delta_put: float = -0.08,
+    min_delta_call: float = 0.08,
+    max_delta_call: float = 0.52,
+    min_atr_multiplier: float = 0.5,
+    max_atr_multiplier: float = 5.0,
+    min_return_30_day: float = 2.0,
+    max_spread_percent: float = 10.0,
+    get_calls: bool = True,
+    get_puts: bool = True
+) -> str:
+    """
+    Screen and filter options based on comprehensive criteria including delta, ATR, open interest, and Bollinger Bands.
+
+    Args:
+        symbols: List of stock symbols to screen
+        min_days: Minimum days to expiration (default: 15)
+        max_days: Maximum days to expiration (default: 45)
+        max_percent_otm: Maximum percent out of the money (default: 60.0)
+        min_percent_otm: Minimum percent out of the money (default: 0.1)
+        min_open_interest: Minimum open interest required (default: 200)
+        min_delta_put: Minimum delta for puts (default: -0.52)
+        max_delta_put: Maximum delta for puts (default: -0.08)
+        min_delta_call: Minimum delta for calls (default: 0.08)
+        max_delta_call: Maximum delta for calls (default: 0.52)
+        min_atr_multiplier: Minimum ATR multiplier (default: 0.5)
+        max_atr_multiplier: Maximum ATR multiplier (default: 5.0)
+        min_return_30_day: Minimum 30-day annualized return percent (default: 2.0)
+        max_spread_percent: Maximum bid-ask spread percent (default: 10.0)
+        get_calls: Include call options (default: True)
+        get_puts: Include put options (default: True)
+
+    Returns:
+        str: Formatted results with option details including:
+            - Symbol and strike price
+            - Days to expiration
+            - Delta, implied volatility, and other Greeks
+            - Bollinger Band signal (BULL/BEAR/NEUTRAL)
+            - Return metrics and spreads
+            - Earnings dates
+    """
+    if not OPTION_SCREENER_AVAILABLE:
+        return "Error: Option screener functions are not available. Check ALPACA_WHEEL_PATH configuration."
+
+    try:
+        # Call the screening function from alpacaWheel
+        symbol_df_results, no_result_symbols = get_df_filtered_options(
+            symbols=symbols,
+            trading_client=trade_client,
+            stock_client=stock_historical_data_client,
+            option_client=option_historical_data_client,
+            min_days=min_days,
+            max_days=max_days,
+            max_percent_otm=max_percent_otm,
+            min_percent_otm=min_percent_otm,
+            min_open_interest=min_open_interest,
+            min_delta_put=min_delta_put,
+            max_delta_put=max_delta_put,
+            min_delta_call=min_delta_call,
+            max_delta_call=max_delta_call,
+            min_atr_multiplier=min_atr_multiplier,
+            max_atr_multiplier=max_atr_multiplier,
+            min_return_30_day=min_return_30_day,
+            max_spread_percent=max_spread_percent,
+            get_calls=get_calls,
+            get_puts=get_puts
+        )
+
+        # Format results
+        result = f"Option Screening Results\n{'=' * 80}\n"
+        result += f"Symbols evaluated: {', '.join(symbols)}\n"
+        result += f"Symbols with no results: {', '.join(no_result_symbols) if no_result_symbols else 'None'}\n\n"
+
+        for symbol, df in symbol_df_results:
+            if not df.empty:
+                earnings_date = df.iloc[0]['quarter_earnings_date']
+                bb_signal = df.iloc[0]['bb_signal']
+                bb_upper = df.iloc[0]['bb_upper']
+                bb_middle = df.iloc[0]['bb_middle']
+                bb_lower = df.iloc[0]['bb_lower']
+                current_price = df.iloc[0]['underlying_price']
+
+                result += f"\n{symbol} | Price: ${current_price:.2f} | Earnings: {earnings_date}\n"
+                result += f"BB Signal: {bb_signal} | Upper: ${bb_upper:.2f} | Middle(MA): ${bb_middle:.2f} | Lower: ${bb_lower:.2f}\n"
+                result += f"{'-' * 80}\n"
+
+                # Show top 5 options for each symbol
+                top_options = df.head(5)
+                for _, row in top_options.iterrows():
+                    result += f"  Symbol: {row['symbol']}\n"
+                    result += f"  {row['type']:<4} ${row['strike_price']:<7.2f} "
+                    result += f"Exp: {row['expiration_date']} "
+                    result += f"DTE: {row['days_to_expiry']}d "
+                    result += f"%OTM: {row['percent_otm']:<5.2f}%\n"
+
+                    # Premium & Pricing (what you'd receive/pay)
+                    result += f"    Premium: Bid=${row['bid_price']:.2f} " if pd.notna(row['bid_price']) else f"    Premium: Bid=N/A "
+                    result += f"Mid=${row['mid_price']:.2f} " if pd.notna(row['mid_price']) else f"Mid=N/A "
+                    result += f"Ask=${row['ask_price']:.2f} " if pd.notna(row['ask_price']) else f"Ask=N/A "
+                    result += f"Spread={row['spread_percent']:.2f}%\n" if pd.notna(row['spread_percent']) else f"Spread=N/A\n"
+
+                    # Returns & Risk
+                    result += f"    Returns: 30-day={row['return_30_day']:.2f}% " if pd.notna(row['return_30_day']) else f"    Returns: 30-day=N/A "
+                    result += f"Overall={row['overall_return']:.2f}%\n" if pd.notna(row['overall_return']) else f"Overall=N/A\n"
+
+                    # Greeks (option sensitivities)
+                    result += f"    Greeks: Delta={row['delta']:.3f} " if pd.notna(row['delta']) else f"    Greeks: Delta=N/A "
+                    result += f"Gamma={row['gamma']:.4f} " if pd.notna(row['gamma']) else f"Gamma=N/A "
+                    result += f"Theta={row['theta']:.3f} " if pd.notna(row['theta']) else f"Theta=N/A "
+                    result += f"Vega={row['vega']:.3f} " if pd.notna(row['vega']) else f"Vega=N/A "
+                    result += f"Rho={row['rho']:.4f}\n" if pd.notna(row['rho']) else f"Rho=N/A\n"
+
+                    # Volatility & Liquidity
+                    result += f"    Vol/Liquidity: IV={row['implied_volatility']:.1%} " if pd.notna(row['implied_volatility']) else f"    Vol/Liquidity: IV=N/A "
+                    result += f"ATR(14d)=${row['atr_14d_o90d']:.2f} " if pd.notna(row['atr_14d_o90d']) else f"ATR(14d)=N/A "
+                    result += f"OI={int(row['open_interest'])} " if pd.notna(row['open_interest']) else f"OI=N/A "
+                    result += f"BidSize={int(row['bid_size'])} " if pd.notna(row['bid_size']) else f"BidSize=N/A "
+                    result += f"AskSize={int(row['ask_size'])}\n" if pd.notna(row['ask_size']) else f"AskSize=N/A\n"
+                    result += "\n"
+
+                if len(df) > 5:
+                    result += f"  ... and {len(df) - 5} more options\n"
+
+        return result
+
+    except Exception as e:
+        return f"Error screening options: {str(e)}"
+
+
+@mcp.tool()
+async def get_bollinger_band_signal(
+    symbol: str,
+    window: int = 20,
+    multiplier: int = 2,
+    lookback_days: int = 90,
+    signal_threshold: float = 0.10
+) -> str:
+    """
+    Get Bollinger Band analysis and trading signal for a symbol.
+
+    Args:
+        symbol: Stock symbol to analyze
+        window: Period for moving average (default: 20)
+        multiplier: Standard deviation multiplier (default: 2)
+        lookback_days: Days of historical data (default: 90)
+        signal_threshold: Threshold for signal generation (default: 0.10 = 10%)
+                         0.05 = conservative, 0.10 = aggressive
+
+    Returns:
+        str: Bollinger Band analysis including:
+            - Current price and band levels
+            - BB signal (BULL/BEAR/NEUTRAL)
+            - Position within bands
+            - Recommended strategy
+    """
+    if not OPTION_SCREENER_AVAILABLE:
+        return "Error: Option screener functions are not available. Check ALPACA_WHEEL_PATH configuration."
+
+    try:
+        bb_data = get_bollinger_bands(
+            stock_client=stock_historical_data_client,
+            underlying_symbol=symbol,
+            window=window,
+            multiplier=multiplier,
+            lookback_days=lookback_days,
+            signal_threshold=signal_threshold
+        )
+
+        result = f"""
+Bollinger Band Analysis for {symbol}
+{'=' * 60}
+CURRENT STOCK PRICE: ${bb_data['current_price']:.2f}
+
+Bollinger Bands:
+  Upper Band:        ${bb_data['upper_band']:.2f}
+  Middle Band (20MA): ${bb_data['middle_band']:.2f}
+  Lower Band:        ${bb_data['lower_band']:.2f}
+
+Band Width:       ${bb_data['bb_width']:.2f}
+Price Position:   {bb_data['bb_position']:.1%} (0%=at lower band, 100%=at upper band)
+
+Signal:           {bb_data['bb_signal']}
+{'=' * 60}
+
+Recommended Strategy:
+"""
+
+        if bb_data['bb_signal'] == 'BULL':
+            result += "  → BULL PUT SPREAD (expect mean reversion up)\n"
+            result += "  Price is near lower band - oversold condition"
+        elif bb_data['bb_signal'] == 'BEAR':
+            result += "  → BEAR CALL SPREAD (expect mean reversion down)\n"
+            result += "  Price is near upper band - overbought condition"
+        else:
+            result += "  → NEUTRAL (no clear edge)\n"
+            result += "  Price is in middle of channel"
+
+        return result
+
+    except Exception as e:
+        return f"Error getting Bollinger Bands: {str(e)}"
+
+
+@mcp.tool()
+async def execute_put_spread(
+    short_put_symbol: str,
+    long_put_symbol: str,
+    quantity: int,
+    underlying_symbol: str
+) -> str:
+    """
+    Execute a bull put spread by buying the long put first, then selling the short put.
+
+    Args:
+        short_put_symbol: Option symbol for the short put (higher strike)
+        long_put_symbol: Option symbol for the long put (lower strike)
+        quantity: Number of contracts
+        underlying_symbol: Underlying stock symbol
+
+    Returns:
+        str: Execution confirmation with order details
+    """
+    if not OPTION_SCREENER_AVAILABLE:
+        return "Error: Option execution functions are not available. Check ALPACA_WHEEL_PATH configuration."
+
+    try:
+        result = buy_longer_put_then_sell_put(
+            trading_client=trade_client,
+            short_put=short_put_symbol,
+            long_put=long_put_symbol,
+            qty=quantity,
+            underlying_symbol=underlying_symbol
+        )
+        return f"Bull Put Spread Executed Successfully:\n{result}"
+    except Exception as e:
+        return f"Error executing put spread: {str(e)}"
+
+
+@mcp.tool()
+async def execute_call_spread(
+    short_call_symbol: str,
+    long_call_symbol: str,
+    quantity: int,
+    underlying_symbol: str
+) -> str:
+    """
+    Execute a bear call spread by buying the long call first, then selling the short call.
+
+    Args:
+        short_call_symbol: Option symbol for the short call (lower strike)
+        long_call_symbol: Option symbol for the long call (higher strike)
+        quantity: Number of contracts
+        underlying_symbol: Underlying stock symbol
+
+    Returns:
+        str: Execution confirmation with order details
+    """
+    if not OPTION_SCREENER_AVAILABLE:
+        return "Error: Option execution functions are not available. Check ALPACA_WHEEL_PATH configuration."
+
+    try:
+        result = buy_longer_call_then_sell_call(
+            trading_client=trade_client,
+            short_call=short_call_symbol,
+            long_call=long_call_symbol,
+            qty=quantity,
+            underlying_symbol=underlying_symbol
+        )
+        return f"Bear Call Spread Executed Successfully:\n{result}"
+    except Exception as e:
+        return f"Error executing call spread: {str(e)}"
 
 
 # Run the server
