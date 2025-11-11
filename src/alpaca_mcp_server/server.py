@@ -224,7 +224,7 @@ async def get_account_info() -> str:
     return info
 
 @mcp.tool()
-async def get_positions() -> str:
+async def get_all_positions() -> str:
     """
     Retrieves and formats all current positions in the portfolio.
     
@@ -294,7 +294,7 @@ async def get_open_position(symbol: str) -> str:
 # ============================================================================
 
 @mcp.tool()
-async def get_asset_info(symbol: str) -> str:
+async def get_asset(symbol: str) -> str:
     """
     Retrieves and formats detailed information about a specific asset.
     
@@ -385,7 +385,7 @@ async def get_all_assets(
 # ============================================================================
 
 @mcp.tool()
-async def get_corporate_announcements(
+async def get_corporate_actions(
     ca_types: Optional[List[CorporateActionsType]] = None,
     start: Optional[date] = None,
     end: Optional[date] = None,
@@ -631,7 +631,7 @@ async def get_watchlists() -> str:
         return f"Error fetching watchlists: {str(e)}"
 
 @mcp.tool()
-async def update_watchlist(watchlist_id: str, name: str = None, symbols: List[str] = None) -> str:
+async def update_watchlist_by_id(watchlist_id: str, name: str = None, symbols: List[str] = None) -> str:
     """Update an existing watchlist."""
     _ensure_clients()
     try:
@@ -695,7 +695,7 @@ async def delete_watchlist_by_id(watchlist_id: str) -> str:
 # ============================================================================
 
 @mcp.tool()
-async def get_market_calendar(start_date: str, end_date: str) -> str:
+async def get_calendar(start_date: str, end_date: str) -> str:
     """
     Retrieves and formats market calendar for specified date range.
     
@@ -728,7 +728,7 @@ async def get_market_calendar(start_date: str, end_date: str) -> str:
 # ============================================================================
 
 @mcp.tool()
-async def get_market_clock() -> str:
+async def get_clock() -> str:
     """
     Retrieves and formats current market status and next open/close times.
     
@@ -758,7 +758,7 @@ async def get_market_clock() -> str:
 # ============================================================================
 
 @mcp.tool()
-async def get_stock_quote(symbol_or_symbols: Union[str, List[str]]) -> str:
+async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> str:
     """
     Retrieves and formats the latest quote for one or more stocks.
     
@@ -906,6 +906,20 @@ async def get_stock_bars(
             return result
         else:
             return f"No historical data found for {symbol} with {timeframe} timeframe in the specified time range."
+    except APIError as api_error:
+        error_message = str(api_error)
+        lower = error_message.lower()
+        if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
+            fifteen_ago = datetime.now() - timedelta(minutes=15)
+            hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
+            return (
+                f"Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. "
+                f"Your request likely included the most recent 15 minutes. "
+                f"Retry with `end` <= {hint_end} (exclude the last 15 minutes), "
+                f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
+                f"Original error: {error_message}"
+            )
+        return f"API Error fetching historical data for {symbol}: {error_message}"
     except Exception as e:
         return f"Error fetching historical data for {symbol}: {str(e)}"
 
@@ -2662,98 +2676,31 @@ async def place_option_market_order(
 # Compatibility wrapper for CLI
 # ============================================================================
 
-def parse_arguments():
-    """Parse command line arguments for transport configuration."""
-    import argparse
-    parser = argparse.ArgumentParser(description="Alpaca MCP Server")
-    parser.add_argument(
-        "--transport",
-        choices=["stdio", "http", "sse"],
-        default="stdio",
-        help="Transport method to use (default: stdio). Note: WebSocket not supported, use HTTP for remote connections"
-    )
-    parser.add_argument(
-        "--host",
-        default="127.0.0.1",
-        help="Host to bind the server to for HTTP/SSE transport (default: 127.0.0.1)"
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8000,
-        help="Port to bind the server to for HTTP/SSE transport (default: 8000)"
-    )
-    return parser.parse_args()
-
-
-def setup_transport_config(args):
-    """Setup transport configuration based on command line arguments."""
-    if args.transport == "http":
-        return {
-            "transport": "http",
-            "host": args.host,
-            "port": args.port
-        }
-    elif args.transport == "sse":
-        print(f"Warning: SSE transport is deprecated. Consider using HTTP transport instead.")
-        return {
-            "transport": "sse",
-            "host": args.host,
-            "port": args.port
-        }
-    else:
-        return {
-            "transport": "stdio"
-        }
+def parse_arguments() -> argparse.Namespace:
+    p = argparse.ArgumentParser("Alpaca MCP Server")
+    p.add_argument("--transport", choices=["stdio","streamable-http"], default="stdio")
+    # p.add_argument("--host", default=os.environ.get("HOST","127.0.0.1"))
+    p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+    return p.parse_args()
 
 class AlpacaMCPServer:
-    """Compatibility wrapper to maintain CLI interface."""
-
-    def __init__(self, config_file: Optional[Path] = None):
-        """Initialize server (config_file parameter is for compatibility only)."""
+    def __init__(self, config_file: Optional[Path] = None) -> None:
         pass
 
-    def run(self, transport: str = "stdio", host: str = "127.0.0.1", port: int = 8000) -> None:
-        """Run the MCP server with specified transport."""
-        if transport == "stdio":
-            mcp.run()
-        else:
-            # Configure host/port via settings (mcp package v1.16.0 approach)
+    def run(self, transport: str = "stdio", host: str = "0.0.0.0", port: int = 8000) -> None:
+    # def run(self, transport: str = "stdio", host: str = "127.0.0.1", port: int = 8000) -> None:
+        if transport == "streamable-http":
+            # Configure FastMCP settings for host/port with current MCP versions
             mcp.settings.host = host
             mcp.settings.port = port
-            # Map 'http' to 'streamable-http' transport
-            transport_type = "streamable-http" if transport == "http" else transport
-            mcp.run(transport=transport_type)
-
-# Run the server
-if __name__ == "__main__":
-    # Parse command line arguments when running as main script
-    args = parse_arguments()
-    
-    # Setup transport configuration based on command line arguments
-    transport_config = setup_transport_config(args)
-    
-    try:
-        # Run server with the specified transport
-        if args.transport == "http":
-            mcp.settings.host = transport_config["host"]
-            mcp.settings.port = transport_config["port"]
             mcp.run(transport="streamable-http")
-        elif args.transport == "sse":
-            mcp.settings.host = transport_config["host"]
-            mcp.settings.port = transport_config["port"]
-            mcp.run(transport="sse")
         else:
             mcp.run(transport="stdio")
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    try:
+        AlpacaMCPServer().run(args.transport, args.host, args.port)
     except Exception as e:
-        if args.transport in ["http", "sse"]:
-            print(f"Error starting {args.transport} server: {e}")
-            print(f"Server was configured to run on {transport_config['host']}:{transport_config['port']}")
-            print("Common solutions:")
-            print(f"1. Ensure port {transport_config['port']} is available")
-            print(f"2. Check if another service is using port {transport_config['port']}")
-            print("3. Try using a different port with --port <PORT>")
-            print("4. For remote access, consider using SSH tunneling or reverse proxy")
-        else:
-            print(f"Error starting MCP server: {e}")
-        sys.exit(1)
+        print(f"Error starting server: {e}", file=sys.stderr); sys.exit(1)
