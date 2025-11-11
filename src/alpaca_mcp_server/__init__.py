@@ -19,17 +19,12 @@ Key Features:
 """
 
 # Package version (should match pyproject.toml)
-__version__ = "1.0.2"
+__version__ = "1.0.4"
 
 # Package metadata
 __author__ = "Alpaca"
 __license__ = "MIT"
 __description__ = "Alpaca Trading API integration for Model Context Protocol (MCP)"
 
-# Export main components for easy importing
-from .server import AlpacaMCPServer
-
-__all__ = [
-    "AlpacaMCPServer",
-    "__version__"
-]
+# Export version information
+__all__ = ["__version__"]
