@@ -31,63 +31,63 @@ about:
     Comprehensive Alpaca Trading API integration for Model Context Protocol.
 
     This MCP server enables natural language trading operations through AI assistants
-    like Claude Desktop and Cursor. It provides complete access to Alpaca's trading
-    infrastructure with 31 specialized tools covering all aspects of trading.
+    like Claude Desktop and Cursor. It provides access to Alpaca's trading
+    infrastructure with 42 specialized tools covering all aspects of trading.
 
-    Account & Portfolio Management (3 tools):
-    - Account information with balances and buying power
-    - Current positions with P&L tracking
-    - Individual position details and management
+    Account (1 tool):
+    - Account information with balances, buying power, and account status
 
-    Stock Market Data (6 tools):
-    - Real-time quotes with bid/ask spreads
-    - Historical price bars with flexible timeframes
-    - Trade-level data and market snapshots
-    - Latest trade and bar information
+    Positions (2 tools):
+    - All current positions with market value and P&L
+    - Detailed information for a specific open position
 
-    Cryptocurrency Trading (2 tools):
-    - Historical crypto price bars and quotes
-    - Support for major crypto pairs (BTC/USD, ETH/USD, etc.)
+    Portfolio History (1 tool):
+    - Equity and P/L over a requested time window
 
-    Order Management (5 tools):
-    - Place stock orders (market, limit, stop, trailing)
-    - Place crypto orders with GTC/IOC support
-    - Retrieve order history with advanced filtering
-    - Cancel individual or all orders
-
-    Position Management (3 tools):
-    - Close specific positions (partial or complete)
-    - Liquidate entire portfolio
-    - Exercise option contracts
-
-    Asset Discovery (2 tools):
+    Assets (2 tools):
     - Detailed asset information and attributes
-    - Browse all available tradable instruments
+    - Browse all available assets with filtering by status, class, and exchange
 
-    Watchlist Management (3 tools):
-    - Create and manage multiple watchlists
-    - Add/remove symbols from tracking lists
-    - Organize investment ideas and research
-
-    Market Information (2 tools):
-    - Market hours and trading status
-    - Market calendar with holidays and sessions
+    Watchlists (7 tools):
+    - Create, retrieve (all and by ID), update, and delete watchlists
+    - Add or remove symbols from specific watchlists
 
     Corporate Actions (1 tool):
-    - Earnings announcements, dividends, stock splits
-    - Historical and upcoming corporate events
+    - Earnings announcements, dividends, and stock splits
 
-    Options Trading (4 tools):
-    - Search option contracts with advanced filtering
-    - Real-time option quotes with Greeks
-    - Comprehensive option snapshots with IV
-    - Place single-leg and multi-leg strategies
+    Calendar (1 tool):
+    - Market calendar showing trading days and holidays for a date range
+
+    Clock (1 tool):
+    - Current market status and next open/close times
+
+    Market Data — Stocks (6 tools):
+    - Latest quote, trade, and minute bar
+    - Historical price bars (OHLCV) and trade data
+    - Comprehensive market snapshot
+
+    Market Data — Crypto (8 tools):
+    - Historical bars, quotes, and trades
+    - Latest quote, trade, minute bar, and orderbook
+    - Snapshots including minute, daily, and previous daily bars
+
+    Market Data — Options (3 tools):
+    - Search option contracts with flexible filtering
+    - Latest option quote with bid/ask and Greeks
+    - Option snapshots with implied volatility and Greeks
+
+    Trading — Orders (6 tools):
+    - Retrieve order history with filtering
+    - Place stock, crypto, and option orders (market, limit, stop, stop-limit, trailing)
+    - Cancel all orders or a specific order by ID
+
+    Trading — Positions (3 tools):
+    - Close a specific position (partial or complete)
+    - Close all positions
+    - Exercise an options position
 
     Perfect for developers building AI-powered trading applications or traders
     who want to interact with their Alpaca accounts using natural language.
-
-  # Icon for Docker registry
-  icon: https://alpaca.markets/favicon.ico
 
 # Source code and documentation links
 source:
@@ -137,7 +137,7 @@ config:
 metadata:
   license: MIT
   maintainer: Alpaca <https://alpaca.markets/contact>
-  version: "1.0.2"
+  version: "1.0.4" # should match pyproject.toml version
 
   # Docker-specific configuration
   docker:
