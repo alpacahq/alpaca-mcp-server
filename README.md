@@ -935,3 +935,6 @@ This is not an offer, solicitation of an offer, or advice to buy or sell securit
 ## Usage Analytics Notice
 
 The user agent for API calls defaults to 'ALPACA-MCP-SERVER' to help Alpaca identify MCP server usage and improve user experience. You can opt out by modifying the 'USER_AGENT' constant in '.github/core/user_agent_mixin.py' or by removing the 'UserAgentMixin' from the client class definitions in 'src/alpaca_mcp_server/server.py' — though we kindly hope you'll keep it enabled to support ongoing improvements.
+
+### MCP Registry Metadata
+mcp-name: io.github.alpacahq/alpaca-mcp-server

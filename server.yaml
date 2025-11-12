@@ -137,7 +137,7 @@ config:
 metadata:
   license: MIT
   maintainer: Alpaca <https://alpaca.markets/contact>
-  version: "1.0.4" # should match pyproject.toml version
+  version: "1.0.5" # should match pyproject.toml version
 
   # Docker-specific configuration
   docker:
