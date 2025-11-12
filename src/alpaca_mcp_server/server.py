@@ -104,6 +104,11 @@ from .helpers import (
 )
 
 from mcp.server.fastmcp import FastMCP
+import contextvars
+
+# Context variable to store Authorization header from incoming HTTP requests
+# This will be passed along to Alpaca Trading API calls
+auth_header_context = contextvars.ContextVar('authorization_header', default=None)
 
 # Configure Python path for local imports (UserAgentMixin)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -167,12 +172,61 @@ option_historical_data_client = None
 corporate_actions_client = None
 crypto_historical_data_client = None
 
+def _inject_auth_header(client):
+    """
+    Inject Authorization header from request context into Alpaca SDK HTTP requests.
+    
+    Sets the Authorization header on the session's default headers.
+    """
+    # Check if there's an Authorization header in the request context
+    auth_header = auth_header_context.get()
+    
+    if auth_header and hasattr(client, '_api') and hasattr(client._api, '_session'):
+        # Get the underlying requests session and set the Authorization header
+        session = client._api._session
+        session.headers['Authorization'] = auth_header
+
+
 def _ensure_clients():
-    """Initialize Alpaca clients on first use."""
+    """
+    Initialize Alpaca clients on first use.
+    
+    Supports two authentication modes:
+    1. Authorization header from incoming HTTP request (takes precedence)
+    2. API key/secret pair from environment variables (fallback)
+    
+    When an Authorization header is present in the request context, it will be
+    passed along to all Alpaca Trading API calls.
+    """
     global _clients_initialized, trade_client, stock_historical_data_client, stock_data_stream_client
     global option_historical_data_client, corporate_actions_client, crypto_historical_data_client
     
-    if not _clients_initialized:
+    # Check if Authorization header is provided in the request context
+    auth_header = auth_header_context.get()
+    
+    if auth_header:
+        # Initialize clients (will use env vars initially, but we'll override with auth header)
+        # We need to initialize clients even with dummy credentials because we'll inject the auth header
+        if not _clients_initialized or not trade_client:
+            trade_client = TradingClientSigned(TRADE_API_KEY or "dummy", TRADE_API_SECRET or "dummy", paper=ALPACA_PAPER_TRADE_BOOL)
+            stock_historical_data_client = StockHistoricalDataClientSigned(TRADE_API_KEY or "dummy", TRADE_API_SECRET or "dummy")
+            stock_data_stream_client = StockDataStream(TRADE_API_KEY or "dummy", TRADE_API_SECRET or "dummy", url_override=STREAM_DATA_WSS)
+            option_historical_data_client = OptionHistoricalDataClientSigned(api_key=TRADE_API_KEY or "dummy", secret_key=TRADE_API_SECRET or "dummy")
+            corporate_actions_client = CorporateActionsClientSigned(api_key=TRADE_API_KEY or "dummy", secret_key=TRADE_API_SECRET or "dummy")
+            crypto_historical_data_client = CryptoHistoricalDataClientSigned(api_key=TRADE_API_KEY or "dummy", secret_key=TRADE_API_SECRET or "dummy")
+        
+        # Inject the Authorization header from the incoming request into each client
+        _inject_auth_header(trade_client)
+        _inject_auth_header(stock_historical_data_client)
+        _inject_auth_header(option_historical_data_client)
+        _inject_auth_header(corporate_actions_client)
+        _inject_auth_header(crypto_historical_data_client)
+        
+        # For auth header mode, we don't set _clients_initialized to True
+        # This ensures we reinject the header on each request
+        _clients_initialized = False
+    elif not _clients_initialized:
+        # Use API key/secret authentication (traditional method)
         trade_client = TradingClientSigned(TRADE_API_KEY, TRADE_API_SECRET, paper=ALPACA_PAPER_TRADE_BOOL)
         stock_historical_data_client = StockHistoricalDataClientSigned(TRADE_API_KEY, TRADE_API_SECRET)
         stock_data_stream_client = StockDataStream(TRADE_API_KEY, TRADE_API_SECRET, url_override=STREAM_DATA_WSS)
@@ -2684,6 +2738,37 @@ def parse_arguments() -> argparse.Namespace:
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
     return p.parse_args()
 
+class AuthHeaderMiddleware:
+    """
+    ASGI middleware to extract Authorization headers from incoming HTTP requests.
+    
+    This middleware intercepts HTTP requests, extracts the Authorization header,
+    and stores it in a context variable. The header is then passed along to
+    Alpaca Trading API calls.
+    """
+    def __init__(self, app):
+        self.app = app
+    
+    async def __call__(self, scope, receive, send):
+        """Process ASGI request and extract Authorization header."""
+        if scope["type"] == "http":
+            # Extract Authorization header
+            headers = dict(scope.get("headers", []))
+            auth_header = headers.get(b"authorization") or headers.get(b"Authorization")
+            
+            if auth_header:
+                auth_value = auth_header.decode("utf-8")
+                # Store the full Authorization header value (e.g., "Bearer <token>")
+                auth_header_context.set(auth_value)
+        
+        # Call the wrapped application
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            # Clear auth header from context after request
+            auth_header_context.set(None)
+
+
 class AlpacaMCPServer:
     def __init__(self, config_file: Optional[Path] = None) -> None:
         pass
@@ -2694,6 +2779,23 @@ class AlpacaMCPServer:
             # Configure FastMCP settings for host/port with current MCP versions
             mcp.settings.host = host
             mcp.settings.port = port
+            
+            # Try to wrap the MCP app with auth header middleware for HTTP transport
+            # This enables extracting the Authorization header from incoming requests
+            # and passing it along to Alpaca Trading API calls
+            try:
+                # Get the underlying ASGI application
+                if hasattr(mcp, '_app'):
+                    original_app = mcp._app
+                    mcp._app = AuthHeaderMiddleware(original_app)
+                elif hasattr(mcp, 'app'):
+                    original_app = mcp.app
+                    mcp.app = AuthHeaderMiddleware(original_app)
+            except Exception as e:
+                # If we can't wrap the app, log a warning but continue
+                print(f"Note: Could not apply AuthHeaderMiddleware: {e}", file=sys.stderr)
+                print("Authorization header passthrough may not work correctly", file=sys.stderr)
+            
             mcp.run(transport="streamable-http")
         else:
             mcp.run(transport="stdio")
