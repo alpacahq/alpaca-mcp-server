@@ -120,20 +120,20 @@ def init(api_key: Optional[str], secret_key: Optional[str],
 @main.command()
 @click.option(
     '--transport',
-    type=click.Choice(['stdio', 'http', 'sse']),
+    type=click.Choice(['stdio', 'streamable-http']),
     default='stdio',
-    help='Transport method (default: stdio)'
+    help='Transport method: stdio or streamable-http (default: stdio)'
 )
 @click.option(
     '--host',
     default='127.0.0.1',
-    help='Host to bind for HTTP/SSE transport (default: 127.0.0.1)'
+    help='Host to bind for streamable-http transport (default: 127.0.0.1)'
 )
 @click.option(
     '--port',
     type=int,
     default=8000,
-    help='Port to bind for HTTP/SSE transport (default: 8000)'
+    help='Port to bind for streamable-http transport (default: 8000)'
 )
 @click.option(
     '--config-file',
@@ -150,8 +150,7 @@ def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
 
     Transport methods:
         stdio: Standard input/output (default, for MCP clients)
-        http:  HTTP transport (for remote connections)
-        sse:   Server-sent events (deprecated)
+        streamable-http: HTTP transport supporting streaming per MCP spec
 
     Examples:
         alpaca-mcp serve                           # Start with stdio transport
@@ -187,7 +186,7 @@ def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
             click.echo(f"   Transport: {transport}")
             source_hint = "environment variables" if using_env_only else config_path
             click.echo(f"   Config: {source_hint}")
-            if transport in ["http", "sse"]:
+            if transport == "streamable-http":
                 click.echo(f"   URL: http://{host}:{port}")
             click.echo()
 
