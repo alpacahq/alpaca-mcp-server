@@ -29,6 +29,7 @@
 - [Example Prompts](#example-prompts)
 - [Example Outputs](#example-outputs)
 - [MCP Client Configuration](#mcp-client-configuration)
+- [OAuth Bearer Token Support](#oauth-bearer-token-support)
 - [HTTP Transport for Remote Usage](#http-transport-for-remote-usage)
 - [Available Tools](#available-tools)
 
@@ -258,6 +259,12 @@ alpaca-mcp-server/          ← This is the workspace folder (= project root)
 
 ## Features
 
+- **OAuth 2.0 Support**
+  - Authorization header passthrough for hosted MCP servers
+  - Multi-tenant support - each LLM chatbot request can use a different user's OAuth token
+  - Automatic detection of Authorization headers in incoming HTTP requests
+  - Seamlessly forwards authentication to Alpaca Trading API
+  - Backward compatible with traditional API key/secret authentication
 - **Market Data**
   - Real-time quotes, trades, and price bars for stocks, crypto, and options
   - Historical data with flexible timeframes (1Min to 1Month)
@@ -772,6 +779,98 @@ docker build -t mcp/alpaca:latest .
 Replace `your_alpaca_api_key` and `your_alpaca_secret_key` with your actual Alpaca credentials, then restart Claude Desktop.
 
 </details>
+
+## OAuth Bearer Token Support
+
+The Alpaca MCP Server supports OAuth 2.0 bearer token authentication for hosted deployments where LLM chatbots need to authenticate on behalf of end users. This is particularly useful for multi-tenant scenarios where different users access the same MCP server instance.
+
+### How It Works
+
+When the MCP server receives an HTTP request with an `Authorization` header:
+1. The header is extracted from the incoming request
+2. The header is passed along directly to all Alpaca Trading API calls
+3. Alpaca authenticates the request using the OAuth token in the header
+
+This is a **passthrough authentication** mechanism - the MCP server simply forwards the Authorization header from your LLM chatbot to Alpaca's API.
+
+### Using OAuth Authentication
+
+#### Client-Side (LLM Chatbot)
+
+Your LLM chatbot should include the Authorization header with each HTTP request to the MCP server:
+
+```http
+Authorization: Bearer <access-token>
+```
+
+Example using cURL:
+```bash
+curl -X POST https://your-mcp-server.com/mcp \
+  -H "Authorization: Bearer YOUR_OAUTH_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "get_account_info"}}'
+```
+
+#### Server-Side Configuration
+
+No special configuration required! The MCP server automatically:
+- Detects the `Authorization` header in incoming HTTP requests (when using `--transport streamable-http`)
+- Passes the header to Alpaca Trading API calls
+- Falls back to environment variable credentials if no Authorization header is present
+
+### Obtaining OAuth Tokens
+
+To get OAuth tokens for your users, follow [Alpaca's OAuth 2.0 flow](https://docs.alpaca.markets/docs/using-oauth2-and-trading-api):
+
+1. **Request User Authorization**: Redirect users to Alpaca's authorization endpoint with your client_id
+2. **Handle Callback**: Alpaca redirects back with an authorization code
+3. **Exchange for Access Token**: POST to Alpaca's token endpoint with the code
+4. **Use Token**: Include the access token in the Authorization header when calling your MCP server
+
+Example token exchange:
+```bash
+curl -X POST https://api.alpaca.markets/oauth/token \
+  -d "grant_type=authorization_code" \
+  -d "code=67f74f5a-a2cc-4ebd-88b4-22453fe07994" \
+  -d "client_id=YOUR_CLIENT_ID" \
+  -d "client_secret=YOUR_CLIENT_SECRET" \
+  -d "redirect_uri=YOUR_REDIRECT_URI"
+```
+
+### Security Considerations
+
+- **HTTPS Only**: Always use HTTPS in production to protect OAuth tokens in transit
+- **Token Storage**: Store tokens securely on the client side
+- **Token Expiration**: Implement token refresh logic as per Alpaca's OAuth documentation
+- **No Server-Side Storage**: The MCP server does not store or cache tokens - they are passed through per-request
+
+### Example: Multi-Tenant Deployment
+
+```python
+# Your LLM chatbot making authenticated requests to the MCP server
+import requests
+
+# Token obtained from Alpaca OAuth flow for this specific user
+user_oauth_token = "79500537-5796-4230-9661-7f7108877c60"
+
+response = requests.post(
+    "https://your-mcp-server.com/mcp",
+    headers={
+        "Authorization": f"Bearer {user_oauth_token}",
+        "Content-Type": "application/json"
+    },
+    json={
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "get_account_info",
+            "arguments": {}
+        }
+    }
+)
+
+print(response.json())
+```
 
 ## HTTP Transport for Remote Usage
 
