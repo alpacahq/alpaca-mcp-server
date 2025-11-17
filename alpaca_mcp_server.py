@@ -194,19 +194,22 @@ if os.path.exists(ALPACA_WHEEL_PATH):
     if ALPACA_WHEEL_PATH not in sys.path:
         sys.path.insert(0, ALPACA_WHEEL_PATH)
     try:
-        from option_screener_functions import (
+        from alpaca_options.option_screener_functions import (
             get_df_filtered_options,
             get_bollinger_bands,
             get_otm_options_by_expiration,
             initialize_alpaca_clients
         )
-        from option_execution_functions import (
+        from alpaca_options.option_execution_functions import (
             buy_longer_put_then_sell_put,
             buy_longer_call_then_sell_call,
             sell_put_option,
             buy_put_option,
             sell_call_option,
             buy_call_option
+        )
+        from alpaca_options.directional_integration import (
+            get_df_filtered_options_with_directional
         )
         OPTION_SCREENER_AVAILABLE = True
     except ImportError as e:
@@ -3146,6 +3149,168 @@ async def screen_filtered_options(
 
     except Exception as e:
         return f"Error screening options: {str(e)}"
+
+
+@mcp.tool()
+async def screen_options_with_directional_analysis(
+    symbols: List[str],
+    min_days: int = 20,
+    max_days: int = 45,
+    max_percent_otm: float = 40.0,
+    min_percent_otm: float = 0.1,
+    min_open_interest: int = 200,
+    min_delta_put: float = -0.42,
+    max_delta_put: float = -0.18,
+    min_delta_call: float = 0.18,
+    max_delta_call: float = 0.42,
+    min_atr_multiplier: float = 1.0,
+    max_atr_multiplier: float = 3.0,
+    min_return_30_day: float = 2.0,
+    max_spread_percent: float = 5.0,
+    get_calls: bool = True,
+    get_puts: bool = True,
+    include_longs: bool = False,
+    enable_directional: bool = True,
+    min_confidence: float = 60.0
+) -> str:
+    """
+    Advanced options screening with multi-timeframe directional analysis and market regime detection.
+
+    Combines traditional options filtering with sophisticated directional analysis that examines:
+    - Price action across daily, hourly, and minute timeframes
+    - Bollinger Bands mean reversion signals
+    - Options flow and gamma exposure
+    - Put/call ratios and implied volatility skew
+    - Market regime (trending vs ranging)
+
+    Returns options ranked by composite score: Expected Return (40%) + Directional Alignment (30%) + Confidence (30%)
+
+    Args:
+        symbols: Stock symbols to screen (e.g., ["AAPL", "MSFT"])
+        min_days: Minimum days to expiration (default: 20)
+        max_days: Maximum days to expiration (default: 45)
+        max_percent_otm: Max % out-of-the-money (default: 40.0)
+        min_percent_otm: Min % out-of-the-money (default: 0.1)
+        min_open_interest: Minimum open interest (default: 200)
+        min_delta_put: Min delta for puts (default: -0.42)
+        max_delta_put: Max delta for puts (default: -0.18)
+        min_delta_call: Min delta for calls (default: 0.18)
+        max_delta_call: Max delta for calls (default: 0.42)
+        min_atr_multiplier: Min ATR multiplier (default: 1.0)
+        max_atr_multiplier: Max ATR multiplier (default: 3.0)
+        min_return_30_day: Min 30-day return % (default: 2.0)
+        max_spread_percent: Max bid/ask spread % (default: 5.0)
+        get_calls: Include calls (default: True)
+        get_puts: Include puts (default: True)
+        include_longs: Include long options (default: False)
+        enable_directional: Enable directional analysis (default: True)
+        min_confidence: Min directional confidence % (default: 60.0)
+
+    Returns:
+        Formatted results with:
+        - Directional signals (BULLISH/BEARISH/NEUTRAL)
+        - Confidence scores and market regime
+        - Recommendations (STRONG_BUY/BUY/HOLD/CAUTION/AVOID)
+        - All option metrics (Greeks, IV, OI, spreads)
+        - Composite scoring
+    """
+    if not OPTION_SCREENER_AVAILABLE:
+        return "Error: Option screener with directional analysis not available. Check ALPACA_WHEEL_PATH configuration."
+
+    try:
+        # Call the directional integration function
+        results, no_results = get_df_filtered_options_with_directional(
+            symbols=symbols,
+            trading_client=trade_client,
+            stock_client=stock_historical_data_client,
+            option_client=option_historical_data_client,
+            min_days=min_days,
+            max_days=max_days,
+            max_percent_otm=max_percent_otm,
+            min_percent_otm=min_percent_otm,
+            min_open_interest=min_open_interest,
+            min_delta_put=min_delta_put,
+            max_delta_put=max_delta_put,
+            min_delta_call=min_delta_call,
+            max_delta_call=max_delta_call,
+            min_atr_multiplier=min_atr_multiplier,
+            max_atr_multiplier=max_atr_multiplier,
+            min_return_30_day=min_return_30_day,
+            max_spread_percent=max_spread_percent,
+            get_calls=get_calls,
+            get_puts=get_puts,
+            include_longs=include_longs,
+            enable_directional=enable_directional,
+            min_confidence=min_confidence
+        )
+
+        # Format results
+        output = []
+        output.append("=" * 90)
+        output.append("OPTIONS SCREENING WITH DIRECTIONAL ANALYSIS")
+        output.append("=" * 90)
+        output.append("")
+
+        if no_results:
+            output.append(f"No results for: {', '.join(no_results)}")
+            output.append("")
+
+        if not results:
+            return "\n".join(output) + "No options found matching criteria."
+
+        # Display results for each symbol
+        for symbol, df in results:
+            if df.empty:
+                continue
+
+            output.append(f"\n{'=' * 90}")
+            output.append(f"SYMBOL: {symbol} - {len(df)} options found")
+            output.append(f"{'=' * 90}")
+
+            # Show top 10 by composite score
+            for idx, row in df.head(10).iterrows():
+                output.append(f"\n{'-' * 90}")
+                output.append(f"RANK #{idx + 1}")
+                output.append(f"{'-' * 90}")
+
+                # Basic info
+                output.append(f"Symbol: {row.get('symbol', 'N/A')}")
+                output.append(f"Type: {row.get('type', 'N/A')} | Strike: ${row.get('strike_price', 0):.2f}")
+                output.append(f"Expiry: {row.get('expiration_date', 'N/A')} ({row.get('days_to_expiry', 0):.0f} DTE)")
+                output.append("")
+
+                # Pricing
+                output.append(f"Premium: ${row.get('bid', 0):.2f} / ${row.get('ask', 0):.2f} (spread: {row.get('spread_percent', 0):.2f}%)")
+                output.append(f"Sizes: {row.get('bid_size', 0):,.0f} x {row.get('ask_size', 0):,.0f}")
+                output.append("")
+
+                # Greeks
+                output.append(f"Greeks: Δ={row.get('delta', 0):.3f} | Γ={row.get('gamma', 0):.4f} | Θ={row.get('theta', 0):.3f} | ν={row.get('vega', 0):.3f}")
+                output.append(f"IV: {row.get('implied_volatility', 0):.3f} | OI: {row.get('open_interest', 0):,.0f}")
+                output.append("")
+
+                # Directional analysis
+                if enable_directional:
+                    output.append("--- DIRECTIONAL ANALYSIS ---")
+                    direction = row.get('dir_direction', 'N/A')
+                    confidence = row.get('dir_confidence', 0)
+                    output.append(f"Direction: {direction} (Confidence: {confidence:.1f}%)")
+                    output.append(f"Market Regime: {row.get('market_regime', 'N/A')}")
+                    output.append(f"Alignment Score: {row.get('dir_alignment_score', 0):.1f}")
+                    output.append(f"Recommendation: {row.get('recommendation', 'N/A')}")
+                    output.append("")
+
+                # Returns
+                output.append(f"Expected 30-Day Return: {row.get('return_30_day', 0):.2f}%")
+                if enable_directional:
+                    output.append(f"COMPOSITE SCORE: {row.get('composite_score', 0):.2f}")
+                output.append(f"ATR Multiplier: {row.get('atr_multiplier', 0):.2f}")
+
+        output.append(f"\n{'=' * 90}")
+        return "\n".join(output)
+
+    except Exception as e:
+        return f"Error in directional screening: {str(e)}\n\nCheck that alpacaWheel is properly configured at: {ALPACA_WHEEL_PATH}"
 
 
 @mcp.tool()

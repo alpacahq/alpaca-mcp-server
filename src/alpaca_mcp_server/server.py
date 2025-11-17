@@ -89,6 +89,11 @@ github_core_path = project_root / '.github' / 'core'
 if github_core_path.exists() and str(github_core_path) not in sys.path:
     sys.path.insert(0, str(github_core_path))
 
+# Configure Python path for alpacaWheel integration
+alpaca_wheel_path = Path('/Users/johnodwyer/PycharmProjects/alpacaWheel')
+if alpaca_wheel_path.exists() and str(alpaca_wheel_path) not in sys.path:
+    sys.path.insert(0, str(alpaca_wheel_path))
+
 # Import the UserAgentMixin
 try:
     from user_agent_mixin import UserAgentMixin
@@ -105,6 +110,15 @@ except ImportError:
     OptionHistoricalDataClientSigned = OptionHistoricalDataClient
     CorporateActionsClientSigned = CorporateActionsClient
     CryptoHistoricalDataClientSigned = CryptoHistoricalDataClient
+
+# Import alpacaWheel directional integration functions
+try:
+    from alpaca_options.directional_integration import get_df_filtered_options_with_directional
+    ALPACA_WHEEL_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Could not import alpacaWheel functions: {e}")
+    ALPACA_WHEEL_AVAILABLE = False
+    get_df_filtered_options_with_directional = None
 
 # Load environment variables
 load_dotenv()
@@ -2931,6 +2945,230 @@ async def place_option_market_order(
         2. Checking your account status
         3. Ensuring market is open
         4. Contacting support if the issue persists
+        """
+
+
+# ============================================================================
+# AlpacaWheel Integration - Advanced Options Screening with Directional Analysis
+# ============================================================================
+
+@mcp.tool()
+async def get_filtered_options_with_directional_analysis(
+    symbols: List[str],
+    min_days: int = 20,
+    max_days: int = 45,
+    max_percent_otm: float = 40.0,
+    min_percent_otm: float = 0.1,
+    min_open_interest: int = 200,
+    min_delta_put: float = -0.42,
+    max_delta_put: float = -0.18,
+    min_delta_call: float = 0.18,
+    max_delta_call: float = 0.42,
+    min_atr_multiplier: float = 1.0,
+    max_atr_multiplier: float = 3.0,
+    min_return_30_day: float = 2.0,
+    max_spread_percent: float = 5.0,
+    get_calls: bool = True,
+    get_puts: bool = True,
+    include_longs: bool = False,
+    enable_directional: bool = True,
+    min_confidence: float = 60.0
+) -> str:
+    """
+    Advanced options screening with directional analysis using alpacaWheel integration.
+
+    This tool provides sophisticated options filtering combined with directional market analysis,
+    technical indicators, and options flow analysis. It screens for optimal options trades based on:
+    - Traditional Greeks and metrics (delta, IV, OI, spreads)
+    - Directional analysis using multiple timeframes
+    - Bollinger Bands signals
+    - Options flow and gamma exposure
+    - Market regime detection
+
+    The function returns options ranked by a composite score that combines:
+    - Expected return (40%)
+    - Directional alignment (30%)
+    - Directional confidence (30%)
+
+    Args:
+        symbols: List of stock symbols to screen (e.g., ["AAPL", "MSFT", "GOOGL"])
+        min_days: Minimum days to expiration (default: 20)
+        max_days: Maximum days to expiration (default: 45)
+        max_percent_otm: Maximum percent out-of-the-money (default: 40.0)
+        min_percent_otm: Minimum percent out-of-the-money (default: 0.1)
+        min_open_interest: Minimum open interest threshold (default: 200)
+        min_delta_put: Minimum delta for put options (default: -0.42)
+        max_delta_put: Maximum delta for put options (default: -0.18)
+        min_delta_call: Minimum delta for call options (default: 0.18)
+        max_delta_call: Maximum delta for call options (default: 0.42)
+        min_atr_multiplier: Minimum ATR multiplier (default: 1.0)
+        max_atr_multiplier: Maximum ATR multiplier (default: 3.0)
+        min_return_30_day: Minimum expected 30-day return % (default: 2.0)
+        max_spread_percent: Maximum bid/ask spread % (default: 5.0)
+        get_calls: Include call options in results (default: True)
+        get_puts: Include put options in results (default: True)
+        include_longs: Include long options for spreads (default: False)
+        enable_directional: Enable directional analysis (default: True)
+        min_confidence: Minimum directional confidence threshold % (default: 60.0)
+
+    Returns:
+        str: Formatted results showing:
+            - Top options ranked by composite score
+            - Directional analysis (BULLISH/BEARISH/NEUTRAL with confidence)
+            - Directional alignment score
+            - Market regime
+            - Recommendations (STRONG_BUY, BUY, HOLD, CAUTION, AVOID, NEUTRAL)
+            - All standard option metrics (strike, premium, Greeks, ATR, bid/ask)
+
+    Examples:
+        # Screen AAPL with directional analysis
+        symbols = ["AAPL"]
+
+        # Conservative puts only, high confidence required
+        symbols = ["MSFT", "GOOGL"]
+        get_calls = False
+        get_puts = True
+        min_confidence = 75.0
+        min_return_30_day = 3.0
+
+    Note:
+        Requires alpacaWheel integration to be available. If not available,
+        this tool will return an error message.
+    """
+    _ensure_clients()
+
+    if not ALPACA_WHEEL_AVAILABLE:
+        return """
+        Error: AlpacaWheel integration is not available.
+
+        The advanced options screening with directional analysis requires the alpacaWheel
+        package to be installed and accessible. Please ensure:
+        1. alpacaWheel is installed at /Users/johnodwyer/PycharmProjects/alpacaWheel
+        2. All required dependencies are installed
+        3. The server has been restarted after installation
+
+        Contact your administrator for setup assistance.
+        """
+
+    try:
+        # Call the directional integration function
+        results, no_results = get_df_filtered_options_with_directional(
+            symbols=symbols,
+            trading_client=trade_client,
+            stock_client=stock_historical_data_client,
+            option_client=option_historical_data_client,
+            min_days=min_days,
+            max_days=max_days,
+            max_percent_otm=max_percent_otm,
+            min_percent_otm=min_percent_otm,
+            min_open_interest=min_open_interest,
+            min_delta_put=min_delta_put,
+            max_delta_put=max_delta_put,
+            min_delta_call=min_delta_call,
+            max_delta_call=max_delta_call,
+            min_atr_multiplier=min_atr_multiplier,
+            max_atr_multiplier=max_atr_multiplier,
+            min_return_30_day=min_return_30_day,
+            max_spread_percent=max_spread_percent,
+            get_calls=get_calls,
+            get_puts=get_puts,
+            include_longs=include_longs,
+            enable_directional=enable_directional,
+            min_confidence=min_confidence
+        )
+
+        # Format results
+        output = []
+        output.append("=" * 80)
+        output.append("OPTIONS SCREENING WITH DIRECTIONAL ANALYSIS")
+        output.append("=" * 80)
+        output.append("")
+
+        if no_results:
+            output.append(f"Symbols with no qualifying options: {', '.join(no_results)}")
+            output.append("")
+
+        if not results:
+            output.append("No options found matching the specified criteria.")
+            return "\n".join(output)
+
+        # Display results for each symbol
+        for symbol, df in results:
+            if df.empty:
+                continue
+
+            output.append(f"\n{'=' * 80}")
+            output.append(f"SYMBOL: {symbol}")
+            output.append(f"{'=' * 80}")
+            output.append(f"Found {len(df)} qualifying options")
+            output.append("")
+
+            # Show top 10 options by composite score
+            top_df = df.head(10)
+
+            for idx, row in top_df.iterrows():
+                output.append(f"\n{'-' * 80}")
+                output.append(f"Option #{idx + 1}")
+                output.append(f"{'-' * 80}")
+                output.append(f"Symbol: {row.get('symbol', 'N/A')}")
+                output.append(f"Type: {row.get('type', 'N/A')}")
+                output.append(f"Strike: ${row.get('strike_price', 0):.2f}")
+                output.append(f"Expiration: {row.get('expiration_date', 'N/A')} ({row.get('days_to_expiry', 0):.0f} days)")
+                output.append(f"")
+
+                # Pricing
+                output.append(f"Premium (Bid/Ask): ${row.get('bid', 0):.2f} / ${row.get('ask', 0):.2f}")
+                output.append(f"Bid/Ask Spread: {row.get('spread_percent', 0):.2f}%")
+                output.append(f"")
+
+                # Greeks and metrics
+                output.append(f"Delta: {row.get('delta', 0):.4f}")
+                output.append(f"Gamma: {row.get('gamma', 0):.4f}")
+                output.append(f"Theta: {row.get('theta', 0):.4f}")
+                output.append(f"Vega: {row.get('vega', 0):.4f}")
+                output.append(f"Implied Volatility: {row.get('implied_volatility', 0):.4f}")
+                output.append(f"Open Interest: {row.get('open_interest', 0):,.0f}")
+                output.append(f"")
+
+                # Position sizing
+                output.append(f"Bid Size: {row.get('bid_size', 0):,.0f}")
+                output.append(f"Ask Size: {row.get('ask_size', 0):,.0f}")
+                output.append(f"")
+
+                # Directional analysis (if enabled)
+                if enable_directional:
+                    output.append(f"--- DIRECTIONAL ANALYSIS ---")
+                    output.append(f"Direction: {row.get('dir_direction', 'N/A')}")
+                    output.append(f"Confidence: {row.get('dir_confidence', 0):.1f}%")
+                    output.append(f"Directional Score: {row.get('dir_score', 0):.2f}")
+                    output.append(f"Alignment Score: {row.get('dir_alignment_score', 0):.1f}")
+                    output.append(f"Market Regime: {row.get('market_regime', 'N/A')}")
+                    output.append(f"Recommendation: {row.get('recommendation', 'N/A')}")
+                    output.append(f"")
+
+                # Returns
+                output.append(f"Expected 30-day Return: {row.get('return_30_day', 0):.2f}%")
+                if enable_directional:
+                    output.append(f"Composite Score: {row.get('composite_score', 0):.2f}")
+                output.append(f"ATR Multiplier: {row.get('atr_multiplier', 0):.2f}")
+
+        output.append(f"\n{'=' * 80}")
+        output.append("END OF RESULTS")
+        output.append(f"{'=' * 80}")
+
+        return "\n".join(output)
+
+    except Exception as e:
+        return f"""
+        Error running advanced options screening: {str(e)}
+
+        Please check:
+        1. All symbols are valid stock tickers
+        2. Your account has market data permissions
+        3. The alpacaWheel integration is properly configured
+        4. All parameter values are within valid ranges
+
+        Error details: {type(e).__name__}: {str(e)}
         """
 
 
