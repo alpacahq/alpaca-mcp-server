@@ -137,7 +137,7 @@ def init(api_key: Optional[str], secret_key: Optional[str],
 )
 @click.option(
     '--config-file',
-    type=click.Path(exists=True, path_type=Path),
+    type=click.Path(path_type=Path),
     help='Path to .env configuration file (default: .env in current directory)'
 )
 def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
@@ -150,7 +150,8 @@ def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
 
     Transport methods:
         stdio: Standard input/output (default, for MCP clients)
-        streamable-http: HTTP transport supporting streaming per MCP spec
+        http:  HTTP transport (for remote connections)
+        sse:   Server-sent events (deprecated)
 
     Examples:
         alpaca-mcp serve                           # Start with stdio transport
@@ -179,7 +180,6 @@ def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
                 click.echo()
                 click.echo("Update the credentials above or export them as environment variables.")
             sys.exit(1)
-
         # Display startup information (unless in stdio mode for MCP clients)
         if transport != "stdio":
             click.echo("Starting Alpaca MCP Server")

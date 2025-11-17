@@ -85,23 +85,49 @@ from alpaca.trading.requests import (
     UpdateWatchlistRequest,
 )
 
+
 # Import shared helpers
-from .helpers import (
-    parse_timeframe_with_enums,
-    _validate_amount,
-    _parse_iso_datetime,
-    _parse_date_ymd,
-    _format_ohlcv_bar,
-    _format_quote_data,
-    _format_trade_data,
-    _parse_expiration_expression,
-    _validate_option_order_inputs,
-    _convert_order_class_string,
-    _process_option_legs,
-    _create_option_market_order_request,
-    _format_option_order_response,
-    _handle_option_api_error,
-)
+# Try relative import first (works when run as a module)
+# Fall back to absolute import if running as a script directly
+try:
+    from .helpers import (
+        parse_timeframe_with_enums,
+        _validate_amount,
+        _parse_iso_datetime,
+        _parse_date_ymd,
+        _format_ohlcv_bar,
+        _format_quote_data,
+        _format_trade_data,
+        _parse_expiration_expression,
+        _validate_option_order_inputs,
+        _convert_order_class_string,
+        _process_option_legs,
+        _create_option_market_order_request,
+        _format_option_order_response,
+        _handle_option_api_error,
+    )
+except ImportError:
+    # Handle direct script execution where __package__ is empty
+    # Add the package root to sys.path and use absolute import
+    package_root = Path(__file__).parent.parent.parent
+    if str(package_root) not in sys.path:
+        sys.path.insert(0, str(package_root))
+    from alpaca_mcp_server.helpers import (
+        parse_timeframe_with_enums,
+        _validate_amount,
+        _parse_iso_datetime,
+        _parse_date_ymd,
+        _format_ohlcv_bar,
+        _format_quote_data,
+        _format_trade_data,
+        _parse_expiration_expression,
+        _validate_option_order_inputs,
+        _convert_order_class_string,
+        _process_option_legs,
+        _create_option_market_order_request,
+        _format_option_order_response,
+        _handle_option_api_error,
+    )
 
 from mcp.server.fastmcp import FastMCP
 import contextvars
