@@ -2759,8 +2759,8 @@ async def place_option_market_order(
 def parse_arguments() -> argparse.Namespace:
     p = argparse.ArgumentParser("Alpaca MCP Server")
     p.add_argument("--transport", choices=["stdio","streamable-http"], default="stdio")
-    # p.add_argument("--host", default=os.environ.get("HOST","127.0.0.1"))
-    p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
+    p.add_argument("--host", default=os.environ.get("HOST","127.0.0.1"))
+    # p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
     return p.parse_args()
 
@@ -2797,7 +2797,31 @@ class AuthHeaderMiddleware:
 
 class AlpacaMCPServer:
     def __init__(self, config_file: Optional[Path] = None) -> None:
-        pass
+        """
+        Initialize the Alpaca MCP Server.
+        
+        Args:
+            config_file: Optional path to a custom .env configuration file.
+                        If provided, environment variables will be reloaded from this file.
+        """
+        # If a custom config file is specified, reload environment variables from it
+        if config_file and config_file.exists():
+            global TRADE_API_KEY, TRADE_API_SECRET, ALPACA_PAPER_TRADE, ALPACA_PAPER_TRADE_BOOL
+            global TRADE_API_URL, TRADE_API_WSS, DATA_API_URL, STREAM_DATA_WSS, DEBUG
+            
+            # Reload environment variables from the custom config file
+            load_dotenv(config_file, override=True)
+            
+            # Update module-level variables with the newly loaded values
+            TRADE_API_KEY = os.getenv("ALPACA_API_KEY")
+            TRADE_API_SECRET = os.getenv("ALPACA_SECRET_KEY")
+            ALPACA_PAPER_TRADE = os.getenv("ALPACA_PAPER_TRADE", "True")
+            TRADE_API_URL = os.getenv("TRADE_API_URL")
+            TRADE_API_WSS = os.getenv("TRADE_API_WSS")
+            DATA_API_URL = os.getenv("DATA_API_URL")
+            STREAM_DATA_WSS = os.getenv("STREAM_DATA_WSS")
+            DEBUG = os.getenv("DEBUG", "False")
+            ALPACA_PAPER_TRADE_BOOL = ALPACA_PAPER_TRADE.lower() not in ['false', '0', 'no', 'off']
 
     def run(self, transport: str = "stdio", host: str = "0.0.0.0", port: int = 8000) -> None:
     # def run(self, transport: str = "stdio", host: str = "127.0.0.1", port: int = 8000) -> None:

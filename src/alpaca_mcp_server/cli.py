@@ -41,11 +41,11 @@ def main():
 @main.command()
 @click.option(
     '--api-key',
-    help='Alpaca API key (will prompt if not provided)'
+    help='WARNING: do not pass sensitive keys on the command line; will prompt if omitted'
 )
 @click.option(
     '--secret-key',
-    help='Alpaca secret key (will prompt if not provided)'
+    help='WARNING: do not pass sensitive keys on the command line; will prompt if omitted'
 )
 @click.option(
     '--paper/--live',
@@ -65,6 +65,11 @@ def init(api_key: Optional[str], secret_key: Optional[str],
     This command creates or updates a .env file with your Alpaca API credentials
     and trading configuration. API keys can be provided as options or entered
     interactively when prompted.
+
+    SECURITY WARNING: Passing API keys as command-line arguments (--api-key, --secret-key)
+    is insecure. Command-line arguments are recorded in shell history and visible in process
+    listings. For secure credential handling, omit these options to use the interactive prompt,
+    or set the ALPACA_API_KEY and ALPACA_SECRET_KEY environment variables.
 
     Examples:
         alpaca-mcp init                     # Interactive configuration
@@ -150,13 +155,12 @@ def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
 
     Transport methods:
         stdio: Standard input/output (default, for MCP clients)
-        http:  HTTP transport (for remote connections)
-        sse:   Server-sent events (deprecated)
+        streamable-http: HTTP transport for remote connections
 
     Examples:
         alpaca-mcp serve                           # Start with stdio transport
-        alpaca-mcp serve --transport http          # Start HTTP server
-        alpaca-mcp serve --transport http --port 9000  # Custom port
+        alpaca-mcp serve --transport streamable-http          # Start HTTP server
+        alpaca-mcp serve --transport streamable-http --port 9000  # Custom port
         alpaca-mcp serve --config-file ~/trading.env   # Custom config
     """
     try:

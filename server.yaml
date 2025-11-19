@@ -161,7 +161,8 @@ metadata:
   examples:
     basic_usage: |
       # Start with Docker
-      docker run -e ALPACA_API_KEY=your_key -e ALPACA_SECRET_KEY=your_secret alpaca/mcp-server
+      docker run -e ALPACA_API_KEY -e ALPACA_SECRET_KEY alpaca/mcp-server
+      # Provide credentials via environment variables set outside of the command
 
     claude_desktop: |
       # Claude Desktop configuration
@@ -170,9 +171,9 @@ metadata:
           "alpaca": {
             "command": "docker",
             "args": ["run", "-i", "--rm", "-e", "ALPACA_API_KEY", "-e", "ALPACA_SECRET_KEY", "alpaca/mcp-server"],
-            "env": {
-              "ALPACA_API_KEY": "your_api_key",
-              "ALPACA_SECRET_KEY": "your_secret_key"
+              "ALPACA_API_KEY": "${ALPACA_API_KEY}",
+              "ALPACA_SECRET_KEY": "${ALPACA_SECRET_KEY}"
+            }
             }
           }
         }
