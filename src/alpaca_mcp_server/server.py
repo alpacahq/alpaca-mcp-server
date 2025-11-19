@@ -585,7 +585,8 @@ async def get_stock_bars(
                 # Fall back to days parameter for daily+ timeframes
                 start_time = datetime.now() - timedelta(days=days)
         if not end_time:
-            end_time = datetime.now()
+            # Subtract 15 minutes to avoid free-plan 15-minute delay limitation
+            end_time = datetime.now() - timedelta(minutes=15)
         
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
@@ -600,6 +601,7 @@ async def get_stock_bars(
         if bars[symbol]:
             time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
             result = f"Historical Data for {symbol} ({timeframe} bars, {time_range}):\n"
+            result += "Note: Data excludes the most recent 15 minutes (free account limitation)\n"
             result += "---------------------------------------------------\n"
             
             for bar in bars[symbol]:
@@ -634,7 +636,8 @@ async def get_stock_bars(
 @mcp.tool()
 async def get_stock_trades(
     symbol: str,
-    days: int = 5,
+    days: int = 1,
+    minutes: int = 15,
     limit: Optional[int] = None,
     sort: Optional[Sort] = Sort.ASC,
     feed: Optional[DataFeed] = None,
@@ -658,14 +661,20 @@ async def get_stock_trades(
     """
     _ensure_clients()
     try:
-        # Calculate start time based on days
-        start_time = datetime.now() - timedelta(days=days)
+        # Calculate start time based on days or minutes
+        if days > 0:
+            start_time = datetime.now() - timedelta(days=days)
+        else:
+            start_time = datetime.now() - timedelta(minutes=minutes)
+
+        # Apply 15-minute buffer to avoid free-plan limitation
+        end_time = datetime.now() - timedelta(minutes=15)
         
         # Create the request object with all available parameters
         request_params = StockTradesRequest(
             symbol_or_symbols=symbol,
             start=start_time,
-            end=datetime.now(),
+            end=end_time,
             limit=limit,
             sort=sort,
             feed=feed,
@@ -677,7 +686,9 @@ async def get_stock_trades(
         trades = stock_historical_data_client.get_stock_trades(request_params)
         
         if symbol in trades:
-            result = f"Historical Trades for {symbol} (Last {days} days):\n"
+            time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
+            result = f"Historical Trades for {symbol} ({time_range}):\n"
+            result += "Note: Data excludes the most recent 15 minutes (free account limitation)\n"
             result += "---------------------------------------------------\n"
             
             for trade in trades[symbol]:
@@ -688,11 +699,12 @@ async def get_stock_trades(
                     Exchange: {trade.exchange}
                     ID: {trade.id}
                     Conditions: {trade.conditions}
+                    Tape: {trade.tape}
                     -------------------
                     """
             return result
         else:
-            return f"No trade data found for {symbol} in the last {days} days."
+            return f"No trade data found for {symbol} in the specified time range."
     except Exception as e:
         return f"Error fetching trades: {str(e)}"
 
