@@ -42,6 +42,7 @@ from alpaca.data.requests import (
     StockLatestBarRequest,
     StockLatestQuoteRequest,
     StockLatestTradeRequest,
+    StockQuotesRequest,
     StockSnapshotRequest,
     StockTradesRequest,
     OptionChainRequest,
@@ -838,6 +839,353 @@ async def get_clock() -> str:
 # ============================================================================
 
 @mcp.tool()
+async def get_stock_bars(
+    symbol: str,
+    days: int = 5,
+    hours: int = 0,
+    minutes: int = 15,
+    timeframe: str = "1Day",
+    limit: Optional[int] = 1000,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    sort: Optional[Sort] = Sort.ASC,
+    feed: Optional[DataFeed] = None,
+    currency: Optional[SupportedCurrencies] = None,
+    asof: Optional[str] = None
+) -> str:
+    """
+    Retrieves and formats historical price bars for a stock with configurable timeframe and time range.
+    
+    Args:
+        symbol (str): Stock ticker symbol (e.g., AAPL, MSFT)
+        days (int): Number of days to look back (default: 5, ignored if start is provided)
+        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
+        minutes (int): Number of minutes to look back (default: 15, ignored if start is provided)
+        timeframe (str): Bar timeframe - supports flexible Alpaca formats:
+            - Minutes: "1Min" to "59Min" (or "1T" to "59T"), e.g., "5Min", "15Min", "30Min"
+            - Hours: "1Hour" to "23Hour" (or "1H" to "23H"), e.g., "1Hour", "4Hour", "6Hour"
+            - Days: "1Day" (or "1D")
+            - Weeks: "1Week" (or "1W")
+            - Months: "1Month", "2Month", "3Month", "4Month", "6Month", or "12Month" (or use "M" suffix)
+            (default: "1Day")
+        limit (Optional[int]): Maximum number of bars to return (default: 1000)
+        start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
+        end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
+        sort (Optional[Sort]): Chronological order of response (ASC or DESC)
+        feed (Optional[DataFeed]): The stock data feed to retrieve from
+        currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
+        asof (Optional[str]): The asof date in YYYY-MM-DD format
+    
+    Returns:
+        str: Formatted string containing historical price data with timestamps, OHLCV data
+    """
+    _ensure_clients()
+    try:
+        # Parse timeframe string to TimeFrame object
+        timeframe_obj = parse_timeframe_with_enums(timeframe)
+        if timeframe_obj is None:
+            return f"Error: Invalid timeframe '{timeframe}'. Supported formats: 1Min, 2Min, 5Min, 15Min, 30Min, 1Hour, 2Hour, 4Hour, 1Day, 1Week, 1Month, etc."
+        
+        # Handle start time: use provided start or calculate from days/hours/minutes
+        if start:
+            try:
+                start_time = _parse_iso_datetime(start)
+            except ValueError:
+                return f"Error: Invalid start time format '{start}'. Use ISO format like '2023-01-01T09:30:00' or '2023-01-01'"
+        else:
+            # Calculate start time based on days, hours, or minutes (priority order)
+            if days > 0:
+                start_time = datetime.now() - timedelta(days=days)
+            elif hours > 0:
+                start_time = datetime.now() - timedelta(hours=hours)
+            else:
+                start_time = datetime.now() - timedelta(minutes=minutes)
+        
+        # Handle end time: use provided end or default to now
+        if end:
+            try:
+                end_time = _parse_iso_datetime(end)
+            except ValueError:
+                return f"Error: Invalid end time format '{end}'. Use ISO format like '2023-01-01T16:00:00' or '2023-01-01'"
+        else:
+            end_time = datetime.now()
+        
+        # Create the request object
+        request_params = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=timeframe_obj,
+            start=start_time,
+            end=end_time,
+            limit=limit,
+            sort=sort,
+            feed=feed,
+            currency=currency,
+            asof=asof
+        )
+        
+        bars = stock_historical_data_client.get_stock_bars(request_params)
+        
+        if bars[symbol]:
+            time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
+            result = f"Historical Bars for {symbol} ({timeframe} timeframe, {time_range}):\n"
+            result += "---------------------------------------------------\n"
+            
+            for bar in bars[symbol]:
+                # Format timestamp based on timeframe unit
+                if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
+                    time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    time_str = bar.timestamp.date()
+                
+                result += f"Time: {time_str}, Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}, Volume: {bar.volume}\n"
+            
+            return result
+        else:
+            return f"No bar data found for {symbol} with {timeframe} timeframe in the specified time range."
+            
+    except APIError as api_error:
+        error_message = str(api_error)
+        lower = error_message.lower()
+        if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
+            fifteen_ago = datetime.now() - timedelta(minutes=15)
+            hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
+            return (
+                f"Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. "
+                f"Your request likely included the most recent 15 minutes. "
+                f"Retry with `end` <= {hint_end} (exclude the last 15 minutes), "
+                f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
+                f"Original error: {error_message}"
+            )
+        return f"API Error fetching bars for {symbol}: {error_message}"
+    except Exception as e:
+        return f"Error fetching bars for {symbol}: {str(e)}"
+
+@mcp.tool()
+async def get_stock_quotes(
+    symbol: str,
+    days: int = 1,
+    hours: int = 0,
+    minutes: int = 15,
+    limit: Optional[int] = 1000,
+    sort: Optional[Sort] = Sort.ASC,
+    feed: Optional[DataFeed] = None,
+    currency: Optional[SupportedCurrencies] = None,
+    asof: Optional[str] = None
+) -> str:
+    """
+    Retrieves and formats historical quote data (level 1 bid/ask) for a stock.
+    
+    Args:
+        symbol (str): Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        days (int): Number of days to look back (default: 1)
+        hours (int): Number of hours to look back (default: 0)
+        minutes (int): Number of minutes to look back (default: 15)
+        limit (Optional[int]): Upper limit of number of data points to return (default: 1000)
+        sort (Optional[Sort]): Chronological order of response (ASC or DESC)
+        feed (Optional[DataFeed]): The stock data feed to retrieve from
+        currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
+        asof (Optional[str]): The asof date in YYYY-MM-DD format
+        
+    Returns:
+        str: Formatted string containing quote history or an error message
+    """
+    _ensure_clients()
+    try:
+        # Calculate start time based on days, hours, or minutes (priority order)
+        if days > 0:
+            start_time = datetime.now() - timedelta(days=days)
+            time_desc = f"Last {days} day{'s' if days > 1 else ''}"
+        elif hours > 0:
+            start_time = datetime.now() - timedelta(hours=hours)
+            time_desc = f"Last {hours} hour{'s' if hours > 1 else ''}"
+        else:
+            start_time = datetime.now() - timedelta(minutes=minutes)
+            time_desc = f"Last {minutes} minute{'s' if minutes > 1 else ''}"
+        
+        # Create the request object with all available parameters
+        request_params = StockQuotesRequest(
+            symbol_or_symbols=symbol,
+            start=start_time,
+            end=datetime.now(),
+            limit=limit,
+            sort=sort,
+            feed=feed,
+            currency=currency,
+            asof=asof
+        )
+        
+        # Get the quotes
+        quotes = stock_historical_data_client.get_stock_quotes(request_params)
+        
+        if symbol in quotes:
+            result = f"Historical Quotes for {symbol} ({time_desc}):\n"
+            result += "---------------------------------------------------\n"
+            for quote in quotes[symbol]:
+                result += f"""
+                    Timestamp: {quote.timestamp}
+                    Ask Price: ${float(quote.ask_price):.6f}
+                    Bid Price: ${float(quote.bid_price):.6f}
+                    Ask Size: {quote.ask_size}
+                    Bid Size: {quote.bid_size}
+                    Ask Exchange: {quote.ask_exchange}
+                    Bid Exchange: {quote.bid_exchange}
+                    Conditions: {quote.conditions}
+                    Tape: {quote.tape}
+                    -------------------
+                    """
+            return result
+        else:
+            return f"No quote data found for {symbol} in the specified time range."
+            
+    except APIError as api_error:
+        error_message = str(api_error)
+        lower = error_message.lower()
+        if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
+            fifteen_ago = datetime.now() - timedelta(minutes=15)
+            hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
+            return (
+                f"Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. "
+                f"Your request likely included the most recent 15 minutes. "
+                f"Retry with `end` <= {hint_end} (exclude the last 15 minutes), "
+                f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
+                f"Original error: {error_message}"
+            )
+        return f"API Error fetching quotes for {symbol}: {error_message}"
+    except Exception as e:
+        return f"Error fetching quotes for {symbol}: {str(e)}"
+
+@mcp.tool()
+async def get_stock_trades(
+    symbol: str,
+    days: int = 1,
+    minutes: int = 15,
+    hours: int = 0,
+    limit: Optional[int] = 1000,
+    sort: Optional[Sort] = Sort.ASC,
+    feed: Optional[DataFeed] = None,
+    currency: Optional[SupportedCurrencies] = None,
+    asof: Optional[str] = None
+) -> str:
+    """
+    Retrieves and formats historical trades for a stock.
+    Args:
+        symbol (str): Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        days (int): Number of days to look back (default: 1)
+        minutes (int): Number of minutes to look back (default: 15)
+        limit (Optional[int]): Upper limit of number of data points to return (default: 1000)
+        sort (Optional[Sort]): Chronological order of response (ASC or DESC)
+        feed (Optional[DataFeed]): The stock data feed to retrieve from
+        currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
+        asof (Optional[str]): The asof date in YYYY-MM-DD format
+    Returns:
+        str: Formatted string containing trade history or an error message
+    """
+    _ensure_clients()
+    try:
+        # Calculate start time based on days, hours, or minutes (priority order)
+        if days > 0:
+            start_time = datetime.now() - timedelta(days=days)
+            time_desc = f"Last {days} day{'s' if days > 1 else ''}"
+        elif hours > 0:
+            start_time = datetime.now() - timedelta(hours=hours)
+            time_desc = f"Last {hours} hour{'s' if hours > 1 else ''}"
+        else:
+            start_time = datetime.now() - timedelta(minutes=minutes)
+            time_desc = f"Last {minutes} minute{'s' if minutes > 1 else ''}"
+        
+        # Create the request object with all available parameters
+        request_params = StockTradesRequest(
+            symbol_or_symbols=symbol,
+            start=start_time,
+            end=datetime.now(),
+            limit=limit,
+            sort=sort,
+            feed=feed,
+            currency=currency,
+            asof=asof
+        )
+        # Get the trades
+        trades = stock_historical_data_client.get_stock_trades(request_params)
+        if symbol in trades:
+            result = f"Historical Trades for {symbol} ({time_desc}):\n"
+            result += "---------------------------------------------------\n"
+            for trade in trades[symbol]:
+                result += f"""
+                    Timestamp: {trade.timestamp}
+                    Price: ${float(trade.price):.6f}
+                    Size: {trade.size}
+                    Exchange: {trade.exchange}
+                    ID: {trade.id}
+                    Conditions: {trade.conditions}
+                    Tape: {trade.tape}
+                    -------------------
+                    """
+            return result
+        else:
+            return f"No trade data found for {symbol} in the specified time range."
+    except APIError as api_error:
+        error_message = str(api_error)
+        lower = error_message.lower()
+        if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
+            fifteen_ago = datetime.now() - timedelta(minutes=15)
+            hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
+            return (
+                f"Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. "
+                f"Your request likely included the most recent 15 minutes. "
+                f"Retry with `end` <= {hint_end} (exclude the last 15 minutes), "
+                f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
+                f"Original error: {error_message}"
+            )
+        return f"API Error fetching trades for {symbol}: {error_message}"
+    except Exception as e:
+        return f"Error fetching trades for {symbol}: {str(e)}"
+
+@mcp.tool()
+async def get_stock_latest_bar(
+    symbol: str,
+    feed: Optional[DataFeed] = None,
+    currency: Optional[SupportedCurrencies] = None
+) -> str:
+    """Get the latest minute bar for a stock.
+    
+    Args:
+        symbol: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        feed: The stock data feed to retrieve from (optional)
+        currency: The currency for prices (optional, defaults to USD)
+    
+    Returns:
+        A formatted string containing the latest bar details or an error message
+    """
+    _ensure_clients()
+    try:
+        # Create the request object with all available parameters
+        request_params = StockLatestBarRequest(
+            symbol_or_symbols=symbol,
+            feed=feed,
+            currency=currency
+        )
+        
+        # Get the latest bar
+        latest_bars = stock_historical_data_client.get_stock_latest_bar(request_params)
+        
+        if symbol in latest_bars:
+            bar = latest_bars[symbol]
+            return f"""
+                Latest Minute Bar for {symbol}:
+                ---------------------------
+                Time: {bar.timestamp}
+                Open: ${float(bar.open):.2f}
+                High: ${float(bar.high):.2f}
+                Low: ${float(bar.low):.2f}
+                Close: ${float(bar.close):.2f}
+                Volume: {bar.volume}
+                """
+        else:
+            return f"No latest bar data found for {symbol}."
+    except Exception as e:
+        return f"Error fetching latest bar: {str(e)}"
+
+@mcp.tool()
 async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> str:
     """
     Retrieves and formats the latest quote for one or more stocks.
@@ -892,183 +1240,6 @@ async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> st
         return f"Error fetching quote for {requested}: {str(e)}"
 
 @mcp.tool()
-async def get_stock_bars(
-    symbol: str, 
-    days: int = 5, 
-    timeframe: str = "1Day",
-    limit: Optional[int] = None,
-    start: Optional[str] = None,
-    end: Optional[str] = None
-) -> str:
-    """
-    Retrieves and formats historical price bars for a stock with configurable timeframe and time range.
-    
-    Args:
-        symbol (str): Stock ticker symbol (e.g., AAPL, MSFT)
-        days (int): Number of days to look back (default: 5, ignored if start/end provided)
-        timeframe (str): Bar timeframe - supports flexible Alpaca formats:
-            - Minutes: "1Min", "2Min", "3Min", "4Min", "5Min", "15Min", "30Min", etc.
-            - Hours: "1Hour", "2Hour", "3Hour", "4Hour", "6Hour", etc.
-            - Days: "1Day", "2Day", "3Day", etc.
-            - Weeks: "1Week", "2Week", etc.
-            - Months: "1Month", "2Month", etc.
-            (default: "1Day")
-        limit (Optional[int]): Maximum number of bars to return (optional)
-        start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
-        end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
-    
-    Returns:
-        str: Formatted string containing historical price data with timestamps, OHLCV data
-    """
-    _ensure_clients()
-    try:
-        # Parse timeframe string to TimeFrame object
-        timeframe_obj = parse_timeframe_with_enums(timeframe)
-        if timeframe_obj is None:
-            return f"Error: Invalid timeframe '{timeframe}'. Supported formats: 1Min, 2Min, 4Min, 5Min, 15Min, 30Min, 1Hour, 2Hour, 4Hour, 1Day, 1Week, 1Month, etc."
-        
-        # Parse start/end times or calculate from days
-        start_time = None
-        end_time = None
-        
-        if start:
-            try:
-                start_time = _parse_iso_datetime(start)
-            except ValueError:
-                return f"Error: Invalid start time format '{start}'. Use ISO format like '2023-01-01T09:30:00' or '2023-01-01'"
-                
-        if end:
-            try:
-                end_time = _parse_iso_datetime(end)
-            except ValueError:
-                return f"Error: Invalid end time format '{end}'. Use ISO format like '2023-01-01T16:00:00' or '2023-01-01'"
-        
-        # If no start/end provided, calculate from days parameter OR limit+timeframe
-        if not start_time:
-            if limit and timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
-                # Calculate based on limit and timeframe for intraday data
-                if timeframe_obj.unit_value == TimeFrameUnit.Minute:
-                    minutes_back = limit * timeframe_obj.amount
-                    start_time = datetime.now() - timedelta(minutes=minutes_back)
-                elif timeframe_obj.unit_value == TimeFrameUnit.Hour:
-                    hours_back = limit * timeframe_obj.amount
-                    start_time = datetime.now() - timedelta(hours=hours_back)
-            else:
-                # Fall back to days parameter for daily+ timeframes
-                start_time = datetime.now() - timedelta(days=days)
-        if not end_time:
-            end_time = datetime.now()
-        
-        request_params = StockBarsRequest(
-            symbol_or_symbols=symbol,
-            timeframe=timeframe_obj,
-            start=start_time,
-            end=end_time,
-            limit=limit
-        )
-        
-        bars = stock_historical_data_client.get_stock_bars(request_params)
-        
-        if bars[symbol]:
-            time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
-            result = f"Historical Data for {symbol} ({timeframe} bars, {time_range}):\n"
-            result += "---------------------------------------------------\n"
-            
-            for bar in bars[symbol]:
-                # Format timestamp based on timeframe unit
-                if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
-                    time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S')
-                else:
-                    time_str = bar.timestamp.date()
-                
-                result += f"Time: {time_str}, Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}, Volume: {bar.volume}\n"
-            
-            return result
-        else:
-            return f"No historical data found for {symbol} with {timeframe} timeframe in the specified time range."
-    except APIError as api_error:
-        error_message = str(api_error)
-        lower = error_message.lower()
-        if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
-            fifteen_ago = datetime.now() - timedelta(minutes=15)
-            hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
-            return (
-                f"Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. "
-                f"Your request likely included the most recent 15 minutes. "
-                f"Retry with `end` <= {hint_end} (exclude the last 15 minutes), "
-                f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
-                f"Original error: {error_message}"
-            )
-        return f"API Error fetching historical data for {symbol}: {error_message}"
-    except Exception as e:
-        return f"Error fetching historical data for {symbol}: {str(e)}"
-
-@mcp.tool()
-async def get_stock_trades(
-    symbol: str,
-    days: int = 5,
-    limit: Optional[int] = None,
-    sort: Optional[Sort] = Sort.ASC,
-    feed: Optional[DataFeed] = None,
-    currency: Optional[SupportedCurrencies] = None,
-    asof: Optional[str] = None
-) -> str:
-    """
-    Retrieves and formats historical trades for a stock.
-    
-    Args:
-        symbol (str): Stock ticker symbol (e.g., 'AAPL', 'MSFT')
-        days (int): Number of days to look back (default: 5)
-        limit (Optional[int]): Upper limit of number of data points to return
-        sort (Optional[Sort]): Chronological order of response (ASC or DESC)
-        feed (Optional[DataFeed]): The stock data feed to retrieve from
-        currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
-        asof (Optional[str]): The asof date in YYYY-MM-DD format
-    
-    Returns:
-        str: Formatted string containing trade history or an error message
-    """
-    _ensure_clients()
-    try:
-        # Calculate start time based on days
-        start_time = datetime.now() - timedelta(days=days)
-        
-        # Create the request object with all available parameters
-        request_params = StockTradesRequest(
-            symbol_or_symbols=symbol,
-            start=start_time,
-            end=datetime.now(),
-            limit=limit,
-            sort=sort,
-            feed=feed,
-            currency=currency,
-            asof=asof
-        )
-        
-        # Get the trades
-        trades = stock_historical_data_client.get_stock_trades(request_params)
-        
-        if symbol in trades:
-            result = f"Historical Trades for {symbol} (Last {days} days):\n"
-            result += "---------------------------------------------------\n"
-            
-            for trade in trades[symbol]:
-                result += f"""
-                    Time: {trade.timestamp}
-                    Price: ${float(trade.price):.6f}
-                    Size: {trade.size}
-                    Exchange: {trade.exchange}
-                    ID: {trade.id}
-                    Conditions: {trade.conditions}
-                    -------------------
-                    """
-            return result
-        else:
-            return f"No trade data found for {symbol} in the last {days} days."
-    except Exception as e:
-        return f"Error fetching trades: {str(e)}"
-
-@mcp.tool()
 async def get_stock_latest_trade(
     symbol: str,
     feed: Optional[DataFeed] = None,
@@ -1112,51 +1283,6 @@ async def get_stock_latest_trade(
             return f"No latest trade data found for {symbol}."
     except Exception as e:
         return f"Error fetching latest trade: {str(e)}"
-
-@mcp.tool()
-async def get_stock_latest_bar(
-    symbol: str,
-    feed: Optional[DataFeed] = None,
-    currency: Optional[SupportedCurrencies] = None
-) -> str:
-    """Get the latest minute bar for a stock.
-    
-    Args:
-        symbol: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
-        feed: The stock data feed to retrieve from (optional)
-        currency: The currency for prices (optional, defaults to USD)
-    
-    Returns:
-        A formatted string containing the latest bar details or an error message
-    """
-    _ensure_clients()
-    try:
-        # Create the request object with all available parameters
-        request_params = StockLatestBarRequest(
-            symbol_or_symbols=symbol,
-            feed=feed,
-            currency=currency
-        )
-        
-        # Get the latest bar
-        latest_bars = stock_historical_data_client.get_stock_latest_bar(request_params)
-        
-        if symbol in latest_bars:
-            bar = latest_bars[symbol]
-            return f"""
-                Latest Minute Bar for {symbol}:
-                ---------------------------
-                Time: {bar.timestamp}
-                Open: ${float(bar.open):.2f}
-                High: ${float(bar.high):.2f}
-                Low: ${float(bar.low):.2f}
-                Close: ${float(bar.close):.2f}
-                Volume: {bar.volume}
-                """
-        else:
-            return f"No latest bar data found for {symbol}."
-    except Exception as e:
-        return f"Error fetching latest bar: {str(e)}"
 
 
 @mcp.tool()
@@ -2459,187 +2585,6 @@ async def place_crypto_order(
         return f"Error placing crypto order: {str(e)}"
 
 @mcp.tool()
-async def cancel_all_orders() -> str:
-    """
-    Cancel all open orders.
-    
-    Returns:
-        A formatted string containing the status of each cancelled order.
-    """
-    _ensure_clients()
-    try:
-        # Cancel all orders
-        cancel_responses = trade_client.cancel_orders()
-        
-        if not cancel_responses:
-            return "No orders were found to cancel."
-        
-        # Format the response
-        response_parts = ["Order Cancellation Results:"]
-        response_parts.append("-" * 30)
-        
-        for response in cancel_responses:
-            status = "Success" if response.status == 200 else "Failed"
-            response_parts.append(f"Order ID: {response.id}")
-            response_parts.append(f"Status: {status}")
-            if response.body:
-                response_parts.append(f"Details: {response.body}")
-            response_parts.append("-" * 30)
-        
-        return "\n".join(response_parts)
-        
-    except Exception as e:
-        return f"Error cancelling orders: {str(e)}"
-
-@mcp.tool()
-async def cancel_order_by_id(order_id: str) -> str:
-    """
-    Cancel a specific order by its ID.
-    
-    Args:
-        order_id: The UUID of the order to cancel
-        
-    Returns:
-        A formatted string containing the status of the cancelled order.
-    """
-    _ensure_clients()
-    try:
-        # Cancel the specific order
-        response = trade_client.cancel_order_by_id(order_id)
-        
-        # Format the response
-        status = "Success" if response.status == 200 else "Failed"
-        result = f"""
-        Order Cancellation Result:
-        ------------------------
-        Order ID: {response.id}
-        Status: {status}
-        """
-        
-        if response.body:
-            result += f"Details: {response.body}\n"
-            
-        return result
-        
-    except Exception as e:
-        return f"Error cancelling order {order_id}: {str(e)}"
-
-# =======================================================================================
-# Position Management Tools
-# =======================================================================================
-
-@mcp.tool()
-async def close_position(symbol: str, qty: Optional[str] = None, percentage: Optional[str] = None) -> str:
-    """
-    Closes a specific position for a single symbol. 
-    This method will throw an error if the position does not exist!
-    
-    Args:
-        symbol (str): The symbol of the position to close
-        qty (Optional[str]): Optional number of shares to liquidate
-        percentage (Optional[str]): Optional percentage of shares to liquidate (must result in at least 1 share)
-    
-    Returns:
-        str: Formatted string containing position closure details or error message
-    """
-    _ensure_clients()
-    try:
-        # Create close position request if options are provided
-        close_options = None
-        if qty or percentage:
-            close_options = ClosePositionRequest(
-                qty=qty,
-                percentage=percentage
-            )
-        
-        # Close the position
-        order = trade_client.close_position(symbol, close_options)
-        
-        return f"""
-                Position Closed Successfully:
-                ----------------------------
-                Symbol: {symbol}
-                Order ID: {order.id}
-                Status: {order.status}
-                """
-                
-    except APIError as api_error:
-        error_message = str(api_error)
-        if "42210000" in error_message and "would result in order size of zero" in error_message:
-            return """
-            Error: Invalid position closure request.
-            
-            The requested percentage would result in less than 1 share.
-            Please either:
-            1. Use a higher percentage
-            2. Close the entire position (100%)
-            3. Specify an exact quantity using the qty parameter
-            """
-        else:
-            return f"Error closing position: {error_message}"
-            
-    except Exception as e:
-        return f"Error closing position: {str(e)}"
-    
-@mcp.tool()
-async def close_all_positions(cancel_orders: bool = False) -> str:
-    """
-    Closes all open positions.
-    
-    Args:
-        cancel_orders (bool): If True, cancels all open orders before liquidating positions
-    
-    Returns:
-        str: Formatted string containing position closure results
-    """
-    _ensure_clients()
-    try:
-        # Close all positions
-        close_responses = trade_client.close_all_positions(cancel_orders=cancel_orders)
-        
-        if not close_responses:
-            return "No positions were found to close."
-        
-        # Format the response
-        response_parts = ["Position Closure Results:"]
-        response_parts.append("-" * 30)
-        
-        for response in close_responses:
-            response_parts.append(f"Symbol: {response.symbol}")
-            response_parts.append(f"Status: {response.status}")
-            if response.order_id:
-                response_parts.append(f"Order ID: {response.order_id}")
-            response_parts.append("-" * 30)
-        
-        return "\n".join(response_parts)
-        
-    except Exception as e:
-        return f"Error closing positions: {str(e)}"
-
-# Position Management Tools (Options)
-@mcp.tool()
-async def exercise_options_position(symbol_or_contract_id: str) -> str:
-    """
-    Exercises a held option contract, converting it into the underlying asset.
-    
-    Args:
-        symbol_or_contract_id (str): Option contract symbol (e.g., 'NVDA250919C001680') or contract ID
-    
-    Returns:
-        str: Success message or error details
-    """
-    _ensure_clients()
-    try:
-        trade_client.exercise_options_position(symbol_or_contract_id=symbol_or_contract_id)
-        return f"Successfully submitted exercise request for option contract: {symbol_or_contract_id}"
-    except Exception as e:
-        return f"Error exercising option contract '{symbol_or_contract_id}': {str(e)}"
-
-# ============================================================================
-# Options Trading Tools
-# ============================================================================
-
-@mcp.tool()
 async def place_option_market_order(
     legs: List[Dict[str, Any]],
     order_class: Optional[Union[str, OrderClass]] = None,
@@ -2751,6 +2696,184 @@ async def place_option_market_order(
         3. Ensuring market is open
         4. Contacting support if the issue persists
         """
+
+# =======================================================================================
+# Position Management Tools
+# =======================================================================================
+
+@mcp.tool()
+async def cancel_all_orders() -> str:
+    """
+    Cancel all open orders.
+    
+    Returns:
+        A formatted string containing the status of each cancelled order.
+    """
+    _ensure_clients()
+    try:
+        # Cancel all orders
+        cancel_responses = trade_client.cancel_orders()
+        
+        if not cancel_responses:
+            return "No orders were found to cancel."
+        
+        # Format the response
+        response_parts = ["Order Cancellation Results:"]
+        response_parts.append("-" * 30)
+        
+        for response in cancel_responses:
+            status = "Success" if response.status == 200 else "Failed"
+            response_parts.append(f"Order ID: {response.id}")
+            response_parts.append(f"Status: {status}")
+            if response.body:
+                response_parts.append(f"Details: {response.body}")
+            response_parts.append("-" * 30)
+        
+        return "\n".join(response_parts)
+        
+    except Exception as e:
+        return f"Error cancelling orders: {str(e)}"
+
+@mcp.tool()
+async def cancel_order_by_id(order_id: str) -> str:
+    """
+    Cancel a specific order by its ID.
+    
+    Args:
+        order_id: The UUID of the order to cancel
+        
+    Returns:
+        A formatted string containing the status of the cancelled order.
+    """
+    _ensure_clients()
+    try:
+        # Cancel the specific order
+        response = trade_client.cancel_order_by_id(order_id)
+        
+        # Format the response
+        status = "Success" if response.status == 200 else "Failed"
+        result = f"""
+        Order Cancellation Result:
+        ------------------------
+        Order ID: {response.id}
+        Status: {status}
+        """
+        
+        if response.body:
+            result += f"Details: {response.body}\n"
+            
+        return result
+        
+    except Exception as e:
+        return f"Error cancelling order {order_id}: {str(e)}"
+
+@mcp.tool()
+async def close_position(symbol: str, qty: Optional[str] = None, percentage: Optional[str] = None) -> str:
+    """
+    Closes a specific position for a single symbol. 
+    This method will throw an error if the position does not exist!
+    
+    Args:
+        symbol (str): The symbol of the position to close
+        qty (Optional[str]): Optional number of shares to liquidate
+        percentage (Optional[str]): Optional percentage of shares to liquidate (must result in at least 1 share)
+    
+    Returns:
+        str: Formatted string containing position closure details or error message
+    """
+    _ensure_clients()
+    try:
+        # Create close position request if options are provided
+        close_options = None
+        if qty or percentage:
+            close_options = ClosePositionRequest(
+                qty=qty,
+                percentage=percentage
+            )
+        
+        # Close the position
+        order = trade_client.close_position(symbol, close_options)
+        
+        return f"""
+                Position Closed Successfully:
+                ----------------------------
+                Symbol: {symbol}
+                Order ID: {order.id}
+                Status: {order.status}
+                """
+                
+    except APIError as api_error:
+        error_message = str(api_error)
+        if "42210000" in error_message and "would result in order size of zero" in error_message:
+            return """
+            Error: Invalid position closure request.
+            
+            The requested percentage would result in less than 1 share.
+            Please either:
+            1. Use a higher percentage
+            2. Close the entire position (100%)
+            3. Specify an exact quantity using the qty parameter
+            """
+        else:
+            return f"Error closing position: {error_message}"
+            
+    except Exception as e:
+        return f"Error closing position: {str(e)}"
+    
+@mcp.tool()
+async def close_all_positions(cancel_orders: bool = False) -> str:
+    """
+    Closes all open positions.
+    
+    Args:
+        cancel_orders (bool): If True, cancels all open orders before liquidating positions
+    
+    Returns:
+        str: Formatted string containing position closure results
+    """
+    _ensure_clients()
+    try:
+        # Close all positions
+        close_responses = trade_client.close_all_positions(cancel_orders=cancel_orders)
+        
+        if not close_responses:
+            return "No positions were found to close."
+        
+        # Format the response
+        response_parts = ["Position Closure Results:"]
+        response_parts.append("-" * 30)
+        
+        for response in close_responses:
+            response_parts.append(f"Symbol: {response.symbol}")
+            response_parts.append(f"Status: {response.status}")
+            if response.order_id:
+                response_parts.append(f"Order ID: {response.order_id}")
+            response_parts.append("-" * 30)
+        
+        return "\n".join(response_parts)
+        
+    except Exception as e:
+        return f"Error closing positions: {str(e)}"
+
+# Position Management Tools (Options)
+@mcp.tool()
+async def exercise_options_position(symbol_or_contract_id: str) -> str:
+    """
+    Exercises a held option contract, converting it into the underlying asset.
+    
+    Args:
+        symbol_or_contract_id (str): Option contract symbol (e.g., 'NVDA250919C001680') or contract ID
+    
+    Returns:
+        str: Success message or error details
+    """
+    _ensure_clients()
+    try:
+        trade_client.exercise_options_position(symbol_or_contract_id=symbol_or_contract_id)
+        return f"Successfully submitted exercise request for option contract: {symbol_or_contract_id}"
+    except Exception as e:
+        return f"Error exercising option contract '{symbol_or_contract_id}': {str(e)}"
+
 
 # ============================================================================
 # Compatibility wrapper for CLI
