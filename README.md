@@ -991,7 +991,7 @@ For more information, visit the [How to set up your MCP server in Gemini CLI](ht
 </details>
 
 <a id="docker-configuration"></a>
-<details open>
+<details>
 <summary><b>Docker Configuration</b></summary>
 
 ## Docker Configuration (locally)
