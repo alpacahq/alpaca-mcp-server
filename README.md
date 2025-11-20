@@ -43,23 +43,29 @@ You need the following prerequisites to configure and run the Alpaca MCP Server.
 - **Alpaca Trading API keys** (free paper trading account available)
 - **MCP client** (Claude Desktop, Cursor, VS Code, etc.)
 
-
+**Note: Using an MCP server requires installation and configuration of both the MCP server and MCP client.**
 
 ## Start here
 **Note:** These steps assume all [Prerequisites](#prerequisites) have been installed.
 - **Claude Desktop**
-  - **Local**: Use `uvx` (recommended) or `install.py` → see [Claude Desktop Configuration](#claude-desktop-configuration)
-- **Claude Code**
-  - **Local**: Use `uvx` (recommended) or Docker → see [Claude Code Configuration](#claude-code-configuration)
+  - **Local**: Use `uvx` or `install.py` → see [Claude Desktop Configuration](#claude-desktop-configuration)
+- **Claude Mobile**
+  - **Remote Hosting**: Deploy to cloud service → see [Claude Mobile Configuration](#claude-mobile-configuration)
+- **ChatGPT**
+  - **Remote Hosting**: Deploy to cloud service → see [ChatGPT Configuration](#chatgpt-configuration)
 - **Cursor**
-  - **Local (Cursor Directory)**: Use the Cursor Directory entry and connect in a few clicks → see [Quick Start](#quick-start-local-installation)
+  - **Local (Cursor Directory)**: Use the Cursor Directory entry and connect in a few clicks → see [Cursor Configuration](#cursor-configuration)
   - **Local (install.py)**: Use `install.py` to set up and auto-configure Cursor → see [Cursor Configuration](#cursor-configuration)
 - **VS Code**
   - **Local**: Use `uvx` → see [VS Code Configuration](#vs-code-configuration)
 - **PyCharm**
   - **Local**: Use `uvx` → see [PyCharm Configuration](#pycharm-configuration)
+- **Claude Code**
+  - **Local**: Use `uvx` or Docker → see [Claude Code Configuration](#claude-code-configuration)
+- **Gemini CLI**
+  - **Local**: Use `uvx` → see [Gemini CLI Configuration](#gemini-cli-configuration)
 
-**Note: How to show hidden files**
+Note: How to show hidden files
 - macOS Finder: Command + Shift + .
 - Linux file managers: Ctrl + H
 - Windows File Explorer: Alt, V, H
@@ -132,6 +138,8 @@ Step 2-2: Update the API keys in the `env` section:
 ## Quick Local Installation for MCP Server
 <details>
 <summary><b>Method 1: One-click installation with uvx from PyPI</b></summary>
+
+**Note: Using an MCP server requires installation and configuration of both the MCP server and MCP client.**
 
 ```bash
 # Install and configure
@@ -235,15 +243,15 @@ alpaca-mcp-server/          ← This is the workspace folder (= project root)
 │       ├── config.py       ← Configuration management
 │       ├── helper.py       ← Helper function management
 │       └── server.py       ← MCP server implementation
-├── tests/                  ← Test files
-│   └── test_get_stock_quote.py
 ├── .github/                ← GitHub settings
 │   ├── core/               ← Core utility modules
 │   └── workflows/          ← GitHub Actions workflows
 ├── .vscode/                ← VS Code settings (for VS Code users)
 │   └── mcp.json
-├── .venv/                   ← Virtual environment folder
+├── .venv/                  ← Virtual environment folder
 │   └── bin/python
+├── charts/                 ← Kubernetes deployment configurations
+│   └── alpaca-mcp-server/  ← Helm chart for GKE deployment
 ├── .env.example            ← Environment template (use this to create `.env` file)
 ├── .gitignore              
 ├── Dockerfile              ← Docker configuration (for Docker use)
@@ -259,12 +267,6 @@ alpaca-mcp-server/          ← This is the workspace folder (= project root)
 
 ## Features
 
-- **OAuth 2.0 Support**
-  - Authorization header passthrough for hosted MCP servers
-  - Multi-tenant support - each LLM chatbot request can use a different user's OAuth token
-  - Automatic detection of Authorization headers in incoming HTTP requests
-  - Seamlessly forwards authentication to Alpaca Trading API
-  - Backward compatible with traditional API key/secret authentication
 - **Market Data**
   - Real-time quotes, trades, and price bars for stocks, crypto, and options
   - Historical data with flexible timeframes (1Min to 1Month)
@@ -299,12 +301,17 @@ alpaca-mcp-server/          ← This is the workspace folder (= project root)
 - **Asset Search**
   - Query details for stocks, ETFs, crypto, and options
   - Filter assets by status, class, exchange, and attributes
+- **OAuth 2.0 Support**
+  - Authorization header passthrough for hosted MCP servers
+  - Multi-tenant support - each LLM chatbot request can use a different user's OAuth token
+  - Automatic detection of Authorization headers in incoming HTTP requests
+  - Seamlessly forwards authentication to Alpaca Trading API
+  - Backward compatible with traditional API key/secret authentication
 
 ## Example Prompts
 
 <details open>
 <summary><b>Basic Trading</b></summary>
-
 
 1. What's my current account balance and buying power on Alpaca?
 2. Show me my current positions in my Alpaca account.
@@ -737,7 +744,7 @@ Once you successfully connect Alpaca's MCP Server to Claude web, it will also be
 
 > As of Nov 20, 2025, Alpaca does not provide a hosted Remote MCP Server. To use Alpaca's MCP Server on the ChatGPT app, you need to host it remotely on a cloud service, then connect it as a Connector on ChatGPT web or mobile app to access it. For more information, visit "[Connectors in ChatGPT](https://help.openai.com/en/articles/11487775-connectors-in-chatgpt)" or our learn article “[How to Deploy Alpaca’s MCP Server Remotely on Claude Mobile App](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app)” as a reference.
 
-## Overview of Setting Up
+### Overview of Setting Up
 Below is an example overview showing one approach to set up a remote Alpaca MCP Server using <b>Docker</b> and connect it to the ChatGPT. Other deployment methods are also possible.
 
 1. Install Alpaca’s MCP Server locally, then build and push a Docker image

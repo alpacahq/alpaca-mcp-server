@@ -32,59 +32,56 @@ about:
 
     This MCP server enables natural language trading operations through AI assistants
     like Claude Desktop and Cursor. It provides access to Alpaca's trading
-    infrastructure with 42 specialized tools covering all aspects of trading.
+    infrastructure with 43 specialized tools covering all aspects of trading.
 
-    Account (1 tool):
+    Account & Positions (3 tools):
     - Account information with balances, buying power, and account status
-
-    Positions (2 tools):
     - All current positions with market value and P&L
     - Detailed information for a specific open position
-
-    Portfolio History (1 tool):
-    - Equity and P/L over a requested time window
 
     Assets (2 tools):
     - Detailed asset information and attributes
     - Browse all available assets with filtering by status, class, and exchange
 
+    Corporate Actions (1 tool):
+    - Earnings announcements, dividends, and stock splits
+
+    Portfolio (1 tool):
+    - Equity and P/L over a requested time window
+
     Watchlists (7 tools):
     - Create, retrieve (all and by ID), update, and delete watchlists
     - Add or remove symbols from specific watchlists
 
-    Corporate Actions (1 tool):
-    - Earnings announcements, dividends, and stock splits
-
-    Calendar (1 tool):
+    Market Calendar & Clock (2 tools):
     - Market calendar showing trading days and holidays for a date range
-
-    Clock (1 tool):
     - Current market status and next open/close times
 
-    Market Data — Stocks (6 tools):
+    Stock Market Data (7 tools):
+    - Historical price bars (OHLCV), quotes, and trade data
     - Latest quote, trade, and minute bar
-    - Historical price bars (OHLCV) and trade data
     - Comprehensive market snapshot
 
-    Market Data — Crypto (8 tools):
+    Crypto Market Data (8 tools):
     - Historical bars, quotes, and trades
     - Latest quote, trade, minute bar, and orderbook
     - Snapshots including minute, daily, and previous daily bars
 
-    Market Data — Options (3 tools):
+    Options Market Data (3 tools):
     - Search option contracts with flexible filtering
     - Latest option quote with bid/ask and Greeks
     - Option snapshots with implied volatility and Greeks
 
-    Trading — Orders (6 tools):
+    Trading — Orders (4 tools):
     - Retrieve order history with filtering
     - Place stock, crypto, and option orders (market, limit, stop, stop-limit, trailing)
     - Cancel all orders or a specific order by ID
 
-    Trading — Positions (3 tools):
+    Trading — Position Management (5 tools):
     - Close a specific position (partial or complete)
     - Close all positions
     - Exercise an options position
+    - Cancel all orders or specific orders
 
     Perfect for developers building AI-powered trading applications or traders
     who want to interact with their Alpaca accounts using natural language.
