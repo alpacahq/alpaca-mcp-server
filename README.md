@@ -234,8 +234,6 @@ alpaca-mcp-server/          ← This is the workspace folder (= project root)
 │       ├── config.py       ← Configuration management
 │       ├── helper.py       ← Helper function management
 │       └── server.py       ← MCP server implementation
-├── tests/                  ← Test files
-│   └── test_get_stock_quote.py
 ├── .github/                ← GitHub settings
 │   ├── core/               ← Core utility modules
 │   └── workflows/          ← GitHub Actions workflows
