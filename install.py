@@ -262,7 +262,21 @@ def install_dependencies(uv_path: str, venv_path: Path, project_dir: Path):
         print("   ❌ Failed to install dependencies")
         sys.exit(1)
 
-    print("   ✅ Dependencies installed successfully in virtual environment")
+    # Install the package itself in editable mode
+    # This creates the 'alpaca-mcp-server' CLI command
+    package_install_cmd = [
+        uv_path,
+        "pip",
+        "install",
+        "-e",
+        ".",
+    ]
+    
+    if not run_command(package_install_cmd, "Install alpaca-mcp-server package", cwd=str(project_dir)):
+        print("   ❌ Failed to install alpaca-mcp-server package")
+        sys.exit(1)
+
+    print("   ✅ Dependencies and package installed successfully")
     print()
 
 
@@ -381,18 +395,20 @@ STREAM_DATA_WSS = {api_config['STREAM_DATA_WSS']}
 
 def generate_mcp_config(project_dir: Path, venv_path: Path) -> Dict[str, Any]:
     """Generate MCP server configuration."""
-    # Get paths
-    server_script = project_dir / "src" / "alpaca_mcp_server" / "server.py"
+    # Get CLI command path (installed by 'uv pip install -e .')
+    system = platform.system()
+    if system == "Windows":
+        alpaca_cli = venv_path / "Scripts" / "alpaca-mcp-server.exe"
+    else:
+        alpaca_cli = venv_path / "bin" / "alpaca-mcp-server"
     
-    # Virtual environment installation
-    venv_python = get_venv_python(venv_path)
-    command = str(venv_python)
+    command = str(alpaca_cli)
     
     config = {
         "mcpServers": {
             "alpaca": {
                 "command": command,
-                "args": [str(server_script)],
+                "args": ["serve"],
                 "env": {
                     "ALPACA_API_KEY": "your_alpaca_api_key_for_paper_account",
                     "ALPACA_SECRET_KEY": "your_alpaca_secret_key_for_paper_account"
