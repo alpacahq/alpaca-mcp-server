@@ -1530,7 +1530,7 @@ async def get_option_contracts(
 @mcp.tool()
 async def get_option_latest_quote(
     symbol: str,
-    feed: Optional[OptionsFeed] = OptionsFeed.OPRA
+    feed: Optional[OptionsFeed] = OptionsFeed.INDICATIVE
 ) -> str:
     """
     Retrieves and formats the latest quote for an option contract. This endpoint returns real-time
@@ -1588,7 +1588,7 @@ async def get_option_latest_quote(
 
 
 @mcp.tool()
-async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Optional[OptionsFeed] = OptionsFeed.OPRA) -> str:
+async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Optional[OptionsFeed] = OptionsFeed.INDICATIVE) -> str:
     """
     Retrieves comprehensive snapshots of option contracts including latest trade, quote, implied volatility, and Greeks.
     This endpoint provides a complete view of an option's current market state and theoretical values.
