@@ -39,11 +39,12 @@ from alpaca.data.requests import (
     OptionSnapshotRequest,
     Sort,
     StockBarsRequest,
+    StockQuotesRequest,
+    StockTradesRequest,
     StockLatestBarRequest,
     StockLatestQuoteRequest,
     StockLatestTradeRequest,
     StockSnapshotRequest,
-    StockTradesRequest,
     OptionChainRequest,
     CorporateActionsRequest,
     CryptoBarsRequest,
@@ -166,6 +167,12 @@ stock_data_stream_client = None
 option_historical_data_client = None
 corporate_actions_client = None
 crypto_historical_data_client = None
+
+# Market data disclaimer
+MARKET_DATA_DISCLAIMER = """
+---
+DISCLAIMER: The Mini version of Alpaca's MCP Server for the OpenAI ChatGPT Connector provides market data solely for reference and informational purposes. The market data made available through this mini version is delayed and may be incomplete, inaccurate, or subject to change without notice. The information provided should not be relied upon for trading or investment decisions, and Alpaca makes no representations or warranties regarding the accuracy, timeliness, or suitability of the data for any purpose. Use of this server is at your own risk.
+"""
 
 def _ensure_clients():
     """Initialize Alpaca clients on first use."""
@@ -499,7 +506,7 @@ async def get_stock_bars(
         start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
         end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
         sort (Optional[Sort]): Chronological order of response (ASC or DESC)
-        feed (Optional[DataFeed]): The stock data feed to retrieve from
+        feed (Optional[DataFeed]): The stock data feed to retrieve from (default: IEX)
         currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
         asof (Optional[str]): The asof date in YYYY-MM-DD format
     
@@ -566,6 +573,7 @@ async def get_stock_bars(
                 
                 result += f"Time: {time_str}, Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}, Volume: {bar.volume}\n"
             
+            result += MARKET_DATA_DISCLAIMER
             return result
         else:
             return f"No bar data found for {symbol} with {timeframe} timeframe in the specified time range."
@@ -660,6 +668,7 @@ async def get_stock_quotes(
                     Tape: {quote.tape}
                     -------------------
                     """
+            result += MARKET_DATA_DISCLAIMER
             return result
         else:
             return f"No quote data found for {symbol} in the specified time range."
@@ -700,7 +709,7 @@ async def get_stock_trades(
         days (int): Number of days to look back (default: 5)
         limit (Optional[int]): Upper limit of number of data points to return
         sort (Optional[Sort]): Chronological order of response (ASC or DESC)
-        feed (Optional[DataFeed]): The stock data feed to retrieve from
+        feed (Optional[DataFeed]): The stock data feed to retrieve from (default: IEX)
         currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
         asof (Optional[str]): The asof date in YYYY-MM-DD format
     
@@ -750,6 +759,7 @@ async def get_stock_trades(
                     Tape: {trade.tape}
                     -------------------
                     """
+            result += MARKET_DATA_DISCLAIMER
             return result
         else:
             return f"No trade data found for {symbol} in the specified time range."
@@ -786,7 +796,7 @@ async def get_stock_latest_bar(
         
         if symbol in latest_bars:
             bar = latest_bars[symbol]
-            return f"""
+            result = f"""
                 Latest Minute Bar for {symbol}:
                 ---------------------------
                 Time: {bar.timestamp}
@@ -796,19 +806,27 @@ async def get_stock_latest_bar(
                 Close: ${float(bar.close):.2f}
                 Volume: {bar.volume}
                 """
+            result += MARKET_DATA_DISCLAIMER
+            return result
         else:
             return f"No latest bar data found for {symbol}."
     except Exception as e:
         return f"Error fetching latest bar: {str(e)}"
 
 @mcp.tool()
-async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> str:
+async def get_stock_latest_quote(
+    symbol_or_symbols: Union[str, List[str]],
+    feed: Optional[DataFeed] = DataFeed.IEX,    
+    currency: Optional[SupportedCurrencies] = None
+    ) -> str:
     """
     Retrieves and formats the latest quote for one or more stocks.
     
     Args:
         symbol_or_symbols (Union[str, List[str]]): Single stock ticker symbol (e.g., "AAPL")
             or a list of symbols (e.g., ["AAPL", "MSFT"]).
+        feed: The stock data feed to retrieve from (default: IEX )
+        currency: The currency for prices (optional, defaults to USD)
     
     Returns:
         str: Formatted string containing for each requested symbol:
@@ -825,7 +843,12 @@ async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> st
         if not symbols:
             return "No symbols provided."
         
-        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol_or_symbols)
+        request_params = StockLatestQuoteRequest(
+            symbol_or_symbols=symbol_or_symbols,
+            feed=feed,
+            currency=currency
+        )
+
         quotes = stock_historical_data_client.get_stock_latest_quote(request_params)
 
         results: List[str] = ["Latest Stock Quotes:", "====================", ""]
@@ -849,6 +872,7 @@ async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> st
                 "",
             ])
 
+        results.append(MARKET_DATA_DISCLAIMER)
         return "\n".join(results).strip()
     except Exception as e:
         symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
@@ -885,7 +909,7 @@ async def get_stock_latest_trade(
         
         if symbol in latest_trades:
             trade = latest_trades[symbol]
-            return f"""
+            result = f"""
                 Latest Trade for {symbol}:
                 ---------------------------
                 Time: {trade.timestamp}
@@ -895,6 +919,8 @@ async def get_stock_latest_trade(
                 ID: {trade.id}
                 Conditions: {trade.conditions}
                 """
+            result += MARKET_DATA_DISCLAIMER
+            return result
         else:
             return f"No latest trade data found for {symbol}."
     except Exception as e:
@@ -951,6 +977,7 @@ async def get_stock_snapshot(
             
             results.extend(filter(None, snapshot_data))  # Filter out empty strings
         
+        results.append(MARKET_DATA_DISCLAIMER)
         return "\n".join(results)
         
     except APIError as api_error:
@@ -1538,7 +1565,7 @@ async def get_option_latest_quote(
     
     Args:
         symbol (str): The option contract symbol (e.g., 'AAPL230616C00150000')
-        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative).
+        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative). (default: INDICATIVE)
             Default: opra if the user has the options subscription, indicative otherwise.
     
     Returns:
@@ -1567,7 +1594,7 @@ async def get_option_latest_quote(
         
         if symbol in quotes:
             quote = quotes[symbol]
-            return f"""
+            result = f"""
                 Latest Quote for {symbol}:
                 ------------------------
                 Ask Price: ${float(quote.ask_price):.2f}
@@ -1580,6 +1607,8 @@ async def get_option_latest_quote(
                 Tape: {quote.tape}
                 Timestamp: {quote.timestamp}
                 """
+            result += MARKET_DATA_DISCLAIMER
+            return result
         else:
             return f"No quote data found for {symbol}."
             
@@ -1596,7 +1625,7 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
     Args:
         symbol_or_symbols (Union[str, List[str]]): Single option symbol or list of option symbols
             (e.g., 'AAPL250613P00205000')
-        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative).
+        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative). (default: INDICATIVE)
             Default: opra if the user has the options subscription, indicative otherwise.
     
     Returns:
@@ -1696,6 +1725,7 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
             
             result += "\n"
         
+        result += MARKET_DATA_DISCLAIMER
         return result
         
     except Exception as e:
