@@ -20,7 +20,7 @@ import re
 import sys
 import time
 import argparse
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
 
@@ -528,62 +528,48 @@ async def get_corporate_actions(
         if not announcements or not announcements.data:
             return "No corporate announcements found for the specified criteria."
         
-        result = "Corporate Announcements:\n----------------------\n"
+        results: List[str] = []
         
         # The response.data contains action types as keys (e.g., 'cash_dividends', 'forward_splits')
         # Each value is a list of corporate actions
         for action_type, actions_list in announcements.data.items():
             if not actions_list:
                 continue
-                
-            result += f"\n{action_type.replace('_', ' ').title()}:\n"
-            result += "=" * 30 + "\n"
             
             for action in actions_list:
-                # Group by symbol for better organization
                 symbol = getattr(action, 'symbol', 'Unknown')
-                result += f"\nSymbol: {symbol}\n"
-                result += "-" * 15 + "\n"
+                results.append(f"Symbol: {symbol}")
                 
                 # Display action details based on available attributes
                 if hasattr(action, 'corporate_action_type'):
-                    result += f"Type: {action.corporate_action_type}\n"
-                
+                    results.append(f"Type: {action.corporate_action_type}")
                 if hasattr(action, 'ex_date') and action.ex_date:
-                    result += f"Ex Date: {action.ex_date}\n"
-                    
+                    results.append(f"Ex Date: {action.ex_date}")
                 if hasattr(action, 'record_date') and action.record_date:
-                    result += f"Record Date: {action.record_date}\n"
-                    
+                    results.append(f"Record Date: {action.record_date}")
                 if hasattr(action, 'payable_date') and action.payable_date:
-                    result += f"Payable Date: {action.payable_date}\n"
-                    
+                    results.append(f"Payable Date: {action.payable_date}")
                 if hasattr(action, 'process_date') and action.process_date:
-                    result += f"Process Date: {action.process_date}\n"
-                
+                    results.append(f"Process Date: {action.process_date}")
                 # Cash dividend specific fields
                 if hasattr(action, 'rate') and action.rate:
-                    result += f"Rate: ${action.rate:.6f}\n"
-                    
+                    results.append(f"Rate: ${action.rate:.6f}")
                 if hasattr(action, 'foreign') and hasattr(action, 'special'):
-                    result += f"Foreign: {action.foreign}, Special: {action.special}\n"
-                
+                    results.append(f"Foreign: {action.foreign}, Special: {action.special}")
                 # Split specific fields
                 if hasattr(action, 'old_rate') and action.old_rate:
-                    result += f"Old Rate: {action.old_rate}\n"
-                    
+                    results.append(f"Old Rate: {action.old_rate}")
                 if hasattr(action, 'new_rate') and action.new_rate:
-                    result += f"New Rate: {action.new_rate}\n"
-                
+                    results.append(f"New Rate: {action.new_rate}")
                 # Due bill dates
                 if hasattr(action, 'due_bill_on_date') and action.due_bill_on_date:
-                    result += f"Due Bill On Date: {action.due_bill_on_date}\n"
-                    
+                    results.append(f"Due Bill On Date: {action.due_bill_on_date}")
                 if hasattr(action, 'due_bill_off_date') and action.due_bill_off_date:
-                    result += f"Due Bill Off Date: {action.due_bill_off_date}\n"
+                    results.append(f"Due Bill Off Date: {action.due_bill_off_date}")
                 
-                result += "\n"
-        return result
+                results.append("")
+        
+        return "\n".join(results)
     except Exception as e:
         return f"Error fetching corporate announcements: {str(e)}"
 
@@ -840,10 +826,10 @@ async def get_clock() -> str:
 
 @mcp.tool()
 async def get_stock_bars(
-    symbol: str,
+    symbol: Union[str, List[str]],
     days: int = 5,
     hours: int = 0,
-    minutes: int = 15,
+    minutes: int = 30,
     timeframe: str = "1Day",
     limit: Optional[int] = 1000,
     start: Optional[str] = None,
@@ -851,16 +837,17 @@ async def get_stock_bars(
     sort: Optional[Sort] = Sort.ASC,
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None,
-    asof: Optional[str] = None
+    asof: Optional[str] = None,
+    tz: str = "America/New_York"
 ) -> str:
     """
     Retrieves and formats historical price bars for a stock with configurable timeframe and time range.
     
     Args:
-        symbol (str): Stock ticker symbol (e.g., AAPL, MSFT)
+        symbol (Union[str, List[str]]): Stock ticker symbol(s) (e.g., 'AAPL', 'MSFT' or ['AAPL', 'MSFT'])
         days (int): Number of days to look back (default: 5, ignored if start is provided)
         hours (int): Number of hours to look back (default: 0, ignored if start is provided)
-        minutes (int): Number of minutes to look back (default: 15, ignored if start is provided)
+        minutes (int): Number of minutes to look back (default: 30, ignored if start is provided)
         timeframe (str): Bar timeframe - supports flexible Alpaca formats:
             - Minutes: "1Min" to "59Min" (or "1T" to "59T"), e.g., "5Min", "15Min", "30Min"
             - Hours: "1Hour" to "23Hour" (or "1H" to "23H"), e.g., "1Hour", "4Hour", "6Hour"
@@ -871,10 +858,12 @@ async def get_stock_bars(
         limit (Optional[int]): Maximum number of bars to return (default: 1000)
         start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
         end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
-        sort (Optional[Sort]): Chronological order of response (ASC or DESC)
-        feed (Optional[DataFeed]): The stock data feed to retrieve from
+        sort (Optional[Sort]): Chronological order of response (ASC or DESC, default: ASC)
+        feed (Optional[DataFeed]): The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
         currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
         asof (Optional[str]): The asof date in YYYY-MM-DD format
+        tz (str): Timezone for naive datetime strings (default: "America/New_York")
+            Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
     
     Returns:
         str: Formatted string containing historical price data with timestamps, OHLCV data
@@ -886,33 +875,38 @@ async def get_stock_bars(
         if timeframe_obj is None:
             return f"Error: Invalid timeframe '{timeframe}'. Supported formats: 1Min, 2Min, 5Min, 15Min, 30Min, 1Hour, 2Hour, 4Hour, 1Day, 1Week, 1Month, etc."
         
-        # Handle start time: use provided start or calculate from days/hours/minutes
+        # Parse start/end times or calculate from days/hours/minutes
+        start_time = None
+        end_time = None
+        now_utc = datetime.now(timezone.utc)  # Capture once for consistency
+
         if start:
             try:
-                start_time = _parse_iso_datetime(start)
-            except ValueError:
-                return f"Error: Invalid start time format '{start}'. Use ISO format like '2023-01-01T09:30:00' or '2023-01-01'"
-        else:
-            # Calculate start time based on days, hours, or minutes (priority order)
-            if days > 0:
-                start_time = datetime.now() - timedelta(days=days)
-            elif hours > 0:
-                start_time = datetime.now() - timedelta(hours=hours)
-            else:
-                start_time = datetime.now() - timedelta(minutes=minutes)
+                start_time = _parse_iso_datetime(start, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
         
-        # Handle end time: use provided end or default to now
         if end:
             try:
-                end_time = _parse_iso_datetime(end)
-            except ValueError:
-                return f"Error: Invalid end time format '{end}'. Use ISO format like '2023-01-01T16:00:00' or '2023-01-01'"
+                end_time = _parse_iso_datetime(end, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
         else:
-            end_time = datetime.now()
+            end_time = None
+        
+        # Compute start_time fallback: use explicit days/hours/minutes parameters
+        if not start_time:
+            
+            if days > 0:
+                start_time = now_utc - timedelta(days=days)
+            elif hours > 0:
+                start_time = now_utc - timedelta(hours=hours)
+            elif minutes > 0:
+                start_time = now_utc - timedelta(minutes=minutes)
         
         # Create the request object
         request_params = StockBarsRequest(
-            symbol_or_symbols=symbol,
+            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
             timeframe=timeframe_obj,
             start=start_time,
             end=end_time,
@@ -925,23 +919,37 @@ async def get_stock_bars(
         
         bars = stock_historical_data_client.get_stock_bars(request_params)
         
-        if bars[symbol]:
-            time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
-            result = f"Historical Bars for {symbol} ({timeframe} timeframe, {time_range}):\n"
-            result += "---------------------------------------------------\n"
-            
-            for bar in bars[symbol]:
-                # Format timestamp based on timeframe unit
-                if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
-                    time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S')
-                else:
-                    time_str = bar.timestamp.date()
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        results: List[str] = []
+        
+        for sym in symbols_list:
+            if bars[sym]:
+                results.extend([
+                    f"Historical Bars for {sym} ({timeframe} timeframe):",
+                    f"Total Records: {len(bars[sym])}",
+                    ""
+                ])
                 
-                result += f"Time: {time_str}, Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}, Volume: {bar.volume}\n"
-            
-            return result
+                for bar in bars[sym]:
+                    # Format timestamp based on timeframe unit
+                    if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
+                        time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S') + " UTC"
+                    else:
+                        time_str = str(bar.timestamp.date())
+                    
+                    results.append(f"Time: {time_str}, Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}, Volume: {bar.volume}")
+                
+                results.append("")
+                if len(symbols_list) > 1:
+                    results.append("")  # Separator between symbols
+            else:
+                results.append(f"No bar data found for {sym} with {timeframe} timeframe in the specified time range.")
+        
+        if results:
+            return "\n".join(results)
         else:
-            return f"No bar data found for {symbol} with {timeframe} timeframe in the specified time range."
+            symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
+            return f"No bar data found for {symbol_str} with {timeframe} timeframe in the specified time range."
             
     except APIError as api_error:
         error_message = str(api_error)
@@ -956,57 +964,89 @@ async def get_stock_bars(
                 f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
                 f"Original error: {error_message}"
             )
-        return f"API Error fetching bars for {symbol}: {error_message}"
+        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
+        return f"API Error fetching bars for {symbol_str}: {error_message}"
     except Exception as e:
-        return f"Error fetching bars for {symbol}: {str(e)}"
+        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
+        return f"Error fetching bars for {symbol_str}: {str(e)}"
 
 @mcp.tool()
 async def get_stock_quotes(
-    symbol: str,
-    days: int = 1,
+    symbol: Union[str, List[str]],
+    days: int = 0,
     hours: int = 0,
-    minutes: int = 15,
-    limit: Optional[int] = 1000,
+    minutes: int = 20,
+    limit: Optional[int] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
     sort: Optional[Sort] = Sort.ASC,
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None,
-    asof: Optional[str] = None
+    asof: Optional[str] = None,
+    tz: str = "America/New_York"
 ) -> str:
     """
     Retrieves and formats historical quote data (level 1 bid/ask) for a stock.
     
     Args:
-        symbol (str): Stock ticker symbol (e.g., 'AAPL', 'MSFT')
-        days (int): Number of days to look back (default: 1)
-        hours (int): Number of hours to look back (default: 0)
-        minutes (int): Number of minutes to look back (default: 15)
+        symbol (Union[str, List[str]]): Stock ticker symbol(s) (e.g., 'AAPL', 'MSFT' or ['AAPL', 'MSFT'])
+        days (int): Number of days to look back (default: 0, ignored if start is provided)
+        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
+        minutes (int): Number of minutes to look back (default: 20, ignored if start is provided)
         limit (Optional[int]): Upper limit of number of data points to return (default: 1000)
+        start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
+        end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
         sort (Optional[Sort]): Chronological order of response (ASC or DESC)
-        feed (Optional[DataFeed]): The stock data feed to retrieve from
+        feed (Optional[DataFeed]): The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
         currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
         asof (Optional[str]): The asof date in YYYY-MM-DD format
+        tz (str): Timezone for naive datetime strings (default: "America/New_York")
+            Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
         
     Returns:
-        str: Formatted string containing quote history or an error message
+        str: Formatted string containing quote summary or an error message
     """
     _ensure_clients()
     try:
-        # Calculate start time based on days, hours, or minutes (priority order)
-        if days > 0:
-            start_time = datetime.now() - timedelta(days=days)
-            time_desc = f"Last {days} day{'s' if days > 1 else ''}"
-        elif hours > 0:
-            start_time = datetime.now() - timedelta(hours=hours)
-            time_desc = f"Last {hours} hour{'s' if hours > 1 else ''}"
-        else:
-            start_time = datetime.now() - timedelta(minutes=minutes)
-            time_desc = f"Last {minutes} minute{'s' if minutes > 1 else ''}"
+        # Set default limit if not provided
+        if limit is None:
+            limit = 1000
         
-        # Create the request object with all available parameters
+        # Capture current time once for consistency
+        now_utc = datetime.now(timezone.utc)
+        
+        # Handle start time: use provided start or calculate from days/hours/minutes
+        if start:
+            try:
+                start_time = _parse_iso_datetime(start, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
+        else:
+            # Calculate start time based on days, hours, or minutes (priority order)
+            if days > 0:
+                start_time = now_utc - timedelta(days=days)
+            elif hours > 0:
+                start_time = now_utc - timedelta(hours=hours)
+            elif minutes > 0:
+                start_time = now_utc - timedelta(minutes=minutes)
+            else:
+                # Default fallback: let SDK handle defaults
+                start_time = None
+        
+        # Handle end time: use provided end
+        if end:
+            try:
+                end_time = _parse_iso_datetime(end, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
+        else:
+            end_time = None
+        
+        # Create the request object
         request_params = StockQuotesRequest(
-            symbol_or_symbols=symbol,
+            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
             start=start_time,
-            end=datetime.now(),
+            end=end_time,
             limit=limit,
             sort=sort,
             feed=feed,
@@ -1014,143 +1054,179 @@ async def get_stock_quotes(
             asof=asof
         )
         
-        # Get the quotes
         quotes = stock_historical_data_client.get_stock_quotes(request_params)
         
-        if symbol in quotes:
-            result = f"Historical Quotes for {symbol} ({time_desc}):\n"
-            result += "---------------------------------------------------\n"
-            for quote in quotes[symbol]:
-                result += f"""
-                    Timestamp: {quote.timestamp}
-                    Ask Price: ${float(quote.ask_price):.6f}
-                    Bid Price: ${float(quote.bid_price):.6f}
-                    Ask Size: {quote.ask_size}
-                    Bid Size: {quote.bid_size}
-                    Ask Exchange: {quote.ask_exchange}
-                    Bid Exchange: {quote.bid_exchange}
-                    Conditions: {quote.conditions}
-                    Tape: {quote.tape}
-                    -------------------
-                    """
-            return result
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        results: List[str] = []
+
+        for sym in symbols_list:
+            if quotes[sym]:
+                data = quotes[sym]
+                results.extend([
+                    f"Historical Quotes for {sym}",
+                    f"Total Records: {len(data)}",
+                    ""
+                ])
+                
+                for quote in data:
+                    results.extend([
+                        f"Timestamp: {quote.timestamp} UTC",
+                        f"  Bid Price: {quote.bid_price}",
+                        f"  Bid Size: {quote.bid_size}",
+                        f"  Bid Exchange: {quote.bid_exchange}",
+                        f"  Ask Price: {quote.ask_price}",
+                        f"  Ask Size: {quote.ask_size}",
+                        f"  Ask Exchange: {quote.ask_exchange}",
+                        f"  Conditions: {quote.conditions}",
+                        f"  Tape: {quote.tape}",
+                        ""
+                    ])
+                
+                results.append("")
+                if len(symbols_list) > 1:
+                    results.append("")  # Separator
+            else:
+                results.append(f"No quotes for {sym}")
+
+        if results:
+            return "\n".join(results)
         else:
-            return f"No quote data found for {symbol} in the specified time range."
+            return f"No quotes found"
             
     except APIError as api_error:
         error_message = str(api_error)
         lower = error_message.lower()
         if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
-            fifteen_ago = datetime.now() - timedelta(minutes=15)
+            fifteen_ago = datetime.now(timezone.utc) - timedelta(minutes=15)
             hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
-            return (
-                f"Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. "
-                f"Your request likely included the most recent 15 minutes. "
-                f"Retry with `end` <= {hint_end} (exclude the last 15 minutes), "
-                f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
-                f"Original error: {error_message}"
-            )
-        return f"API Error fetching quotes for {symbol}: {error_message}"
+            return f"Error: Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. Retry with `end` <= {hint_end} or use IEX feed. Original error: {error_message}"
+        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
+        return f"API Error fetching quotes for {symbol_str}: {error_message}"
     except Exception as e:
-        return f"Error fetching quotes for {symbol}: {str(e)}"
+        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
+        return f"Error fetching quotes for {symbol_str}: {str(e)}"
 
 @mcp.tool()
 async def get_stock_trades(
-    symbol: str,
-    days: int = 1,
-    minutes: int = 15,
+    symbol: Union[str, List[str]],
+    days: int = 0,
     hours: int = 0,
-    limit: Optional[int] = 1000,
+    minutes: int = 20,
+    limit: Optional[int] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
     sort: Optional[Sort] = Sort.ASC,
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None,
-    asof: Optional[str] = None
+    asof: Optional[str] = None,
+    tz: str = "America/New_York"
 ) -> str:
     """
     Retrieves and formats historical trades for a stock.
+    
     Args:
-        symbol (str): Stock ticker symbol (e.g., 'AAPL', 'MSFT')
-        days (int): Number of days to look back (default: 1)
-        minutes (int): Number of minutes to look back (default: 15)
-        limit (Optional[int]): Upper limit of number of data points to return (default: 1000)
+        symbol (Union[str, List[str]]): Stock ticker symbol(s) (e.g., 'AAPL', 'MSFT' or ['AAPL', 'MSFT'])
+        days (int): Number of days to look back (default: 0, ignored if start is provided)
+        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
+        minutes (int): Number of minutes to look back (default: 30, ignored if start is provided)
+        limit (Optional[int]): Upper limit of number of data points to return
+        start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
+        end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
         sort (Optional[Sort]): Chronological order of response (ASC or DESC)
-        feed (Optional[DataFeed]): The stock data feed to retrieve from
+        feed (Optional[DataFeed]): The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
         currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
         asof (Optional[str]): The asof date in YYYY-MM-DD format
+        tz (str): Timezone for naive datetime strings (default: "America/New_York")
+            Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
+    
     Returns:
         str: Formatted string containing trade history or an error message
     """
     _ensure_clients()
     try:
-        # Calculate start time based on days, hours, or minutes (priority order)
-        if days > 0:
-            start_time = datetime.now() - timedelta(days=days)
-            time_desc = f"Last {days} day{'s' if days > 1 else ''}"
-        elif hours > 0:
-            start_time = datetime.now() - timedelta(hours=hours)
-            time_desc = f"Last {hours} hour{'s' if hours > 1 else ''}"
+        # Capture current time once for consistency
+        now_utc = datetime.now(timezone.utc)
+        
+        # Handle start time: use provided start or calculate from days/hours/minutes
+        if start:
+            try:
+                start_time = _parse_iso_datetime(start, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
         else:
-            start_time = datetime.now() - timedelta(minutes=minutes)
-            time_desc = f"Last {minutes} minute{'s' if minutes > 1 else ''}"
+            # Calculate start time based on days, hours, or minutes (priority order)
+            if days > 0:
+                start_time = now_utc - timedelta(days=days)
+            elif hours > 0:
+                start_time = now_utc - timedelta(hours=hours)
+            elif minutes > 0:
+                start_time = now_utc - timedelta(minutes=minutes)
+            else:
+                # Default fallback: let SDK handle defaults
+                start_time = None
+
+        if end:
+            try:
+                end_time = _parse_iso_datetime(end, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
+        else:
+            end_time = None
         
         # Create the request object with all available parameters
         request_params = StockTradesRequest(
-            symbol_or_symbols=symbol,
+            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
             start=start_time,
-            end=datetime.now(),
+            end=end_time,
             limit=limit,
             sort=sort,
             feed=feed,
             currency=currency,
             asof=asof
         )
+        
         # Get the trades
         trades = stock_historical_data_client.get_stock_trades(request_params)
-        if symbol in trades:
-            result = f"Historical Trades for {symbol} ({time_desc}):\n"
-            result += "---------------------------------------------------\n"
-            for trade in trades[symbol]:
-                result += f"""
-                    Timestamp: {trade.timestamp}
-                    Price: ${float(trade.price):.6f}
-                    Size: {trade.size}
-                    Exchange: {trade.exchange}
-                    ID: {trade.id}
-                    Conditions: {trade.conditions}
-                    Tape: {trade.tape}
-                    -------------------
-                    """
-            return result
+        
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        results: List[str] = []
+
+        for sym in symbols_list:
+            if sym in trades:
+                results.extend([
+                    f"Historical Trades for {sym}:",
+                    f"Total Records: {len(trades[sym])}",
+                    ""
+                ])
+                
+                for trade in trades[sym]:
+                    results.append(f"Time: {trade.timestamp} UTC, Price: ${float(trade.price):.6f}, Size: {trade.size}, Exchange: {trade.exchange}, ID: {trade.id}, Conditions: {trade.conditions}, Tape: {trade.tape}")
+                    results.append("")
+                
+                results.append("")
+                if len(symbols_list) > 1:
+                    results.append("")  # Separator
+            else:
+                results.append(f"No trade data found for {sym} in the specified time range.")
+
+        if results:
+            return "\n".join(results)
         else:
-            return f"No trade data found for {symbol} in the specified time range."
-    except APIError as api_error:
-        error_message = str(api_error)
-        lower = error_message.lower()
-        if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
-            fifteen_ago = datetime.now() - timedelta(minutes=15)
-            hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
-            return (
-                f"Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. "
-                f"Your request likely included the most recent 15 minutes. "
-                f"Retry with `end` <= {hint_end} (exclude the last 15 minutes), "
-                f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
-                f"Original error: {error_message}"
-            )
-        return f"API Error fetching trades for {symbol}: {error_message}"
+            return f"No trade data found"
     except Exception as e:
-        return f"Error fetching trades for {symbol}: {str(e)}"
+        return f"Error fetching trades: {str(e)}"
 
 @mcp.tool()
 async def get_stock_latest_bar(
-    symbol: str,
+    symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None
 ) -> str:
-    """Get the latest minute bar for a stock.
+    """Get the latest minute bar for one or more stocks.
     
     Args:
-        symbol: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
-        feed: The stock data feed to retrieve from (optional)
+        symbol_or_symbols: Stock ticker symbol(s) (e.g., 'AAPL' or ['AAPL', 'MSFT'])
+        feed: The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
         currency: The currency for prices (optional, defaults to USD)
     
     Returns:
@@ -1158,9 +1234,13 @@ async def get_stock_latest_bar(
     """
     _ensure_clients()
     try:
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        if not symbols_list:
+            return "No symbols provided."
+        
         # Create the request object with all available parameters
         request_params = StockLatestBarRequest(
-            symbol_or_symbols=symbol,
+            symbol_or_symbols=symbol_or_symbols,
             feed=feed,
             currency=currency
         )
@@ -1168,31 +1248,44 @@ async def get_stock_latest_bar(
         # Get the latest bar
         latest_bars = stock_historical_data_client.get_stock_latest_bar(request_params)
         
-        if symbol in latest_bars:
-            bar = latest_bars[symbol]
-            return f"""
-                Latest Minute Bar for {symbol}:
-                ---------------------------
-                Time: {bar.timestamp}
-                Open: ${float(bar.open):.2f}
-                High: ${float(bar.high):.2f}
-                Low: ${float(bar.low):.2f}
-                Close: ${float(bar.close):.2f}
-                Volume: {bar.volume}
-                """
-        else:
-            return f"No latest bar data found for {symbol}."
+        results: List[str] = []
+        for symbol in symbols_list:
+            bar = latest_bars.get(symbol)
+            if not bar:
+                results.append(f"No latest bar data found for {symbol}.")
+                continue
+            
+            results.extend([
+                f"Symbol: {symbol}",
+                f"Time: {bar.timestamp}",
+                f"Open: ${float(bar.open):.2f}",
+                f"High: ${float(bar.high):.2f}",
+                f"Low: ${float(bar.low):.2f}",
+                f"Close: ${float(bar.close):.2f}",
+                f"Volume: {bar.volume}",
+                ""
+            ])
+        return "\n".join(results).strip()
     except Exception as e:
-        return f"Error fetching latest bar: {str(e)}"
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        requested = ", ".join(symbols_list) if symbols_list else ""
+        return f"Error fetching latest bar for {requested}: {str(e)}"
+
 
 @mcp.tool()
-async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> str:
+async def get_stock_latest_quote(
+    symbol_or_symbols: Union[str, List[str]],
+    feed: Optional[DataFeed] = None,    
+    currency: Optional[SupportedCurrencies] = None
+    ) -> str:
     """
     Retrieves and formats the latest quote for one or more stocks.
     
     Args:
         symbol_or_symbols (Union[str, List[str]]): Single stock ticker symbol (e.g., "AAPL")
             or a list of symbols (e.g., ["AAPL", "MSFT"]).
+        feed: The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
+        currency: The currency for prices (optional, defaults to USD)
     
     Returns:
         str: Formatted string containing for each requested symbol:
@@ -1209,14 +1302,19 @@ async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> st
         if not symbols:
             return "No symbols provided."
         
-        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol_or_symbols)
+        request_params = StockLatestQuoteRequest(
+            symbol_or_symbols=symbol_or_symbols,
+            feed=feed,
+            currency=currency
+        )
+
         quotes = stock_historical_data_client.get_stock_latest_quote(request_params)
 
-        results: List[str] = ["Latest Stock Quotes:", "====================", ""]
+        results: List[str] = []
         for symbol in symbols:
             quote = quotes.get(symbol)
             if not quote:
-                results.extend([f"Symbol: {symbol}", "------------------", f"No quote data found for {symbol}.", ""])
+                results.append(f"No quote data found for {symbol}.")
                 continue
 
             timestamp_value = getattr(quote, "timestamp", None)
@@ -1224,7 +1322,6 @@ async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> st
 
             results.extend([
                 f"Symbol: {symbol}",
-                "------------------",
                 f"Ask Price: ${quote.ask_price:.2f}",
                 f"Bid Price: ${quote.bid_price:.2f}",
                 f"Ask Size: {quote.ask_size}",
@@ -1241,15 +1338,15 @@ async def get_stock_latest_quote(symbol_or_symbols: Union[str, List[str]]) -> st
 
 @mcp.tool()
 async def get_stock_latest_trade(
-    symbol: str,
+    symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None
 ) -> str:
-    """Get the latest trade for a stock.
+    """Get the latest trade for one or more stocks.
     
     Args:
-        symbol: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
-        feed: The stock data feed to retrieve from (optional)
+        symbol_or_symbols: Stock ticker symbol(s) (e.g., 'AAPL' or ['AAPL', 'MSFT'])
+        feed: The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
         currency: The currency for prices (optional, defaults to USD)
     
     Returns:
@@ -1257,9 +1354,13 @@ async def get_stock_latest_trade(
     """
     _ensure_clients()
     try:
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        if not symbols_list:
+            return "No symbols provided."
+        
         # Create the request object with all available parameters
         request_params = StockLatestTradeRequest(
-            symbol_or_symbols=symbol,
+            symbol_or_symbols=symbol_or_symbols,
             feed=feed,
             currency=currency
         )
@@ -1267,22 +1368,29 @@ async def get_stock_latest_trade(
         # Get the latest trade
         latest_trades = stock_historical_data_client.get_stock_latest_trade(request_params)
         
-        if symbol in latest_trades:
-            trade = latest_trades[symbol]
-            return f"""
-                Latest Trade for {symbol}:
-                ---------------------------
-                Time: {trade.timestamp}
-                Price: ${float(trade.price):.6f}
-                Size: {trade.size}
-                Exchange: {trade.exchange}
-                ID: {trade.id}
-                Conditions: {trade.conditions}
-                """
-        else:
-            return f"No latest trade data found for {symbol}."
+        results: List[str] = []
+        for symbol in symbols_list:
+            trade = latest_trades.get(symbol)
+            if not trade:
+                results.append(f"No latest trade data found for {symbol}.")
+                continue
+            
+            results.extend([
+                f"Symbol: {symbol}",
+                f"Time: {trade.timestamp}",
+                f"Price: ${float(trade.price):.6f}",
+                f"Size: {trade.size}",
+                f"Exchange: {trade.exchange}",
+                f"ID: {trade.id}",
+                f"Conditions: {trade.conditions}",
+                ""
+            ])
+
+        return "\n".join(results).strip()
     except Exception as e:
-        return f"Error fetching latest trade: {str(e)}"
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        requested = ", ".join(symbols_list) if symbols_list else ""
+        return f"Error fetching latest trade for {requested}: {str(e)}"
 
 
 @mcp.tool()
@@ -1296,7 +1404,7 @@ async def get_stock_snapshot(
     
     Args:
         symbol_or_symbols: Single stock symbol or list of stock symbols (e.g., 'AAPL' or ['AAPL', 'MSFT'])
-        feed: The stock data feed to retrieve from (optional)
+        feed: The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
         currency: The currency the data should be returned in (default: USD)
     
     Returns:
@@ -1335,7 +1443,7 @@ async def get_stock_snapshot(
             ]
             
             results.extend(filter(None, snapshot_data))  # Filter out empty strings
-        
+
         return "\n".join(results)
         
     except APIError as api_error:
@@ -1370,19 +1478,24 @@ async def get_stock_snapshot(
 @mcp.tool()
 async def get_crypto_bars(
     symbol: Union[str, List[str]], 
-    days: int = 1, 
+    days: int = 1,
+    hours: int = 0,
+    minutes: int = 30,
     timeframe: str = "1Hour",
     limit: Optional[int] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
-    feed: CryptoFeed = CryptoFeed.US
+    feed: CryptoFeed = CryptoFeed.US,
+    tz: str = "America/New_York"
 ) -> str:
     """
     Retrieves and formats historical price bars for a cryptocurrency with configurable timeframe and time range.
     
     Args:
         symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD', 'ETH/USD' or ['BTC/USD', 'ETH/USD'])
-        days (int): Number of days to look back (default: 1, ignored if start/end provided)
+        days (int): Number of days to look back (default: 1, ignored if start is provided)
+        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
+        minutes (int): Number of minutes to look back (default: 30, ignored if start is provided)
         timeframe (str): Bar timeframe - supports flexible Alpaca formats:
             - Minutes: "1Min", "2Min", "3Min", "4Min", "5Min", "15Min", "30Min", etc.
             - Hours: "1Hour", "2Hour", "3Hour", "4Hour", "6Hour", etc.
@@ -1394,6 +1507,8 @@ async def get_crypto_bars(
         start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
         end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
         feed (CryptoFeed): The crypto data feed to retrieve from (default: US)
+        tz (str): Timezone for naive datetime strings (default: "America/New_York")
+            Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
     
     Returns:
         str: Formatted string containing historical crypto price data with timestamps, OHLCV data
@@ -1408,31 +1523,34 @@ async def get_crypto_bars(
         # Parse start/end times or calculate from days
         start_time = None
         end_time = None
+        now_utc = datetime.now(timezone.utc)  # Capture once for consistency
         
         if start:
             try:
-                start_time = _parse_iso_datetime(start)
-            except ValueError:
-                return f"Error: Invalid start time format '{start}'. Use ISO format like '2023-01-01T09:30:00' or '2023-01-01'"
-                
+                start_time = _parse_iso_datetime(start, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
+   
         if end:
             try:
-                end_time = _parse_iso_datetime(end)
-            except ValueError:
-                return f"Error: Invalid end time format '{end}'. Use ISO format like '2023-01-01T16:00:00' or '2023-01-01'"
+                end_time = _parse_iso_datetime(end, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
+        else:
+            end_time = None
         
-        # Compute fallbacks concisely (Option A: no special 2h/24h intraday defaults)
-        start_time = start_time or (
-            datetime.now() - timedelta(minutes=limit * timeframe_obj.amount)
-            if limit and timeframe_obj.unit_value == TimeFrameUnit.Minute else
-            datetime.now() - timedelta(hours=limit * timeframe_obj.amount)
-            if limit and timeframe_obj.unit_value == TimeFrameUnit.Hour else
-            datetime.now() - timedelta(days=days)
-        )
-        end_time = end_time or datetime.now()
+        # Compute start_time fallback: use explicit days/hours/minutes parameters
+        if not start_time:
+            
+            if days > 0:
+                start_time = now_utc - timedelta(days=days)
+            elif hours > 0:
+                start_time = now_utc - timedelta(hours=hours)
+            elif minutes > 0:
+                start_time = now_utc - timedelta(minutes=minutes)
         
         request_params = CryptoBarsRequest(
-            symbol_or_symbols=symbol,
+            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
             timeframe=timeframe_obj,
             start=start_time,
             end=end_time,
@@ -1440,81 +1558,106 @@ async def get_crypto_bars(
         )
         
         bars = crypto_historical_data_client.get_crypto_bars(request_params, feed=feed)
-
+        
         symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        outputs: List[str] = []
-        time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
-
-        # Prefer the underlying mapping ('.data') when present; fallback to indexed access
-        mapping_bars = getattr(bars, 'data', None) or bars
+        results: List[str] = []
+        
         for sym in symbols_list:
-            sym_bars = mapping_bars.get(sym) if hasattr(mapping_bars, 'get') else None
-            if not sym_bars:
-                outputs.append(f"No historical crypto data found for {sym} with {timeframe} timeframe in the specified time range.")
-                continue
-
-            result = f"Historical Crypto Data for {sym} ({timeframe} bars, {time_range}):\n"
-            result += "---------------------------------------------------\n"
-            for bar in sym_bars:
-                if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
-                    time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S')
-                else:
-                    time_str = bar.timestamp.date()
-                result += f"Time: {time_str}, Open: ${bar.open:.6f}, High: ${bar.high:.6f}, Low: ${bar.low:.6f}, Close: ${bar.close:.6f}, Volume: {bar.volume}\n"
-            outputs.append(result)
-
-        return "\n".join(outputs)
+            if bars[sym]:
+                results.extend([
+                    f"Historical Crypto Bars for {sym} ({timeframe} timeframe):",
+                    f"Total Records: {len(bars[sym])}",
+                    ""
+                ])
+                
+                for bar in bars[sym]:
+                    if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
+                        time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S') + " UTC"
+                    else:
+                        time_str = bar.timestamp.date()
+                    results.append(f"Time: {time_str}, Open: ${bar.open:.6f}, High: ${bar.high:.6f}, Low: ${bar.low:.6f}, Close: ${bar.close:.6f}, Volume: {bar.volume}")
+                
+                results.append("")
+                if len(symbols_list) > 1:
+                    results.append("")  # Separator between symbols
+            else:
+                results.append(f"No bar data found for {sym} with {timeframe} timeframe in the specified time range.")
+        
+        if results:
+            return "\n".join(results)
+        else:
+            symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
+            return f"No bar data found for {symbol_str} with {timeframe} timeframe in the specified time range."
     except Exception as e:
-        return f"Error fetching historical crypto data for {symbol}: {str(e)}"
+        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
+        return f"Error fetching historical crypto data for {symbol_str}: {str(e)}"
 
 @mcp.tool()
 async def get_crypto_quotes(
     symbol: Union[str, List[str]],
-    days: int = 3,
+    days: int = 0,
+    hours: int = 0,
+    minutes: int = 15,
     limit: Optional[int] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
-    feed: CryptoFeed = CryptoFeed.US
+    feed: CryptoFeed = CryptoFeed.US,
+    tz: str = "America/New_York"
 ) -> str:
     """
     Retrieves and formats historical quote data for a cryptocurrency.
     
     Args:
         symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD', 'ETH/USD' or ['BTC/USD', 'ETH/USD'])
-        days (int): Number of days to look back (default: 3, ignored if start/end provided)
+        days (int): Number of days to look back (default: 0, ignored if start is provided)
+        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
+        minutes (int): Number of minutes to look back (default: 15, ignored if start is provided)
         limit (Optional[int]): Maximum number of quotes to return (optional)
         start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
         end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
         feed (CryptoFeed): The crypto data feed to retrieve from (default: US)
+        tz (str): Timezone for naive datetime strings (default: "America/New_York")
+            Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
     
     Returns:
         str: Formatted string containing historical crypto quote data with timestamps, bid/ask prices and sizes
     """
     _ensure_clients()
     try:
+        # Set default limit if not provided
+        if limit is None:
+            limit = 1000
+
         # Parse start/end times or calculate from days
         start_time = None
         end_time = None
+        now_utc = datetime.now(timezone.utc)  # Capture once for consistency
         
         if start:
             try:
-                start_time = _parse_iso_datetime(start)
-            except ValueError:
-                return f"Error: Invalid start time format '{start}'. Use ISO format like '2023-01-01T09:30:00' or '2023-01-01'"
+                start_time = _parse_iso_datetime(start, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
+        else:
+            # Calculate start time based on days, hours, or minutes (priority order)
+            if days > 0:
+                start_time = now_utc - timedelta(days=days)
+            elif hours > 0:
+                start_time = now_utc - timedelta(hours=hours)
+            elif minutes > 0:
+                start_time = now_utc - timedelta(minutes=minutes)
+
         if end:
             try:
-                end_time = _parse_iso_datetime(end)
-            except ValueError:
-                return f"Error: Invalid end time format '{end}'. Use ISO format like '2023-01-01T16:00:00' or '2023-01-01'"
+                end_time = _parse_iso_datetime(end, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
+        else:
+            end_time = None 
         
-        # If no start/end provided, calculate from days parameter
-        if not start_time:
-            start_time = datetime.now() - timedelta(days=days)
-        if not end_time:
-            end_time = datetime.now()
-        
+        # Create the request object
         request_params = CryptoQuoteRequest(
-            symbol_or_symbols=symbol,
+            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
             start=start_time,
             end=end_time,
             limit=limit
@@ -1523,74 +1666,97 @@ async def get_crypto_quotes(
         quotes = crypto_historical_data_client.get_crypto_quotes(request_params, feed=feed)
 
         symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        outputs: List[str] = []
-        time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
+        results: List[str] = []
 
         mapping_quotes = getattr(quotes, 'data', None) or quotes
         for sym in symbols_list:
             sym_quotes = mapping_quotes.get(sym) if hasattr(mapping_quotes, 'get') else None
             if not sym_quotes:
-                outputs.append(f"No historical crypto quotes found for {sym} in the specified time range.")
+                results.append(f"No historical crypto quotes found for {sym} in the specified time range.")
                 continue
 
-            result = f"Historical Crypto Quotes for {sym} ({time_range}):\n"
-            result += "---------------------------------------------------\n"
+            results.extend([
+                f"Historical Crypto Quotes for {sym}:", f"Total Records: {len(sym_quotes)}",""])
+            
             for quote in sym_quotes:
-                time_str = quote.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                result += f"Time: {time_str}, Bid: ${quote.bid_price:.6f} (Size: {quote.bid_size:.6f}), Ask: ${quote.ask_price:.6f} (Size: {quote.ask_size:.6f})\n"
-            outputs.append(result)
+                results.extend([
+                    f"Timestamp: {quote.timestamp} UTC",
+                    f"  Bid Price: ${quote.bid_price:.6f}",
+                    f"  Bid Size: {quote.bid_size:.6f}",
+                    f"  Ask Price: ${quote.ask_price:.6f}",
+                    f"  Ask Size: {quote.ask_size:.6f}",
+                    ""
+                ])
 
-        return "\n".join(outputs)
+        return "\n".join(results)
     except Exception as e:
-        return f"Error fetching historical crypto quotes for {symbol}: {str(e)}"
+        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
+        return f"Error fetching historical crypto quotes for {symbol_str}: {str(e)}"
 
 @mcp.tool()
 async def get_crypto_trades(
     symbol: Union[str, List[str]],
-    days: int = 1,
+    days: int = 0,
+    hours: int = 0,
+    minutes: int = 15,
     limit: Optional[int] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
     sort: Optional[str] = None,
-    feed: CryptoFeed = CryptoFeed.US
+    feed: CryptoFeed = CryptoFeed.US,
+    tz: str = "America/New_York"
 ) -> str:
     """
     Retrieves and formats historical trade prints for a cryptocurrency.
 
     Args:
         symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD' or ['BTC/USD','ETH/USD'])
-        days (int): Number of days to look back (default: 1, ignored if start/end provided)
+        days (int): Number of days to look back (default: 0, ignored if start is provided)
+        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
+        minutes (int): Number of minutes to look back (default: 15, ignored if start is provided)
         limit (Optional[int]): Maximum number of trades to return
         start (Optional[str]): ISO start time (e.g., "2023-01-01T09:30:00")
         end (Optional[str]): ISO end time (e.g., "2023-01-01T16:00:00")
         sort (Optional[str]): 'asc' or 'desc' chronological order
         feed (CryptoFeed): Crypto data feed (default: US)
+        tz (str): Timezone for naive datetime strings (default: "America/New_York")
+            Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
 
     Returns:
         str: Formatted trade history
     """
     _ensure_clients()
     try:
-        # Parse start/end times or calculate from days
-        start_time = None
-        end_time = None
-
+        # Set default limit if not provided
+        if limit is None:
+            limit = 1000
+        
+        # Capture current time once for consistency
+        now_utc = datetime.now(timezone.utc)
+        
+        # Handle start time: use provided start or calculate from days/hours/minutes
         if start:
             try:
-                start_time = _parse_iso_datetime(start)
-            except ValueError:
-                return f"Error: Invalid start time format '{start}'. Use ISO format like '2023-01-01T09:30:00'"
-
+                start_time = _parse_iso_datetime(start, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
+        else:
+            # Calculate start time based on days, hours, or minutes (priority order)
+            if days > 0:
+                start_time = now_utc - timedelta(days=days)
+            elif hours > 0:
+                start_time = now_utc - timedelta(hours=hours)
+            elif minutes > 0:
+                start_time = now_utc - timedelta(minutes=minutes)
+        
+        # Handle end time: use provided end or default to now
         if end:
             try:
-                end_time = _parse_iso_datetime(end)
-            except ValueError:
-                return f"Error: Invalid end time format '{end}'. Use ISO format like '2023-01-01T16:00:00'"
-
-        if not start_time:
-            start_time = datetime.now() - timedelta(days=days)
-        if not end_time:
-            end_time = datetime.now()
+                end_time = _parse_iso_datetime(end, default_timezone=tz)
+            except ValueError as e:
+                return f"Error: {str(e)}"
+        else:
+            end_time = None
 
         # Sort mapping (default to ascending)
         sort_enum = Sort.ASC
@@ -1603,7 +1769,7 @@ async def get_crypto_trades(
                 return f"Invalid sort: {sort}. Must be 'asc' or 'desc'."
 
         request_params = CryptoTradesRequest(
-            symbol_or_symbols=symbol,
+            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
             start=start_time,
             end=end_time,
             limit=limit,
@@ -1613,29 +1779,64 @@ async def get_crypto_trades(
         trades = crypto_historical_data_client.get_crypto_trades(request_params, feed=feed)
 
         symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        outputs: List[str] = []
-        time_range = f"{start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
+        results: List[str] = []
 
         mapping_trades = getattr(trades, 'data', None) or trades
         for sym in symbols_list:
             sym_trades = mapping_trades.get(sym) if hasattr(mapping_trades, 'get') else None
             if not sym_trades:
-                outputs.append(f"No historical crypto trades found for {sym} in the specified time range.")
+                results.append(f"No historical crypto trades found for {sym} in the specified time range.")
                 continue
-            result = f"Historical Crypto Trades for {sym} ({time_range}):\n"
-            result += "---------------------------------------------------\n"
+            
+            results.extend([
+                f"Historical Crypto Trades for {sym}:",
+                f"Total Records: {len(sym_trades)}",
+                ""
+            ])
+            
             for t in sym_trades:
-                time_str = t.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                time_str = t.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
                 line = f"Time: {time_str}, Price: ${t.price:.6f}, Size: {t.size}"
                 if hasattr(t, 'exchange') and t.exchange:
                     line += f", Exchange: {t.exchange}"
-                result += line + "\n"
-            outputs.append(result)
+                results.append(line)
+            
+            results.append("")
+            if len(symbols_list) > 1:
+                results.append("")  # Separator between symbols
 
+        return "\n".join(results)
+    except Exception as e:
+        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
+        return f"Error fetching historical crypto trades for {symbol_str}: {str(e)}"
+
+@mcp.tool()
+async def get_crypto_latest_bar(
+    symbol: Union[str, List[str]],
+    feed: CryptoFeed = CryptoFeed.US
+) -> str:
+    """
+    Returns the latest minute bar for one or more crypto symbols.
+    """
+    _ensure_clients()
+    try:
+        request_params = CryptoLatestBarRequest(symbol_or_symbols=symbol)
+        latest = crypto_historical_data_client.get_crypto_latest_bar(request_params, feed=feed)
+
+        symbols_list = symbol if isinstance(symbol, list) else [symbol]
+        outputs: List[str] = []
+        mapping_latest_bars = getattr(latest, 'data', None) or latest
+        for sym in symbols_list:
+            bar = mapping_latest_bars.get(sym) if hasattr(mapping_latest_bars, 'get') else None
+            if not bar:
+                outputs.append(f"No latest crypto bar available for {sym}.")
+                continue
+            outputs.append(
+                _format_ohlcv_bar(bar, f"Latest Crypto Bar for {sym}", True)
+            )
         return "\n".join(outputs)
     except Exception as e:
-        return f"Error fetching historical crypto trades for {symbol}: {str(e)}"
-
+        return f"Error retrieving latest crypto bar for {symbol}: {str(e)}"
 
 @mcp.tool()
 async def get_crypto_latest_quote(
@@ -1671,36 +1872,6 @@ async def get_crypto_latest_quote(
         return "\n".join(outputs)
     except Exception as e:
         return f"Error retrieving latest crypto quote for {symbol}: {str(e)}"
-
-
-@mcp.tool()
-async def get_crypto_latest_bar(
-    symbol: Union[str, List[str]],
-    feed: CryptoFeed = CryptoFeed.US
-) -> str:
-    """
-    Returns the latest minute bar for one or more crypto symbols.
-    """
-    _ensure_clients()
-    try:
-        request_params = CryptoLatestBarRequest(symbol_or_symbols=symbol)
-        latest = crypto_historical_data_client.get_crypto_latest_bar(request_params, feed=feed)
-
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        outputs: List[str] = []
-        mapping_latest_bars = getattr(latest, 'data', None) or latest
-        for sym in symbols_list:
-            bar = mapping_latest_bars.get(sym) if hasattr(mapping_latest_bars, 'get') else None
-            if not bar:
-                outputs.append(f"No latest crypto bar available for {sym}.")
-                continue
-            outputs.append(
-                _format_ohlcv_bar(bar, f"Latest Crypto Bar for {sym}", True)
-            )
-        return "\n".join(outputs)
-    except Exception as e:
-        return f"Error retrieving latest crypto bar for {symbol}: {str(e)}"
-
 
 @mcp.tool()
 async def get_crypto_latest_trade(
@@ -1813,7 +1984,7 @@ async def get_crypto_latest_orderbook(
 
 @mcp.tool()
 async def get_option_contracts(
-    underlying_symbol: str,
+    underlying_symbols: Union[str, List[str]],
     expiration_date: Optional[date] = None,
     expiration_date_gte: Optional[date] = None,
     expiration_date_lte: Optional[date] = None,
@@ -1829,7 +2000,7 @@ async def get_option_contracts(
     Retrieves option contracts - direct mapping to GetOptionContractsRequest.
     
     Args:
-        underlying_symbol (str): Underlying asset symbol (e.g., 'SPY', 'AAPL')
+        underlying_symbols (Union[str, List[str]]): Underlying asset symbol(s) (e.g., 'SPY', 'AAPL' or ['SPY', 'AAPL'])
         expiration_date (Optional[date]): Specific expiration date
         expiration_date_gte (Optional[date]): Expiration date greater than or equal to
         expiration_date_lte (Optional[date]): Expiration date less than or equal to
@@ -1842,10 +2013,15 @@ async def get_option_contracts(
     
     Examples:
         get_option_contracts("NVDA", expiration_expression="week of September 2, 2025")
-        get_option_contracts("SPY", expiration_date_gte=date(2025,9,1), expiration_date_lte=date(2025,9,5))
+        get_option_contracts(["SPY", "AAPL"], expiration_date_gte=date(2025,9,1), expiration_date_lte=date(2025,9,5))
     """
     _ensure_clients()
     try:
+        # Convert to list if single symbol
+        symbols_list = [underlying_symbols] if isinstance(underlying_symbols, str) else list(underlying_symbols)
+        if not symbols_list:
+            return "No symbols provided."
+        
         # Handle natural language expression
         if expiration_expression:
             parsed = _parse_expiration_expression(expiration_expression)
@@ -1861,7 +2037,7 @@ async def get_option_contracts(
         
         # Create API request - direct mapping like your baseline example
         request = GetOptionContractsRequest(
-            underlying_symbols=[underlying_symbol],
+            underlying_symbols=symbols_list,
             expiration_date=expiration_date,
             expiration_date_gte=expiration_date_gte,
             expiration_date_lte=expiration_date_lte,
@@ -1877,13 +2053,14 @@ async def get_option_contracts(
         response = trade_client.get_option_contracts(request)
         
         if not response or not response.option_contracts:
-            return f"No option contracts found for {underlying_symbol}."
+            symbols_str = ", ".join(symbols_list)
+            return f"No option contracts found for {symbols_str}."
         
         # Format results
         contracts = response.option_contracts
-        result = [f"Option Contracts for {underlying_symbol}:", "=" * 50]
-
-        for contract in contracts:  # Show ALL contracts returned by API
+        result: List[str] = []
+        
+        for contract in contracts:
             contract_type = "Call" if contract.type == ContractType.CALL else "Put"
             result.extend([
                 f"ID: {contract.id}",
@@ -1903,10 +2080,9 @@ async def get_option_contracts(
                 f"  Root Symbol: {contract.root_symbol}",
                 f"  Underlying Asset ID: {contract.underlying_asset_id}",
                 f"  Underlying Symbol: {contract.underlying_symbol}",
-                "-" * 40
+                ""
             ])
-
-        result.append(f"\nTotal: {len(contracts)} contracts")
+        
         return "\n".join(result)
         
     except Exception as e:
@@ -1914,16 +2090,16 @@ async def get_option_contracts(
 
 @mcp.tool()
 async def get_option_latest_quote(
-    symbol: str,
+    symbol_or_symbols: Union[str, List[str]],
     feed: Optional[OptionsFeed] = None
 ) -> str:
     """
-    Retrieves and formats the latest quote for an option contract. This endpoint returns real-time
+    Retrieves and formats the latest quote for one or more option contracts. This endpoint returns real-time
     pricing and market data, including bid/ask prices, sizes, and exchange information.
     
     Args:
-        symbol (str): The option contract symbol (e.g., 'AAPL230616C00150000')
-        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative).
+        symbol_or_symbols (Union[str, List[str]]): Option contract symbol(s) (e.g., 'AAPL230616C00150000' or ['AAPL230616C00150000', 'MSFT230616P00300000'])
+        feed (Optional[OptionsFeed]): The source feed of the data (OptionsFeed.OPRA or OptionsFeed.INDICATIVE, default: None).
             Default: opra if the user has the options subscription, indicative otherwise.
     
     Returns:
@@ -1941,39 +2117,52 @@ async def get_option_latest_quote(
     """
     _ensure_clients()
     try:
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        if not symbols_list:
+            return "No symbols provided."
+        
         # Create the request object
         request = OptionLatestQuoteRequest(
-            symbol_or_symbols=symbol,
+            symbol_or_symbols=symbol_or_symbols,
             feed=feed
         )
         
         # Get the latest quote
         quotes = option_historical_data_client.get_option_latest_quote(request)
         
-        if symbol in quotes:
-            quote = quotes[symbol]
-            return f"""
-                Latest Quote for {symbol}:
-                ------------------------
-                Ask Price: ${float(quote.ask_price):.2f}
-                Ask Size: {quote.ask_size}
-                Ask Exchange: {quote.ask_exchange}
-                Bid Price: ${float(quote.bid_price):.2f}
-                Bid Size: {quote.bid_size}
-                Bid Exchange: {quote.bid_exchange}
-                Conditions: {quote.conditions}
-                Tape: {quote.tape}
-                Timestamp: {quote.timestamp}
-                """
-        else:
-            return f"No quote data found for {symbol}."
+        results: List[str] = []
+        for symbol in symbols_list:
+            quote = quotes.get(symbol)
+            if not quote:
+                results.append(f"No quote data found for {symbol}.")
+                continue
             
+            results.extend([
+                f"Symbol: {symbol}",
+                f"Ask Price: ${float(quote.ask_price):.2f}",
+                f"Ask Size: {quote.ask_size}",
+                f"Ask Exchange: {quote.ask_exchange}",
+                f"Bid Price: ${float(quote.bid_price):.2f}",
+                f"Bid Size: {quote.bid_size}",
+                f"Bid Exchange: {quote.bid_exchange}",
+                f"Conditions: {quote.conditions}",
+                f"Tape: {quote.tape}",
+                f"Timestamp: {quote.timestamp}",
+                ""
+            ])
+        
+        return "\n".join(results).strip()
     except Exception as e:
-        return f"Error fetching option quote: {str(e)}"
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        requested = ", ".join(symbols_list) if symbols_list else ""
+        return f"Error fetching option quote for {requested}: {str(e)}"
 
 
 @mcp.tool()
-async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Optional[OptionsFeed] = None) -> str:
+async def get_option_snapshot(
+    symbol_or_symbols: Union[str, List[str]], 
+    feed: Optional[OptionsFeed] = None
+) -> str:
     """
     Retrieves comprehensive snapshots of option contracts including latest trade, quote, implied volatility, and Greeks.
     This endpoint provides a complete view of an option's current market state and theoretical values.
@@ -1981,7 +2170,7 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
     Args:
         symbol_or_symbols (Union[str, List[str]]): Single option symbol or list of option symbols
             (e.g., 'AAPL250613P00205000')
-        feed (Optional[OptionsFeed]): The source feed of the data (opra or indicative).
+        feed (Optional[OptionsFeed]): The source feed of the data (OptionsFeed.OPRA or OptionsFeed.INDICATIVE, default: None)
             Default: opra if the user has the options subscription, indicative otherwise.
     
     Returns:
@@ -2080,7 +2269,7 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
                 result += f"  Vega: {greeks.vega:.4f}\n"
             
             result += "\n"
-        
+
         return result
         
     except Exception as e:
