@@ -1,13 +1,21 @@
 import re
 import time
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union, Tuple
-
+from zoneinfo import ZoneInfo
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.models import Order
 from alpaca.trading.requests import MarketOrderRequest, OptionLegRequest
-
+from alpaca.trading.enums import (
+    AssetStatus,
+    ContractType,
+    OrderClass,
+    OrderSide,
+    OrderType,
+    QueryOrderStatus,
+    TimeInForce,
+)
 
 def _validate_amount(amount: int, unit: TimeFrameUnit) -> bool:
     if amount <= 0:
@@ -94,7 +102,20 @@ def parse_timeframe_with_enums(timeframe_str: str) -> Optional[TimeFrame]:
     except (ValueError, AttributeError, TypeError):
         return None
 
-def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+def _parse_iso_datetime(
+    value: Optional[str], 
+    default_timezone: str = "America/New_York"
+) -> Optional[datetime]:
+    """
+    Parse ISO datetime string with timezone handling.
+    
+    Args:
+        value: ISO datetime string (e.g., "2025-11-14T09:30:00")
+        default_timezone: Timezone for naive datetimes. Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
+    
+    Returns:
+        Timezone-aware datetime object
+    """
     if not value:
         return None
     s = value.strip()
@@ -103,10 +124,31 @@ def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
     if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
         s = s + "T00:00:00"
     s = s.replace("Z", "+00:00")
+    
     try:
-        return datetime.fromisoformat(s)
-    except Exception as e:
-        raise ValueError(f"Invalid ISO datetime: {value}") from e
+        dt = datetime.fromisoformat(s)
+        
+        # If timezone is explicit in the string, use it
+        if dt.tzinfo is not None:
+            return dt
+        
+        # Apply default timezone (only UTC or ET supported)
+        tz_upper = default_timezone.upper()
+        if tz_upper == "UTC":
+            dt = dt.replace(tzinfo=timezone.utc)
+        elif tz_upper in ("ET", "EST", "EDT") or default_timezone == "America/New_York":
+            dt = dt.replace(tzinfo=ZoneInfo("America/New_York"))
+        else:
+            raise ValueError(
+                f"Unsupported timezone '{default_timezone}'. "
+                "Supported: 'UTC', 'ET', 'EST', 'EDT', 'America/New_York'"
+            )
+        
+        return dt
+    except ValueError as e:
+        if "Unsupported timezone" in str(e):
+            raise
+        raise ValueError(f"Invalid ISO datetime format: {value}") from e
 
 
 def _parse_date_ymd(value: str) -> date:
