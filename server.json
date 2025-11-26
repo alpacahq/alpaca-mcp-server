@@ -7,12 +7,12 @@
     "url": "https://github.com/alpacahq/alpaca-mcp-server",
     "source": "github"
   },
-  "version": "1.0.8",
+  "version": "1.0.9",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "alpaca-mcp-server",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "transport": {
         "type": "stdio"
       },

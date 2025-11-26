@@ -2,7 +2,7 @@
   "_comment": "GitHub MCP Registry Manifest - Complete Tool Definitions",
   "_location": "/.well-known/mcp/manifest.json",
   "_purpose": "Metadata for GitHub MCP Registry listing and tool discovery",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "schema_version": "0.2.0",
   "name": "alpaca-mcp-server",
   "display_name": "Alpaca MCP Server",
