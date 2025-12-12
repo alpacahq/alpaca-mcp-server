@@ -1622,7 +1622,7 @@ async def get_option_contracts(
     expiration_expression: Optional[str] = None,
     strike_price_gte: Optional[str] = None,
     strike_price_lte: Optional[str] = None,
-    type: Optional[ContractType] = None,
+    type: Optional[str] = None,
     status: Optional[AssetStatus] = None,
     root_symbol: Optional[str] = None,
     limit: Optional[int] = None
@@ -1637,7 +1637,7 @@ async def get_option_contracts(
         expiration_date_lte (Optional[date]): Expiration date less than or equal to
         expiration_expression (Optional[str]): Natural language (e.g., "week of September 2, 2025")
         strike_price_gte/lte (Optional[str]): Strike price range
-        type (Optional[ContractType]): "call" or "put"
+        type (Optional[str]): Filter by contract type ('call', 'put', or None for both)
         status (Optional[AssetStatus]): "active" (default)
         root_symbol (Optional[str]): Root symbol filter
         limit (Optional[int]): Maximum number of contracts to return
@@ -1652,6 +1652,15 @@ async def get_option_contracts(
         symbols_list = [underlying_symbols] if isinstance(underlying_symbols, str) else list(underlying_symbols)
         if not symbols_list:
             return "No symbols provided."
+        
+        # Convert string to ContractType enum
+        contract_type = None
+        if type:
+            type_lower = type.lower()
+            if type_lower == "call":
+                contract_type = ContractType.CALL
+            elif type_lower == "put":
+                contract_type = ContractType.PUT
         
         # Handle natural language expression
         if expiration_expression:
@@ -1674,7 +1683,7 @@ async def get_option_contracts(
             expiration_date_lte=expiration_date_lte,
             strike_price_gte=strike_price_gte,
             strike_price_lte=strike_price_lte,
-            type=type,
+            type=contract_type,
             status=status,
             root_symbol=root_symbol,
             limit=limit
@@ -1904,6 +1913,98 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
         
     except Exception as e:
         return f"Error retrieving option snapshots: {str(e)}"
+
+
+@mcp.tool()
+async def get_option_chain(
+    underlying_symbol: str,
+    feed: Optional[OptionsFeed] = OptionsFeed.INDICATIVE,
+    type: Optional[str] = None,
+    strike_price_gte: Optional[float] = None,
+    strike_price_lte: Optional[float] = None,
+    expiration_date: Optional[Union[date, str]] = None,
+    expiration_date_gte: Optional[Union[date, str]] = None,
+    expiration_date_lte: Optional[Union[date, str]] = None,
+    root_symbol: Optional[str] = None,
+    limit: Optional[int] = None
+) -> str:
+    """
+    Retrieves option chain data for an underlying symbol, including latest trade, quote,
+    implied volatility, and greeks for each contract.
+
+    Args:
+        underlying_symbol (str): The underlying symbol (e.g., 'AAPL', 'SPY')
+        feed (Optional[OptionsFeed]): Data feed source (opra or indicative)
+        type (Optional[str]): Filter by contract type ('call', 'put', or None for both)
+        strike_price_gte (Optional[float]): Minimum strike price filter
+        strike_price_lte (Optional[float]): Maximum strike price filter
+        expiration_date (Optional[Union[date, str]]): Exact expiration date (YYYY-MM-DD)
+        expiration_date_gte (Optional[Union[date, str]]): Minimum expiration date
+        expiration_date_lte (Optional[Union[date, str]]): Maximum expiration date
+        root_symbol (Optional[str]): Filter by root symbol
+        limit (Optional[int]): Max snapshots to return (1-1000, default 100)
+
+    Returns:
+        str: Formatted option chain with quote, trade, IV, and greeks for each contract
+    """
+    _ensure_clients()
+    try:
+        # Convert string to ContractType enum
+        contract_type = None
+        if type:
+            type_lower = type.lower()
+            if type_lower == "call":
+                contract_type = ContractType.CALL
+            elif type_lower == "put":
+                contract_type = ContractType.PUT
+
+        request = OptionChainRequest(
+            underlying_symbol=underlying_symbol,
+            feed=feed,
+            type=contract_type,
+            strike_price_gte=strike_price_gte,
+            strike_price_lte=strike_price_lte,
+            expiration_date=expiration_date,
+            expiration_date_gte=expiration_date_gte,
+            expiration_date_lte=expiration_date_lte,
+            root_symbol=root_symbol,
+            limit=limit
+        )
+
+        chain = option_historical_data_client.get_option_chain(request)
+
+        if not chain:
+            return f"No option chain data found for {underlying_symbol}."
+
+        result = f"Option Chain for {underlying_symbol}:\n"
+        result += "=" * 40 + "\n\n"
+
+        for symbol, snapshot in chain.items():
+            result += f"Contract: {symbol}\n"
+            result += "-" * 30 + "\n"
+
+            lines = []
+            if snapshot.latest_quote:
+                q = snapshot.latest_quote
+                lines.extend([
+                    f"Bid: ${q.bid_price:.3f} x {q.bid_size} ({q.bid_exchange})",
+                    f"Ask: ${q.ask_price:.3f} x {q.ask_size} ({q.ask_exchange})",
+                ])
+            if snapshot.latest_trade:
+                t = snapshot.latest_trade
+                lines.append(f"Trade: ${t.price:.3f} x {t.size} ({t.exchange or 'N/A'})")
+            iv = f"{snapshot.implied_volatility:.2%}" if snapshot.implied_volatility else "N/A"
+            lines.append(f"IV: {iv}")
+            if snapshot.greeks:
+                g = snapshot.greeks
+                lines.append(f"Greeks: delta={g.delta:.4f} gamma={g.gamma:.4f} theta={g.theta:.4f} vega={g.vega:.4f} rho={g.rho:.4f}")
+            result += "\n".join(lines) + "\n\n"
+
+        result += MARKET_DATA_DISCLAIMER
+        return result
+
+    except Exception as e:
+        return f"Error retrieving option chain for {underlying_symbol}: {str(e)}"
 
 
 # ============================================================================
