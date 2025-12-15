@@ -132,36 +132,41 @@ def init(api_key: Optional[str], secret_key: Optional[str],
 @click.option(
     '--host',
     default='127.0.0.1',
-    help='Host to bind for streamable-http transport (default: 127.0.0.1)'
+    envvar='HOST',
+    help='Host to bind (default: 127.0.0.1, env: HOST)'
 )
 @click.option(
     '--port',
     type=int,
     default=8000,
-    help='Port to bind for streamable-http transport (default: 8000)'
+    envvar='PORT',
+    help='Port to bind for streamable-http transport (default: 8000, env: PORT)'
+)
+@click.option(
+    '--allowed-hosts',
+    default='',
+    envvar='ALLOWED_HOSTS',
+    help='Allowed hosts for cloud (comma-separated, env: ALLOWED_HOSTS)'
 )
 @click.option(
     '--config-file',
     type=click.Path(path_type=Path),
     help='Path to .env configuration file (default: .env in current directory)'
 )
-def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
+def serve(transport: str, host: str, port: int, allowed_hosts: str, 
+          config_file: Optional[Path]):
     """
     Start the Alpaca MCP server.
 
-    This command starts the MCP server with the specified transport method.
-    The server will load configuration from the .env file and connect to
-    Alpaca's Trading API.
-
-    Transport methods:
-        stdio: Standard input/output (default, for MCP clients)
-        streamable-http: HTTP transport for remote connections
+    Use stdio (default) for local, or streamable-http with --allowed-hosts for cloud.
 
     Examples:
-        alpaca-mcp serve                           # Start with stdio transport
-        alpaca-mcp serve --transport streamable-http          # Start HTTP server
-        alpaca-mcp serve --transport streamable-http --port 9000  # Custom port
-        alpaca-mcp serve --config-file ~/trading.env   # Custom config
+        # Local usage
+        alpaca-mcp-server serve
+
+        # Cloud deployment
+        alpaca-mcp-server serve --transport streamable-http \\
+            --host 0.0.0.0 --allowed-hosts "example.onrender.com"
     """
     try:
         # Determine configuration source (env file or environment variables)
@@ -178,12 +183,13 @@ def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
                 click.echo("   ALPACA_API_KEY=your_key_here")
                 click.echo("   ALPACA_SECRET_KEY=your_secret_here")
                 click.echo()
-                click.echo("Or run 'alpaca-mcp init' to create a .env file.")
+                click.echo("Or run 'alpaca-mcp-server init' to create a .env file.")
             else:
                 click.echo(config.get_config_summary())
                 click.echo()
                 click.echo("Update the credentials above or export them as environment variables.")
             sys.exit(1)
+        
         # Display startup information (unless in stdio mode for MCP clients)
         if transport != "stdio":
             click.echo("Starting Alpaca MCP Server")
@@ -192,11 +198,20 @@ def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
             click.echo(f"   Config: {source_hint}")
             if transport == "streamable-http":
                 click.echo(f"   URL: http://{host}:{port}")
+                if allowed_hosts:
+                    click.echo(f"   Allowed Hosts: {allowed_hosts}")
+                else:
+                    click.echo("   DNS protection: localhost only")
             click.echo()
 
         # Initialize and start the server
         server = AlpacaMCPServer(config_path)
-        server.run(transport=transport, host=host, port=port)
+        server.run(
+            transport=transport,
+            host=host,
+            port=port,
+            allowed_hosts=allowed_hosts
+        )
 
     except KeyboardInterrupt:
         click.echo("\nServer stopped by user")
@@ -204,12 +219,7 @@ def serve(transport: str, host: str, port: int, config_file: Optional[Path]):
         click.echo(f"Server error: {e}")
         # Show helpful error messages for common issues
         if "credentials not found" in str(e).lower():
-            click.echo()
-            click.echo("Make sure your .env file contains valid API keys:")
-            click.echo("   ALPACA_API_KEY=your_key_here")
-            click.echo("   ALPACA_SECRET_KEY=your_secret_here")
-            click.echo()
-            click.echo("   Run 'alpaca-mcp init' to configure.")
+            click.echo("\nMissing API keys. Run 'alpaca-mcp-server init' to configure.")
         sys.exit(1)
 
 

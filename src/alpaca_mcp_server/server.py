@@ -1,7 +1,7 @@
 """
-Alpaca MCP Server - Standalone Implementation
+Alpaca's MCP Server - Standalone Implementation
 
-This is a standalone MCP server that provides comprehensive Alpaca Trading API integration
+This is a standalone MCP server that provides comprehensive Alpaca's Trading API integration
 for stocks, options, crypto, portfolio management, and real-time market data.
 
 Supports 38+ tools including:
@@ -131,11 +131,6 @@ except ImportError:
     )
 
 from mcp.server.fastmcp import FastMCP
-import contextvars
-
-# Context variable to store Authorization header from incoming HTTP requests
-# This will be passed along to Alpaca Trading API calls
-auth_header_context = contextvars.ContextVar('authorization_header', default=None)
 
 # Configure Python path for local imports (UserAgentMixin)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -199,61 +194,15 @@ option_historical_data_client = None
 corporate_actions_client = None
 crypto_historical_data_client = None
 
-def _inject_auth_header(client):
-    """
-    Inject Authorization header from request context into Alpaca SDK HTTP requests.
-    
-    Sets the Authorization header on the session's default headers.
-    """
-    # Check if there's an Authorization header in the request context
-    auth_header = auth_header_context.get()
-    
-    if auth_header and hasattr(client, '_api') and hasattr(client._api, '_session'):
-        # Get the underlying requests session and set the Authorization header
-        session = client._api._session
-        session.headers['Authorization'] = auth_header
-
-
 def _ensure_clients():
     """
-    Initialize Alpaca clients on first use.
-    
-    Supports two authentication modes:
-    1. Authorization header from incoming HTTP request (takes precedence)
-    2. API key/secret pair from environment variables (fallback)
-    
-    When an Authorization header is present in the request context, it will be
-    passed along to all Alpaca Trading API calls.
+    Initialize Alpaca's Trading API clients on first use.
+    Uses API key/secret pair from environment variables.
     """
     global _clients_initialized, trade_client, stock_historical_data_client, stock_data_stream_client
     global option_historical_data_client, corporate_actions_client, crypto_historical_data_client
     
-    # Check if Authorization header is provided in the request context
-    auth_header = auth_header_context.get()
-    
-    if auth_header:
-        # Initialize clients (will use env vars initially, but we'll override with auth header)
-        # We need to initialize clients even with dummy credentials because we'll inject the auth header
-        if not _clients_initialized or not trade_client:
-            trade_client = TradingClientSigned(TRADE_API_KEY or "dummy", TRADE_API_SECRET or "dummy", paper=ALPACA_PAPER_TRADE_BOOL)
-            stock_historical_data_client = StockHistoricalDataClientSigned(TRADE_API_KEY or "dummy", TRADE_API_SECRET or "dummy")
-            stock_data_stream_client = StockDataStream(TRADE_API_KEY or "dummy", TRADE_API_SECRET or "dummy", url_override=STREAM_DATA_WSS)
-            option_historical_data_client = OptionHistoricalDataClientSigned(api_key=TRADE_API_KEY or "dummy", secret_key=TRADE_API_SECRET or "dummy")
-            corporate_actions_client = CorporateActionsClientSigned(api_key=TRADE_API_KEY or "dummy", secret_key=TRADE_API_SECRET or "dummy")
-            crypto_historical_data_client = CryptoHistoricalDataClientSigned(api_key=TRADE_API_KEY or "dummy", secret_key=TRADE_API_SECRET or "dummy")
-        
-        # Inject the Authorization header from the incoming request into each client
-        _inject_auth_header(trade_client)
-        _inject_auth_header(stock_historical_data_client)
-        _inject_auth_header(option_historical_data_client)
-        _inject_auth_header(corporate_actions_client)
-        _inject_auth_header(crypto_historical_data_client)
-        
-        # For auth header mode, we don't set _clients_initialized to True
-        # This ensures we reinject the header on each request
-        _clients_initialized = False
-    elif not _clients_initialized:
-        # Use API key/secret authentication (traditional method)
+    if not _clients_initialized:
         trade_client = TradingClientSigned(TRADE_API_KEY, TRADE_API_SECRET, paper=ALPACA_PAPER_TRADE_BOOL)
         stock_historical_data_client = StockHistoricalDataClientSigned(TRADE_API_KEY, TRADE_API_SECRET)
         stock_data_stream_client = StockDataStream(TRADE_API_KEY, TRADE_API_SECRET, url_override=STREAM_DATA_WSS)
@@ -270,19 +219,9 @@ def _ensure_clients():
 async def get_account_info() -> str:
     """
     Retrieves and formats the current account information including balances and status.
-    
+
     Returns:
-        str: Formatted string containing account details including:
-            - Account ID
-            - Status
-            - Currency
-            - Buying Power
-            - Cash Balance
-            - Portfolio Value
-            - Equity
-            - Market Values
-            - Pattern Day Trader Status
-            - Day Trades Remaining
+        str: Account details with ID, status, buying power, cash, equity, and PDT status
     """
     _ensure_clients()
     account = trade_client.get_account()
@@ -308,15 +247,9 @@ async def get_account_info() -> str:
 async def get_all_positions() -> str:
     """
     Retrieves and formats all current positions in the portfolio.
-    
+
     Returns:
-        str: Formatted string containing details of all open positions including:
-            - Symbol
-            - Quantity
-            - Market Value
-            - Average Entry Price
-            - Current Price
-            - Unrealized P/L
+        str: List of positions with symbol, quantity, market value, entry/current price, and P/L
     """
     _ensure_clients()
     positions = trade_client.get_all_positions()
@@ -383,12 +316,7 @@ async def get_asset(symbol: str) -> str:
         symbol (str): The symbol of the asset to get information for
     
     Returns:
-        str: Formatted string containing asset details including:
-            - Name
-            - Exchange
-            - Class
-            - Status
-            - Trading Properties
+        str: Asset details with name, exchange, class, status, and trading properties
     """
     _ensure_clients()
     try:
@@ -420,10 +348,13 @@ async def get_all_assets(
     Get all available assets with optional filtering.
     
     Args:
-        status: Filter by asset status (e.g., 'active', 'inactive')
-        asset_class: Filter by asset class (e.g., 'us_equity', 'crypto')
-        exchange: Filter by exchange (e.g., 'NYSE', 'NASDAQ')
-        attributes: Comma-separated values to query for multiple attributes
+        status (Optional[str]): Filter by asset status (e.g., 'active', 'inactive')
+        asset_class (Optional[str]): Filter by asset class (e.g., 'us_equity', 'crypto')
+        exchange (Optional[str]): Filter by exchange (e.g., 'NYSE', 'NASDAQ')
+        attributes (Optional[str]): Comma-separated values for multiple attributes
+
+    Returns:
+        str: Formatted list of assets with symbol, name, exchange, class, and status
     """
     _ensure_clients()
     try:
@@ -683,7 +614,12 @@ async def create_watchlist(name: str, symbols: List[str]) -> str:
 
 @mcp.tool()
 async def get_watchlists() -> str:
-    """Get all watchlists for the account."""
+    """
+    Get all watchlists for the account.
+
+    Returns:
+        str: List of watchlists with name, ID, and timestamps
+    """
     _ensure_clients()
     try:
         watchlists = trade_client.get_watchlists()
@@ -699,7 +635,17 @@ async def get_watchlists() -> str:
 
 @mcp.tool()
 async def update_watchlist_by_id(watchlist_id: str, name: str = None, symbols: List[str] = None) -> str:
-    """Update an existing watchlist."""
+    """
+    Update an existing watchlist.
+
+    Args:
+        watchlist_id (str): The UUID of the watchlist to update
+        name (str): New name for the watchlist
+        symbols (List[str]): New list of symbols for the watchlist
+
+    Returns:
+        str: Confirmation message with updated watchlist name
+    """
     _ensure_clients()
     try:
         update_request = UpdateWatchlistRequest(name=name, symbols=symbols)
@@ -710,7 +656,15 @@ async def update_watchlist_by_id(watchlist_id: str, name: str = None, symbols: L
 
 @mcp.tool()
 async def get_watchlist_by_id(watchlist_id: str) -> str:
-    """Get a specific watchlist by its ID."""
+    """
+    Get a specific watchlist by its ID.
+
+    Args:
+        watchlist_id (str): The UUID of the watchlist
+
+    Returns:
+        str: Watchlist details including name, ID, timestamps, and symbols
+    """
     _ensure_clients()
     try:
         wl = trade_client.get_watchlist_by_id(watchlist_id)
@@ -727,7 +681,16 @@ async def get_watchlist_by_id(watchlist_id: str) -> str:
 
 @mcp.tool()
 async def add_asset_to_watchlist_by_id(watchlist_id: str, symbol: str) -> str:
-    """Add an asset by symbol to a specific watchlist by ID."""
+    """
+    Add an asset by symbol to a specific watchlist.
+
+    Args:
+        watchlist_id (str): The UUID of the watchlist
+        symbol (str): The asset symbol to add (e.g., 'AAPL')
+
+    Returns:
+        str: Confirmation with updated watchlist symbols
+    """
     _ensure_clients()
     try:
         wl = trade_client.add_asset_to_watchlist_by_id(watchlist_id, symbol)
@@ -738,7 +701,16 @@ async def add_asset_to_watchlist_by_id(watchlist_id: str, symbol: str) -> str:
 
 @mcp.tool()
 async def remove_asset_from_watchlist_by_id(watchlist_id: str, symbol: str) -> str:
-    """Remove an asset by symbol from a specific watchlist by ID."""
+    """
+    Remove an asset by symbol from a specific watchlist.
+
+    Args:
+        watchlist_id (str): The UUID of the watchlist
+        symbol (str): The asset symbol to remove (e.g., 'AAPL')
+
+    Returns:
+        str: Confirmation with updated watchlist symbols
+    """
     _ensure_clients()
     try:
         wl = trade_client.remove_asset_from_watchlist_by_id(watchlist_id, symbol)
@@ -749,7 +721,15 @@ async def remove_asset_from_watchlist_by_id(watchlist_id: str, symbol: str) -> s
 
 @mcp.tool()
 async def delete_watchlist_by_id(watchlist_id: str) -> str:
-    """Delete a specific watchlist by its ID."""
+    """
+    Delete a specific watchlist by its ID.
+
+    Args:
+        watchlist_id (str): The UUID of the watchlist to delete
+
+    Returns:
+        str: Confirmation message on successful deletion
+    """
     _ensure_clients()
     try:
         trade_client.delete_watchlist_by_id(watchlist_id)
@@ -800,11 +780,7 @@ async def get_clock() -> str:
     Retrieves and formats current market status and next open/close times.
     
     Returns:
-        str: Formatted string containing:
-            - Current Time
-            - Market Open Status
-            - Next Open Time
-            - Next Close Time
+        str: Market status with current time, open/closed state, and next open/close times
     """
     _ensure_clients()
     try:
@@ -848,7 +824,7 @@ async def get_stock_bars(
         days (int): Number of days to look back (default: 5, ignored if start is provided)
         hours (int): Number of hours to look back (default: 0, ignored if start is provided)
         minutes (int): Number of minutes to look back (default: 30, ignored if start is provided)
-        timeframe (str): Bar timeframe - supports flexible Alpaca formats:
+        timeframe (str): Bar timeframe - supports flexible Alpaca's formats:
             - Minutes: "1Min" to "59Min" (or "1T" to "59T"), e.g., "5Min", "15Min", "30Min"
             - Hours: "1Hour" to "23Hour" (or "1H" to "23H"), e.g., "1Hour", "4Hour", "6Hour"
             - Days: "1Day" (or "1D")
@@ -958,7 +934,7 @@ async def get_stock_bars(
             fifteen_ago = datetime.now() - timedelta(minutes=15)
             hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
             return (
-                f"Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. "
+                f"Free-plan limitation: Alpaca's REST SIP data is delayed by 15 minutes. "
                 f"Your request likely included the most recent 15 minutes. "
                 f"Retry with `end` <= {hint_end} (exclude the last 15 minutes), "
                 f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
@@ -1099,7 +1075,7 @@ async def get_stock_quotes(
         if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
             fifteen_ago = datetime.now(timezone.utc) - timedelta(minutes=15)
             hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
-            return f"Error: Free-plan limitation: Alpaca REST SIP data is delayed by 15 minutes. Retry with `end` <= {hint_end} or use IEX feed. Original error: {error_message}"
+            return f"Error: Free-plan limitation: Alpaca's REST SIP data is delayed by 15 minutes. Retry with `end` <= {hint_end} or use IEX feed. Original error: {error_message}"
         symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
         return f"API Error fetching quotes for {symbol_str}: {error_message}"
     except Exception as e:
@@ -1222,7 +1198,8 @@ async def get_stock_latest_bar(
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None
 ) -> str:
-    """Get the latest minute bar for one or more stocks.
+    """
+    Get the latest minute bar for one or more stocks.
     
     Args:
         symbol_or_symbols: Stock ticker symbol(s) (e.g., 'AAPL' or ['AAPL', 'MSFT'])
@@ -1282,18 +1259,12 @@ async def get_stock_latest_quote(
     Retrieves and formats the latest quote for one or more stocks.
     
     Args:
-        symbol_or_symbols (Union[str, List[str]]): Single stock ticker symbol (e.g., "AAPL")
-            or a list of symbols (e.g., ["AAPL", "MSFT"]).
-        feed: The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
-        currency: The currency for prices (optional, defaults to USD)
+        symbol_or_symbols (Union[str, List[str]]): Stock ticker symbol(s) (e.g., 'AAPL' or ['AAPL', 'MSFT'])
+        feed (Optional[DataFeed]): Data feed source (IEX or SIP)
+        currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
     
     Returns:
-        str: Formatted string containing for each requested symbol:
-            - Ask Price
-            - Bid Price
-            - Ask Size
-            - Bid Size
-            - Timestamp
+        str: Latest bid/ask prices, sizes, and timestamp for each symbol
     """
     _ensure_clients()
     try:
@@ -1385,7 +1356,7 @@ async def get_stock_latest_trade(
                 f"Conditions: {trade.conditions}",
                 ""
             ])
-
+        
         return "\n".join(results).strip()
     except Exception as e:
         symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
@@ -1443,7 +1414,7 @@ async def get_stock_snapshot(
             ]
             
             results.extend(filter(None, snapshot_data))  # Filter out empty strings
-
+        
         return "\n".join(results)
         
     except APIError as api_error:
@@ -1496,7 +1467,7 @@ async def get_crypto_bars(
         days (int): Number of days to look back (default: 1, ignored if start is provided)
         hours (int): Number of hours to look back (default: 0, ignored if start is provided)
         minutes (int): Number of minutes to look back (default: 30, ignored if start is provided)
-        timeframe (str): Bar timeframe - supports flexible Alpaca formats:
+        timeframe (str): Bar timeframe - supports flexible Alpaca's formats:
             - Minutes: "1Min", "2Min", "3Min", "4Min", "5Min", "15Min", "30Min", etc.
             - Hours: "1Hour", "2Hour", "3Hour", "4Hour", "6Hour", etc.
             - Days: "1Day", "2Day", "3Day", etc.
@@ -1908,7 +1879,14 @@ async def get_crypto_snapshot(
 ) -> str:
     """
     Returns a snapshot for one or more crypto symbols including latest trade, quote,
-    latest minute bar, daily and previous daily bars.
+    minute bar, daily bar, and previous daily bar.
+
+    Args:
+        symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD' or ['BTC/USD', 'ETH/USD'])
+        feed (CryptoFeed): Data feed source (default: US)
+
+    Returns:
+        str: Snapshot with latest quote, trade, and OHLCV bars for each symbol
     """
     _ensure_clients()
     try:
@@ -1991,36 +1969,50 @@ async def get_option_contracts(
     expiration_expression: Optional[str] = None,
     strike_price_gte: Optional[str] = None,
     strike_price_lte: Optional[str] = None,
-    type: Optional[ContractType] = None,
+    contract_type: Optional[str] = None,
     status: Optional[AssetStatus] = None,
     root_symbol: Optional[str] = None,
     limit: Optional[int] = None
 ) -> str:
     """
-    Retrieves option contracts - direct mapping to GetOptionContractsRequest.
-    
+    Retrieves option contracts for underlying symbol(s).
+
     Args:
-        underlying_symbols (Union[str, List[str]]): Underlying asset symbol(s) (e.g., 'SPY', 'AAPL' or ['SPY', 'AAPL'])
+        underlying_symbols (Union[str, List[str]]): Underlying asset symbol(s) (e.g., 'SPY', 'AAPL')
         expiration_date (Optional[date]): Specific expiration date
-        expiration_date_gte (Optional[date]): Expiration date greater than or equal to
-        expiration_date_lte (Optional[date]): Expiration date less than or equal to
+        expiration_date_gte (Optional[date]): Minimum expiration date
+        expiration_date_lte (Optional[date]): Maximum expiration date
         expiration_expression (Optional[str]): Natural language (e.g., "week of September 2, 2025")
-        strike_price_gte/lte (Optional[str]): Strike price range
-        type (Optional[ContractType]): "call" or "put"
-        status (Optional[AssetStatus]): "active" (default)
-        root_symbol (Optional[str]): Root symbol filter
+        strike_price_gte (Optional[str]): Minimum strike price
+        strike_price_lte (Optional[str]): Maximum strike price
+        contract_type (Optional[str]): Filter by 'call' or 'put'
+        status (Optional[AssetStatus]): Filter by status (default: 'active')
+        root_symbol (Optional[str]): Filter by root symbol
         limit (Optional[int]): Maximum number of contracts to return
-    
+
+    Returns:
+        str: List of option contracts with symbol, strike, expiration, type, and status
+
     Examples:
         get_option_contracts("NVDA", expiration_expression="week of September 2, 2025")
         get_option_contracts(["SPY", "AAPL"], expiration_date_gte=date(2025,9,1), expiration_date_lte=date(2025,9,5))
     """
+
     _ensure_clients()
     try:
         # Convert to list if single symbol
         symbols_list = [underlying_symbols] if isinstance(underlying_symbols, str) else list(underlying_symbols)
         if not symbols_list:
             return "No symbols provided."
+        
+        # Convert string to ContractType enum
+        contract_type_enum = None
+        if contract_type and isinstance(contract_type, str):
+            type_lower = contract_type.lower()
+            if type_lower == "call":
+                contract_type_enum = ContractType.CALL
+            elif type_lower == "put":
+                contract_type_enum = ContractType.PUT
         
         # Handle natural language expression
         if expiration_expression:
@@ -2043,7 +2035,7 @@ async def get_option_contracts(
             expiration_date_lte=expiration_date_lte,
             strike_price_gte=strike_price_gte,
             strike_price_lte=strike_price_lte,
-            type=type,
+            type=contract_type_enum,
             status=status,
             root_symbol=root_symbol,
             limit=limit
@@ -2061,12 +2053,12 @@ async def get_option_contracts(
         result: List[str] = []
         
         for contract in contracts:
-            contract_type = "Call" if contract.type == ContractType.CALL else "Put"
+            type_str = "Call" if contract.type == ContractType.CALL else "Put"
             result.extend([
                 f"ID: {contract.id}",
                 f"Symbol: {contract.symbol}",
                 f"  Name: {contract.name}",
-                f"  Type: {contract_type}",
+                f"  Type: {type_str}",
                 f"  Strike: ${contract.strike_price}",
                 f"  Expiration: {contract.expiration_date}",
                 f"  Style: {contract.style}",
@@ -2099,8 +2091,8 @@ async def get_option_latest_quote(
     
     Args:
         symbol_or_symbols (Union[str, List[str]]): Option contract symbol(s) (e.g., 'AAPL230616C00150000' or ['AAPL230616C00150000', 'MSFT230616P00300000'])
-        feed (Optional[OptionsFeed]): The source feed of the data (OptionsFeed.OPRA or OptionsFeed.INDICATIVE, default: None).
-            Default: opra if the user has the options subscription, indicative otherwise.
+        feed (Optional[OptionsFeed]): Data feed source (OptionsFeed.OPRA or OptionsFeed.INDICATIVE)
+            Default: OptionsFeed.OPRA if the user has the options subscription, OptionsFeed.INDICATIVE otherwise
     
     Returns:
         str: Formatted string containing the latest quote information including:
@@ -2164,36 +2156,15 @@ async def get_option_snapshot(
     feed: Optional[OptionsFeed] = None
 ) -> str:
     """
-    Retrieves comprehensive snapshots of option contracts including latest trade, quote, implied volatility, and Greeks.
-    This endpoint provides a complete view of an option's current market state and theoretical values.
-    
+    Retrieves comprehensive snapshots of option contracts including latest trade, quote,
+    implied volatility, and Greeks.
+
     Args:
-        symbol_or_symbols (Union[str, List[str]]): Single option symbol or list of option symbols
-            (e.g., 'AAPL250613P00205000')
-        feed (Optional[OptionsFeed]): The source feed of the data (OptionsFeed.OPRA or OptionsFeed.INDICATIVE, default: None)
-            Default: opra if the user has the options subscription, indicative otherwise.
-    
+        symbol_or_symbols (Union[str, List[str]]): Option symbol(s) (e.g., 'AAPL250613P00205000')
+        feed (Optional[OptionsFeed]): Data feed source (OPRA or INDICATIVE)
+
     Returns:
-        str: Formatted string containing a comprehensive snapshot including:
-            - Symbol Information
-            - Latest Quote:
-                * Bid/Ask Prices and Sizes
-                * Exchange Information
-                * Trade Conditions
-                * Tape Information
-                * Timestamp (UTC)
-            - Latest Trade:
-                * Price and Size
-                * Exchange and Conditions
-                * Trade ID
-                * Timestamp (UTC)
-            - Implied Volatility (as percentage)
-            - Greeks:
-                * Delta (directional risk)
-                * Gamma (delta sensitivity)
-                * Rho (interest rate sensitivity)
-                * Theta (time decay)
-                * Vega (volatility sensitivity)
+        str: Snapshot with quote, trade, implied volatility, and Greeks for each contract
     """
     _ensure_clients()
     try:
@@ -2275,6 +2246,98 @@ async def get_option_snapshot(
     except Exception as e:
         return f"Error retrieving option snapshots: {str(e)}"
 
+
+@mcp.tool()
+async def get_option_chain(
+    underlying_symbol: str,
+    feed: Optional[OptionsFeed] = None,
+    contract_type: Optional[str] = None,
+    strike_price_gte: Optional[float] = None,
+    strike_price_lte: Optional[float] = None,
+    expiration_date: Optional[Union[date, str]] = None,
+    expiration_date_gte: Optional[Union[date, str]] = None,
+    expiration_date_lte: Optional[Union[date, str]] = None,
+    root_symbol: Optional[str] = None,
+    limit: Optional[int] = None
+) -> str:
+    """
+    Retrieves option chain data for an underlying symbol, including latest trade, quote,
+    implied volatility, and greeks for each contract.
+
+    Args:
+        underlying_symbol (str): The underlying symbol (e.g., 'AAPL', 'SPY')
+        feed (Optional[OptionsFeed]): Data feed source (OPRA or INDICATIVE) (default: OPRA if the user has the options subscription, INDICATIVE otherwise)
+        contract_type (Optional[str]): Filter by contract type ('call', 'put', or None for both)
+        strike_price_gte (Optional[float]): Minimum strike price filter
+        strike_price_lte (Optional[float]): Maximum strike price filter
+        expiration_date (Optional[Union[date, str]]): Exact expiration date (YYYY-MM-DD)
+        expiration_date_gte (Optional[Union[date, str]]): Minimum expiration date
+        expiration_date_lte (Optional[Union[date, str]]): Maximum expiration date
+        root_symbol (Optional[str]): Filter by root symbol
+        limit (Optional[int]): Max snapshots to return (1-1000, default 100)
+
+    Returns:
+        str: Formatted option chain with quote, trade, IV, and greeks for each contract
+    """
+    _ensure_clients()
+    try:
+        # Convert string to ContractType enum
+        contract_type_enum = None
+        if contract_type and isinstance(contract_type, str):
+            type_lower = contract_type.lower()
+            if type_lower == "call":
+                contract_type_enum = ContractType.CALL
+            elif type_lower == "put":
+                contract_type_enum = ContractType.PUT
+
+        request = OptionChainRequest(
+            underlying_symbol=underlying_symbol,
+            feed=feed,
+            type=contract_type_enum,
+            strike_price_gte=strike_price_gte,
+            strike_price_lte=strike_price_lte,
+            expiration_date=expiration_date,
+            expiration_date_gte=expiration_date_gte,
+            expiration_date_lte=expiration_date_lte,
+            root_symbol=root_symbol,
+            limit=limit
+        )
+
+        chain = option_historical_data_client.get_option_chain(request)
+
+        if not chain:
+            return f"No option chain data found for {underlying_symbol}."
+
+        result = f"Option Chain for {underlying_symbol}:\n"
+        result += "=" * 40 + "\n\n"
+
+        for symbol, snapshot in chain.items():
+            result += f"Contract: {symbol}\n"
+            result += "-" * 30 + "\n"
+
+            lines = []
+            if snapshot.latest_quote:
+                q = snapshot.latest_quote
+                lines.extend([
+                    f"Bid: ${q.bid_price:.3f} x {q.bid_size} ({q.bid_exchange})",
+                    f"Ask: ${q.ask_price:.3f} x {q.ask_size} ({q.ask_exchange})",
+                ])
+            if snapshot.latest_trade:
+                t = snapshot.latest_trade
+                lines.append(f"Trade: ${t.price:.3f} x {t.size} ({t.exchange or 'N/A'})")
+            iv = f"{snapshot.implied_volatility:.2%}" if snapshot.implied_volatility else "N/A"
+            lines.append(f"IV: {iv}")
+            if snapshot.greeks:
+                g = snapshot.greeks
+                lines.append(f"Greeks: delta={g.delta:.4f} gamma={g.gamma:.4f} theta={g.theta:.4f} vega={g.vega:.4f} rho={g.rho:.4f}")
+            result += "\n".join(lines) + "\n\n"
+
+        return result.strip()
+
+    except Exception as e:
+        return f"Error retrieving option chain for {underlying_symbol}: {str(e)}"
+
+
 # ============================================================================
 # Order Management Tools
 # ============================================================================
@@ -2292,27 +2355,19 @@ async def get_orders(
 ) -> str:
     """
     Retrieves and formats orders with the specified filters.
-    
+
     Args:
-        status (str): Order status to filter by (open, closed, all)
-        limit (int): Maximum number of orders to return (default: 10, max 500)
-        after (Optional[str]): Include orders submitted after this timestamp (ISO format)
-        until (Optional[str]): Include orders submitted until this timestamp (ISO format)
-        direction (Optional[str]): Chronological order (asc or desc, default: desc)
-        nested (Optional[bool]): Roll up multi-leg orders under legs field if True
-        side (Optional[str]): Filter by order side (buy or sell)
-        symbols (Optional[List[str]]): List of symbols to filter by
-    
+        status (str): Order status filter (open, closed, all)
+        limit (int): Max orders to return (default: 10, max: 500)
+        after (Optional[str]): Orders after this timestamp (ISO format)
+        until (Optional[str]): Orders until this timestamp (ISO format)
+        direction (Optional[str]): Sort order (asc or desc)
+        nested (Optional[bool]): Roll up multi-leg orders under legs field
+        side (Optional[str]): Filter by side (buy or sell)
+        symbols (Optional[List[str]]): Filter by symbols
+
     Returns:
-        str: Formatted string containing order details including:
-            - Symbol
-            - ID
-            - Type
-            - Side
-            - Quantity
-            - Status
-            - Submission Time
-            - Fill Details (if applicable)
+        str: Order details with symbol, type, side, quantity, status, and fill info
     """
     _ensure_clients()
     try:
@@ -2451,34 +2506,33 @@ async def place_stock_order(
     symbol: str,
     side: str,
     quantity: float,
-    order_type: str = "market",
-    time_in_force: str = "day",
-    limit_price: float = None,
-    stop_price: float = None,
-    trail_price: float = None,
-    trail_percent: float = None,
+    type: OrderType = OrderType.MARKET,
+    time_in_force: TimeInForce = TimeInForce.DAY,
+    limit_price: Optional[float] = None,
+    stop_price: Optional[float] = None,
+    trail_price: Optional[float] = None,
+    trail_percent: Optional[float] = None,
     extended_hours: bool = False,
-    client_order_id: str = None
+    client_order_id: Optional[str] = None
 ) -> str:
     """
-    Places an order of any supported type (MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP) using the correct Alpaca request class.
+    Places a stock order using the specified order type and parameters.
 
     Args:
-        symbol (str): Stock ticker symbol (e.g., AAPL, MSFT)
-        side (str): Order side (buy or sell)
-        quantity (float): Number of shares to buy or sell
-        order_type (str): Order type (MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP). Default is MARKET.
-        time_in_force (str): Time in force for the order. Valid options for equity trading: 
-            DAY, GTC, OPG, CLS, IOC, FOK (default: DAY)
-        limit_price (float): Limit price (required for LIMIT, STOP_LIMIT)
-        stop_price (float): Stop price (required for STOP, STOP_LIMIT)
-        trail_price (float): Trail price (for TRAILING_STOP)
-        trail_percent (float): Trail percent (for TRAILING_STOP)
-        extended_hours (bool): Allow execution during extended hours (default: False)
-        client_order_id (str): Optional custom identifier for the order
+        symbol (str): Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        side (str): Order side ('buy' or 'sell')
+        quantity (float): Number of shares to trade
+        type (OrderType): Order type (MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP)
+        time_in_force (TimeInForce): Time in force (DAY, GTC, OPG, CLS, IOC, FOK)
+        limit_price (Optional[float]): Limit price (required for LIMIT, STOP_LIMIT)
+        stop_price (Optional[float]): Stop price (required for STOP, STOP_LIMIT)
+        trail_price (Optional[float]): Trail price (for TRAILING_STOP)
+        trail_percent (Optional[float]): Trail percent (for TRAILING_STOP)
+        extended_hours (bool): Allow extended hours execution
+        client_order_id (Optional[str]): Custom order identifier
 
     Returns:
-        str: Formatted string containing order details or error message.
+        str: Order confirmation with details or error message
     """
     _ensure_clients()
     try:
@@ -2490,114 +2544,77 @@ async def place_stock_order(
         else:
             return f"Invalid order side: {side}. Must be 'buy' or 'sell'."
 
-        # Validate and convert time_in_force to enum
-        tif_enum = None
-        if isinstance(time_in_force, TimeInForce):
-            tif_enum = time_in_force
-        elif isinstance(time_in_force, str):
-            # Convert string to TimeInForce enum
-            time_in_force_upper = time_in_force.upper()
-            if time_in_force_upper == "DAY":
-                tif_enum = TimeInForce.DAY
-            elif time_in_force_upper == "GTC":
-                tif_enum = TimeInForce.GTC
-            elif time_in_force_upper == "OPG":
-                tif_enum = TimeInForce.OPG
-            elif time_in_force_upper == "CLS":
-                tif_enum = TimeInForce.CLS
-            elif time_in_force_upper == "IOC":
-                tif_enum = TimeInForce.IOC
-            elif time_in_force_upper == "FOK":
-                tif_enum = TimeInForce.FOK
-            else:
-                return f"Invalid time_in_force: {time_in_force}. Valid options are: DAY, GTC, OPG, CLS, IOC, FOK"
-        else:
-            return f"Invalid time_in_force type: {type(time_in_force)}. Must be string or TimeInForce enum."
-
-        # Validate order_type
-        order_type_upper = order_type.upper()
-        if order_type_upper == "MARKET":
+        # Create order based on type
+        if type == OrderType.MARKET:
             order_data = MarketOrderRequest(
                 symbol=symbol,
                 qty=quantity,
                 side=order_side,
-                type=OrderType.MARKET,
-                time_in_force=tif_enum,
+                type=type,
+                time_in_force=time_in_force,
                 extended_hours=extended_hours,
                 client_order_id=client_order_id or f"order_{int(time.time())}"
             )
-        elif order_type_upper == "LIMIT":
+        elif type == OrderType.LIMIT:
             if limit_price is None:
                 return "limit_price is required for LIMIT orders."
             order_data = LimitOrderRequest(
                 symbol=symbol,
                 qty=quantity,
                 side=order_side,
-                type=OrderType.LIMIT,
-                time_in_force=tif_enum,
+                type=type,
+                time_in_force=time_in_force,
                 limit_price=limit_price,
                 extended_hours=extended_hours,
                 client_order_id=client_order_id or f"order_{int(time.time())}"
             )
-        elif order_type_upper == "STOP":
+        elif type == OrderType.STOP:
             if stop_price is None:
                 return "stop_price is required for STOP orders."
             order_data = StopOrderRequest(
                 symbol=symbol,
                 qty=quantity,
                 side=order_side,
-                type=OrderType.STOP,
-                time_in_force=tif_enum,
+                type=type,
+                time_in_force=time_in_force,
                 stop_price=stop_price,
                 extended_hours=extended_hours,
                 client_order_id=client_order_id or f"order_{int(time.time())}"
             )
-        elif order_type_upper == "STOP_LIMIT":
+        elif type == OrderType.STOP_LIMIT:
             if stop_price is None or limit_price is None:
                 return "Both stop_price and limit_price are required for STOP_LIMIT orders."
             order_data = StopLimitOrderRequest(
                 symbol=symbol,
                 qty=quantity,
                 side=order_side,
-                type=OrderType.STOP_LIMIT,
-                time_in_force=tif_enum,
+                type=type,
+                time_in_force=time_in_force,
                 stop_price=stop_price,
                 limit_price=limit_price,
                 extended_hours=extended_hours,
                 client_order_id=client_order_id or f"order_{int(time.time())}"
             )
-        elif order_type_upper == "TRAILING_STOP":
+        elif type == OrderType.TRAILING_STOP:
             if trail_price is None and trail_percent is None:
                 return "Either trail_price or trail_percent is required for TRAILING_STOP orders."
             order_data = TrailingStopOrderRequest(
                 symbol=symbol,
                 qty=quantity,
                 side=order_side,
-                type=OrderType.TRAILING_STOP,
-                time_in_force=tif_enum,
+                type=type,
+                time_in_force=time_in_force,
                 trail_price=trail_price,
                 trail_percent=trail_percent,
                 extended_hours=extended_hours,
                 client_order_id=client_order_id or f"order_{int(time.time())}"
             )
         else:
-            return f"Invalid order type: {order_type}. Must be one of: MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP."
+            return f"Invalid order type: {type}. Must be one of: MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP."
 
-        # Submit order
         order = trade_client.submit_order(order_data)
         return f"""
-                Stock Order Placed Successfully:
-                --------------------------------
-                asset_class: {order.asset_class}
-                asset_id: {order.asset_id}
-                canceled_at: {order.canceled_at}
-                client_order_id: {order.client_order_id}
-                created_at: {order.created_at}
-                expired_at: {order.expired_at}
-                expires_at: {order.expires_at}
-                extended_hours: {order.extended_hours}
-                failed_at: {order.failed_at}
-                filled_at: {order.filled_at}
+                Stock Order Placed Successfully: {order.id}
                 filled_avg_price: {order.filled_avg_price}
                 filled_qty: {order.filled_qty}
                 hwm: {order.hwm}
@@ -2640,18 +2657,27 @@ async def place_crypto_order(
     client_order_id: Optional[str] = None
 ) -> str:
     """
-    Place a crypto order (market, limit, stop_limit) with GTC/IOC TIF.
+    Place a crypto order (market, limit, stop_limit) with GTC/IOC time in force.
 
     Rules:
     - Market: require exactly one of qty or notional
     - Limit: require qty and limit_price (notional not supported)
     - Stop Limit: require qty, stop_price and limit_price (notional not supported)
-    - time_in_force: only GTC or IOC
+    - time_in_force: only GTC or IOC are supported for crypto orders
 
-    Ref: 
-    - Crypto orders: https://docs.alpaca.markets/docs/crypto-orders
-    - Requests: [MarketOrderRequest](https://alpaca.markets/sdks/python/api_reference/trading/requests.html#marketorderrequest), [LimitOrderRequest](https://alpaca.markets/sdks/python/api_reference/trading/requests.html#limitorderrequest), [StopLimitOrderRequest](https://alpaca.markets/sdks/python/api_reference/trading/requests.html#stoplimitorderrequest)
-    - Enums: [TimeInForce](https://alpaca.markets/sdks/python/api_reference/trading/enums.html#alpaca.trading.enums.TimeInForce)
+    Args:
+        symbol (str): Crypto symbol (e.g., 'BTC/USD', 'ETH/USD')
+        side (str): Order side ('buy' or 'sell')
+        order_type (str): Order type ('market', 'limit', 'stop_limit')
+        time_in_force (Union[str, TimeInForce]): Time in force ('GTC' or 'IOC')
+        qty (Optional[float]): Quantity to trade
+        notional (Optional[float]): Notional value (market orders only)
+        limit_price (Optional[float]): Limit price (required for limit/stop_limit)
+        stop_price (Optional[float]): Stop price (required for stop_limit)
+        client_order_id (Optional[str]): Custom order identifier
+
+    Returns:
+        str: Order confirmation with order ID, status, and execution details
     """
     _ensure_clients()
     try:
@@ -2778,7 +2804,7 @@ async def place_option_market_order(
     legs: List[Dict[str, Any]],
     order_class: Optional[Union[str, OrderClass]] = None,
     quantity: int = 1,
-    time_in_force: Union[str, TimeInForce] = "day",
+    time_in_force: TimeInForce = TimeInForce.DAY,
     extended_hours: bool = False
 ) -> str:
     """
@@ -2801,8 +2827,7 @@ async def place_option_market_order(
         order_class (Optional[Union[str, OrderClass]]): Order class ('simple', 'bracket', 'oco', 'oto', 'mleg' or OrderClass enum)
             Defaults to 'simple' for single leg, 'mleg' for multi-leg
         quantity (int): Base quantity for the order (default: 1)
-        time_in_force (Union[str, TimeInForce]): Time in force for the order. For options trading, 
-            only 'day' is supported (default: 'day')
+        time_in_force (TimeInForce): Time in force (only DAY is supported for options)
         extended_hours (bool): Whether to allow execution during extended hours (default: False)
     
     Returns:
@@ -2836,14 +2861,6 @@ async def place_option_market_order(
         if validation_error:
             return validation_error
         
-        # Convert time_in_force to enum (handle both string and enum inputs)
-        if isinstance(time_in_force, str):
-            time_in_force_enum = TimeInForce.DAY  # Only DAY is supported for options
-        elif isinstance(time_in_force, TimeInForce):
-            time_in_force_enum = time_in_force
-        else:
-            return f"Error: Invalid time_in_force type: {type(time_in_force)}. Must be string or TimeInForce enum."
-        
         # Convert order class string to enum if needed
         converted_order_class = _convert_order_class_string(order_class)
         if isinstance(converted_order_class, OrderClass):
@@ -2863,7 +2880,7 @@ async def place_option_market_order(
         
         # Create order request
         order_data = _create_option_market_order_request(
-            order_legs, order_class, quantity, time_in_force_enum, extended_hours
+            order_legs, order_class, quantity, time_in_force, extended_hours
         )
         
         # Submit order
@@ -3065,106 +3082,142 @@ async def exercise_options_position(symbol_or_contract_id: str) -> str:
 
 
 # ============================================================================
-# Compatibility wrapper for CLI
+# Server Entry Point and CLI
 # ============================================================================
 
 def parse_arguments() -> argparse.Namespace:
-    p = argparse.ArgumentParser("Alpaca MCP Server")
-    p.add_argument("--transport", choices=["stdio","streamable-http"], default="stdio")
-    p.add_argument("--host", default=os.environ.get("HOST","127.0.0.1"))
-    # p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
-    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+    """Parse command-line arguments for the Alpaca's MCP Server."""
+    p = argparse.ArgumentParser(
+        "Alpaca's MCP Server",
+        description="MCP server for Alpaca's Trading API integration"
+    )
+    p.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default="stdio",
+        help="Transport protocol to use (default: stdio)"
+    )
+    p.add_argument(
+        "--host",
+        default=os.environ.get("HOST", "127.0.0.1"),
+        help="Host to bind to for HTTP transport (default: 127.0.0.1 for security)"
+    )
+    p.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("PORT", 8000)),
+        help="Port to bind to for HTTP transport (default: 8000)"
+    )
+    p.add_argument(
+        "--allowed-hosts",
+        default=os.environ.get("ALLOWED_HOSTS", ""),
+        help="Comma-separated list of allowed Host header values for DNS rebinding protection. "
+             "Required for cloud deployments (e.g., 'example.onrender.com,api.example.com')"
+    )
     return p.parse_args()
-
-class AuthHeaderMiddleware:
-    """
-    ASGI middleware to extract Authorization headers from incoming HTTP requests.
-    
-    This middleware intercepts HTTP requests, extracts the Authorization header,
-    and stores it in a context variable. The header is then passed along to
-    Alpaca Trading API calls.
-    """
-    def __init__(self, app):
-        self.app = app
-    
-    async def __call__(self, scope, receive, send):
-        """Process ASGI request and extract Authorization header."""
-        if scope["type"] == "http":
-            # Extract Authorization header
-            headers = dict(scope.get("headers", []))
-            auth_header = headers.get(b"authorization") or headers.get(b"Authorization")
-            
-            if auth_header:
-                auth_value = auth_header.decode("utf-8")
-                # Store the full Authorization header value (e.g., "Bearer <token>")
-                auth_header_context.set(auth_value)
-        
-        # Call the wrapped application
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            # Clear auth header from context after request
-            auth_header_context.set(None)
 
 
 class AlpacaMCPServer:
+    """
+    Alpaca's MCP Server implementation.
+    
+    This server exposes Alpaca's Trading API functionality through the Model Context Protocol,
+    allowing AI assistants to interact with trading accounts, market data, and order management.
+    
+    Authentication is handled via environment variables (ALPACA_API_KEY, ALPACA_SECRET_KEY).
+    """
+    
     def __init__(self, config_file: Optional[Path] = None) -> None:
         """
-        Initialize the Alpaca MCP Server.
+        Initialize the Alpaca's MCP Server.
         
         Args:
             config_file: Optional path to a custom .env configuration file.
-                        If provided, environment variables will be reloaded from this file.
+                        Note: Config file support is maintained for compatibility but
+                        generally not needed as environment variables are loaded at startup.
         """
-        # If a custom config file is specified, reload environment variables from it
-        if config_file and config_file.exists():
-            global TRADE_API_KEY, TRADE_API_SECRET, ALPACA_PAPER_TRADE, ALPACA_PAPER_TRADE_BOOL
-            global TRADE_API_URL, TRADE_API_WSS, DATA_API_URL, STREAM_DATA_WSS, DEBUG
-            
-            # Reload environment variables from the custom config file
-            load_dotenv(config_file, override=True)
-            
-            # Update module-level variables with the newly loaded values
-            TRADE_API_KEY = os.getenv("ALPACA_API_KEY")
-            TRADE_API_SECRET = os.getenv("ALPACA_SECRET_KEY")
-            ALPACA_PAPER_TRADE = os.getenv("ALPACA_PAPER_TRADE", "True")
-            TRADE_API_URL = os.getenv("TRADE_API_URL")
-            TRADE_API_WSS = os.getenv("TRADE_API_WSS")
-            DATA_API_URL = os.getenv("DATA_API_URL")
-            STREAM_DATA_WSS = os.getenv("STREAM_DATA_WSS")
-            DEBUG = os.getenv("DEBUG", "False")
-            ALPACA_PAPER_TRADE_BOOL = ALPACA_PAPER_TRADE.lower() not in ['false', '0', 'no', 'off']
+        # Note: Environment variables are already loaded at module initialization.
+        # This __init__ is kept simple to avoid global state mutation antipatterns.
+        pass
 
-    def run(self, transport: str = "stdio", host: str = "0.0.0.0", port: int = 8000) -> None:
-    # def run(self, transport: str = "stdio", host: str = "127.0.0.1", port: int = 8000) -> None:
+    def run(
+        self,
+        transport: str = "stdio",
+        host: str = "127.0.0.1",
+        port: int = 8000,
+        allowed_hosts: str = ""
+    ) -> None:
+        """Run the Alpaca's MCP Server.
+        
+        Use stdio (default) for local, or streamable-http with --allowed-hosts for cloud.
+        """
         if transport == "streamable-http":
-            # Configure FastMCP settings for host/port with current MCP versions
+            # Configure FastMCP settings for HTTP transport
             mcp.settings.host = host
             mcp.settings.port = port
             
-            # Try to wrap the MCP app with auth header middleware for HTTP transport
-            # This enables extracting the Authorization header from incoming requests
-            # and passing it along to Alpaca Trading API calls
-            try:
-                # Get the underlying ASGI application
-                if hasattr(mcp, '_app'):
-                    original_app = mcp._app
-                    mcp._app = AuthHeaderMiddleware(original_app)
-                elif hasattr(mcp, 'app'):
-                    original_app = mcp.app
-                    mcp.app = AuthHeaderMiddleware(original_app)
-            except Exception as e:
-                # If we can't wrap the app, log a warning but continue
-                print(f"Note: Could not apply AuthHeaderMiddleware: {e}", file=sys.stderr)
-                print("Authorization header passthrough may not work correctly", file=sys.stderr)
+            # Configure transport security for DNS rebinding protection
+            from mcp.server.transport_security import TransportSecuritySettings
             
+            if allowed_hosts:
+                # Option 2: Enable protection with specific allowed hosts (RECOMMENDED)
+                # Parse comma-separated host list
+                hosts_list = [h.strip() for h in allowed_hosts.split(",") if h.strip()]
+                
+                # For each host, add both the bare hostname and wildcard port version
+                # This handles both "Host: example.com" and "Host: example.com:8000"
+                all_allowed_hosts = []
+                for h in hosts_list:
+                    if ":" not in h:
+                        # Add both bare hostname and wildcard pattern
+                        all_allowed_hosts.append(h)        # Matches "example.com"
+                        all_allowed_hosts.append(f"{h}:*") # Matches "example.com:8000"
+                    else:
+                        # Already has port or is a pattern, add as-is
+                        all_allowed_hosts.append(h)
+                
+                # Always include localhost variants for local testing
+                all_allowed_hosts.extend([
+                    "127.0.0.1", "127.0.0.1:*",
+                    "localhost", "localhost:*",
+                    "[::1]", "[::1]:*"
+                ])
+                
+                # Generate allowed origins for CORS (both http and https)
+                allowed_origins = (
+                    [f"https://{h}" for h in hosts_list] +
+                    [f"http://{h}" for h in hosts_list] +
+                    ["http://127.0.0.1:*", "http://localhost:*"]
+                )
+                
+                mcp.settings.transport_security = TransportSecuritySettings(
+                    enable_dns_rebinding_protection=True,
+                    allowed_hosts=all_allowed_hosts,
+                    allowed_origins=allowed_origins
+                )
+                
+                print(f"DNS protection enabled: {', '.join(hosts_list)}", file=sys.stderr)
+                
+            else:
+                print("DNS protection: localhost only", file=sys.stderr)
+            
+            # Start the server with streamable HTTP transport
             mcp.run(transport="streamable-http")
+            
         else:
+            # Use stdio transport (default)
             mcp.run(transport="stdio")
+
 
 if __name__ == "__main__":
     args = parse_arguments()
     try:
-        AlpacaMCPServer().run(args.transport, args.host, args.port)
+        AlpacaMCPServer().run(
+            transport=args.transport,
+            host=args.host,
+            port=args.port,
+            allowed_hosts=args.allowed_hosts
+        )
     except Exception as e:
-        print(f"Error starting server: {e}", file=sys.stderr); sys.exit(1)
+        print(f"Error starting server: {e}", file=sys.stderr)
+        sys.exit(1)

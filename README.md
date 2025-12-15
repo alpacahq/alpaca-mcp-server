@@ -30,8 +30,6 @@
 - [Example Outputs](#example-outputs)
 - [Available Tools](#available-tools)
 - [MCP Client Configuration](#mcp-client-configuration)
-- [OAuth Bearer Token Support](#oauth-bearer-token-support)
-- [HTTP Transport for Remote Usage](#http-transport-for-remote-usage)
 - [Disclosure](#disclosure)
 
 ## Prerequisites
@@ -301,12 +299,6 @@ alpaca-mcp-server/          ← This is the workspace folder (= project root)
 - **Asset Search**
   - Query details for stocks, ETFs, crypto, and options
   - Filter assets by status, class, exchange, and attributes
-- **OAuth 2.0 Support**
-  - Authorization header passthrough for hosted MCP servers
-  - Multi-tenant support - each LLM chatbot request can use a different user's OAuth token
-  - Automatic detection of Authorization headers in incoming HTTP requests
-  - Seamlessly forwards authentication to Alpaca Trading API
-  - Backward compatible with traditional API key/secret authentication
 
 ## Example Prompts
 
@@ -667,18 +659,24 @@ Then, log in to Docker Hub through CLI. You’ll be prompted for your Docker Hub
 docker login
 ```
 
-Once you log in to your Docker account, use your Docker username and a custom image name (e.g., `alpaca-mcp-server`) to build and push the Docker image to Docker Hub. We use the tag `v0.1` in this example.
+Once you log in to your Docker account, use your Docker username and a custom image name (e.g., `my-alpaca-mcp-server`) to build and push the Docker image to Docker Hub. We use the tag `v1.0.1 ` in this example.
 ```bash
 # Build for most cloud platforms
-docker buildx build -t username/custom-docker-image-name:v0.1 --platform=linux/amd64,linux/arm64
+docker buildx build -t username/custom-docker-image-name:v1.0.1  --platform=linux/amd64,linux/arm64
 
 # Push to Docker Hub
-docker push username/custom-docker-image-name:v0.1 
+docker push username/custom-docker-image-name:v1.0.1 
 ```
 
 You can do a sanity check locally by running the following command in terminal:
 ```bash
-docker run --rm -p 8000:8000 -e PORT=8000 username/custom-docker-image-name:v0.1 python -m alpaca_mcp_server.server --transport streamable-http --host 0.0.0.0 --port 8000
+docker run --rm -p 8000:8000 \
+  -e ALPACA_API_KEY=your_alpaca_api_key \
+  -e ALPACA_SECRET_KEY=your_alpaca_secret_key \
+  -e HOST=0.0.0.0 \
+  -e PORT=8000 \
+  username/custom-docker-image-name:v1.0.1 \
+  alpaca-mcp-server serve --transport streamable-http
 ```
 
 ## Step 3: Deploy Alpaca MCP Server Using Your Preferred Cloud Service
@@ -702,8 +700,8 @@ image:
   tag: "v0.1"                                    # Your image tag
 env:
   secrets: 
-    ALPACA_API_KEY: "your-actual-api-key"
-    ALPACA_SECRET_KEY: "your-actual-secret-key"
+    ALPACA_API_KEY: "your_alpaca_api_key"
+    ALPACA_SECRET_KEY: "your_alpaca_secret_key"
     ALPACA_BASE_URL: "https://paper-api.alpaca.markets"  # or https://api.alpaca.markets for live
 ingress:
   hosts:
@@ -1004,13 +1002,14 @@ For more information, visit the [How to set up your MCP server in Gemini CLI](ht
 ## Docker Configuration (locally)
 
 **Note: These steps assume all [Prerequisites](#prerequisites) have been installed.**
-For more practical instruction, visit
+
+Once you log in to your Docker account, use your Docker username and a custom image name (e.g., `my-alpaca-mcp-server`) to build and push the Docker image to Docker Hub. We use the tag `v1.0.1 ` in this example.
 
 **Build the image:**
 ```bash
 git clone https://github.com/alpacahq/alpaca-mcp-server.git
 cd alpaca-mcp-server
-docker build -t mcp/alpaca:latest .
+docker build -t username/custom-docker-image-name:v1.0.1 .
 ```
 
 **Add to Claude Desktop config** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
@@ -1035,175 +1034,13 @@ Replace `your_alpaca_api_key` and `your_alpaca_secret_key` with your actual Alpa
 
 </details>
 
-## OAuth Bearer Token Support
-<a id="oauth-bearer-token-support"></a>
-<details>
-<summary><b>OAuth Bearer Token Support</b></summary>
-
-The Alpaca MCP Server supports OAuth 2.0 bearer token authentication for hosted deployments where LLM chatbots need to authenticate on behalf of end users. This is particularly useful for multi-tenant scenarios where different users access the same MCP server instance.
-
-### How It Works
-
-When the MCP server receives an HTTP request with an `Authorization` header:
-1. The header is extracted from the incoming request
-2. The header is passed along directly to all Alpaca Trading API calls
-3. Alpaca authenticates the request using the OAuth token in the header
-
-This is a **passthrough authentication** mechanism - the MCP server simply forwards the Authorization header from your LLM chatbot to Alpaca's API.
-
-### Using OAuth Authentication
-
-#### Client-Side (LLM Chatbot)
-
-Your LLM chatbot should include the Authorization header with each HTTP request to the MCP server:
-
-```http
-Authorization: Bearer <access-token>
-```
-
-Example using cURL:
-```bash
-curl -X POST https://your-mcp-server.com/mcp \
-  -H "Authorization: Bearer YOUR_OAUTH_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "get_account_info"}}'
-```
-
-#### Server-Side Configuration
-
-No special configuration required! The MCP server automatically:
-- Detects the `Authorization` header in incoming HTTP requests (when using `--transport streamable-http`)
-- Passes the header to Alpaca Trading API calls
-- Falls back to environment variable credentials if no Authorization header is present
-
-### Obtaining OAuth Tokens
-
-To get OAuth tokens for your users, follow [Alpaca's OAuth 2.0 flow](https://docs.alpaca.markets/docs/using-oauth2-and-trading-api):
-
-1. **Request User Authorization**: Redirect users to Alpaca's authorization endpoint with your client_id
-2. **Handle Callback**: Alpaca redirects back with an authorization code
-3. **Exchange for Access Token**: POST to Alpaca's token endpoint with the code
-4. **Use Token**: Include the access token in the Authorization header when calling your MCP server
-
-Example token exchange:
-```bash
-curl -X POST https://api.alpaca.markets/oauth/token \
-  -d "grant_type=authorization_code" \
-  -d "code=67f74f5a-a2cc-4ebd-88b4-22453fe07994" \
-  -d "client_id=YOUR_CLIENT_ID" \
-  -d "client_secret=YOUR_CLIENT_SECRET" \
-  -d "redirect_uri=YOUR_REDIRECT_URI"
-```
-
-### Security Considerations
-
-- **HTTPS Only**: Always use HTTPS in production to protect OAuth tokens in transit
-- **Token Storage**: Store tokens securely on the client side
-- **Token Expiration**: Implement token refresh logic as per Alpaca's OAuth documentation
-- **No Server-Side Storage**: The MCP server does not store or cache tokens - they are passed through per-request
-
-### Example: Multi-Tenant Deployment
-
-```python
-# Your LLM chatbot making authenticated requests to the MCP server
-import requests
-
-# Token obtained from Alpaca OAuth flow for this specific user
-user_oauth_token = "79500537-5796-4230-9661-7f7108877c60"
-
-response = requests.post(
-    "https://your-mcp-server.com/mcp",
-    headers={
-        "Authorization": f"Bearer {user_oauth_token}",
-        "Content-Type": "application/json"
-    },
-    json={
-        "jsonrpc": "2.0",
-        "method": "tools/call",
-        "params": {
-            "name": "get_account_info",
-            "arguments": {}
-        }
-    }
-)
-
-print(response.json())
-```
-
-</details>
-
-## HTTP Transport for Remote Usage
-
-**Note:** You typically don't need to manually start the server for local usage. MCP clients like Claude Desktop and Cursor will automatically start the server when configured. Use this section only for remote access setups.
-
-<details>
-<summary><b>Expand for Remote Server Setup Instructions</b></summary>
-
-For users who need to run the MCP server on a remote machine (e.g., Ubuntu server) and connect from a different machine (e.g., Windows Claude Desktop), use HTTP transport:
-
-### Server Setup (Remote Machine)
-```bash
-# Start server with HTTP transport (default: 127.0.0.1:8000)
-alpaca-mcp-server serve --transport http
-
-# Start server with custom host/port for remote access
-alpaca-mcp-server serve --transport http --host 0.0.0.0 --port 9000
-
-# For systemd service (example from GitHub issue #6)
-# Update your start script to use HTTP transport
-#!/bin/bash
-cd /root/alpaca-mcp-server
-source .venv/bin/activate
-exec alpaca-mcp-server serve --transport http --host 0.0.0.0 --port 8000
-```
-
-**Remote Access Options:**
-1. **Direct binding**: Use `--host 0.0.0.0` to bind to all interfaces for direct remote access
-2. **SSH tunneling**: `ssh -L 8000:localhost:8000 user@your-server` for secure access (recommended for localhost binding)
-3. **Reverse proxy**: Use nginx/Apache to expose the service securely with authentication
-
-### Client Setup
-Update your Claude Desktop configuration to use HTTP:
-```json
-{
-  "mcpServers": {
-    "alpaca": {
-      "type": "http",
-      "url": "http://your-server-ip:8000/mcp",
-      "env": {
-        "ALPACA_API_KEY": "your_alpaca_api_key",
-        "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
-      }
-    }
-  }
-}
-```
-
-### Troubleshooting HTTP Transport Issues
-- **Port not listening**: Ensure the server started successfully and check firewall settings
-- **Connection refused**: Verify the server is running on the expected host:port
-- **ENOENT errors**: Make sure you're using the updated server command with `--transport http`
-- **Remote access**: Use `--host 0.0.0.0` for direct access, or SSH tunneling for localhost binding
-- **Port conflicts**: Use `--port <PORT>` to specify a different port if default is busy
-
-**Available transport options:**
-- `--transport stdio` (default): Standard input/output for local client connections (automatically used by MCP clients)
-- `--transport http`: HTTP transport for remote client connections (default: 127.0.0.1:8000)
-- `--transport sse`: Server-Sent Events transport for remote connections (deprecated)
-- `--host HOST`: Host to bind the server to for HTTP/SSE transport (default: 127.0.0.1)
-- `--port PORT`: Port to bind the server to for HTTP/SSE transport (default: 8000)
-
-**Note:** For more information about MCP transport methods, see the [official MCP transport documentation](https://modelcontextprotocol.io/docs/concepts/transports).
-
-</details>
-
 ## Troubleshooting
 
 - **uv/uvx not found**: Install uv from the official guide (https://docs.astral.sh/uv/getting-started/installation/) and then restart your terminal so `uv`/`uvx` are on PATH.
 - **`.env` not applied**: Ensure the server starts in the same directory as `.env`. Remember MCP client `env` overrides `.env`.
 - **Credentials missing**: Set `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` in `.env` or in the client's `env` block. Paper mode default is `ALPACA_PAPER_TRADE = True`.
 - **Client didn’t pick up new config**: Restart the client (Cursor, Claude Desktop, VS Code) after changes.
-- **HTTP port conflicts**: If using `--transport http`, change `--port` to a free port.
+- **HTTP port conflicts**: If using `--transport streamable-http`, change `--port` to a free port.
 
 
 ## Disclosure
