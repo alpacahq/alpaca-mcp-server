@@ -4,7 +4,7 @@ Alpaca's MCP Server - Standalone Implementation
 This is a standalone MCP server that provides comprehensive Alpaca's Trading API integration
 for stocks, options, crypto, portfolio management, and real-time market data.
 
-Supports 38+ tools including:
+Supports 43+ tools including:
 - Account management and portfolio tracking
 - Order placement and management (stocks, crypto, options)
 - Position tracking and closing
