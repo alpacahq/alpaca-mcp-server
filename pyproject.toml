@@ -43,7 +43,7 @@ classifiers = [
 
 # Runtime dependencies (keep minimal and compatible with current requirements.txt)
 dependencies = [
-    "mcp>=1.21.0,<1.23.0",           # Model Context Protocol framework
+    "mcp>=1.21.0,<1.25.0",           # Model Context Protocol framework
     "alpaca-py>=0.29.0",           # Alpaca Trading API client
     "python-dotenv>=1.0.0",        # Environment variable management
     "click>=8.1.0"                 # CLI framework for commands
