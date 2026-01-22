@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.models import Order
-from alpaca.trading.requests import MarketOrderRequest, OptionLegRequest
+from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest, OptionLegRequest
 from alpaca.trading.enums import (
     AssetStatus,
     ContractType,
@@ -319,24 +319,46 @@ def _process_option_legs(legs: List[Dict[str, Any]]) -> Union[List[OptionLegRequ
     return order_legs
 
 
-def _create_option_market_order_request(
+def _create_option_order_request(
     order_legs: List[OptionLegRequest],
     order_class: OrderClass,
     quantity: int,
     time_in_force: TimeInForce,
     extended_hours: bool,
-) -> MarketOrderRequest:
+    order_type: str,
+    limit_price: Optional[float],
+) -> Union[MarketOrderRequest, LimitOrderRequest, str]:
+    order_type_lower = order_type.lower()
+    if order_type_lower not in ["market", "limit"]:
+        return "Invalid order_type for options. Use: market, limit."
+
+    if order_type_lower == "limit" and limit_price is None:
+        return "limit_price is required for LIMIT option orders."
+
     if order_class == OrderClass.MLEG:
-        return MarketOrderRequest(
+        if order_type_lower == "market":
+            return MarketOrderRequest(
+                qty=quantity,
+                order_class=order_class,
+                time_in_force=time_in_force,
+                extended_hours=extended_hours,
+                client_order_id=f"mcp_opt_{int(time.time())}",
+                type=OrderType.MARKET,
+                legs=order_legs,
+            )
+        return LimitOrderRequest(
             qty=quantity,
             order_class=order_class,
             time_in_force=time_in_force,
             extended_hours=extended_hours,
             client_order_id=f"mcp_opt_{int(time.time())}",
-            type=OrderType.MARKET,
+            type=OrderType.LIMIT,
+            limit_price=limit_price,
             legs=order_legs,
         )
-    else:
+
+    # Single-leg
+    if order_type_lower == "market":
         return MarketOrderRequest(
             symbol=order_legs[0].symbol,
             qty=quantity,
@@ -347,11 +369,22 @@ def _create_option_market_order_request(
             client_order_id=f"mcp_opt_{int(time.time())}",
             type=OrderType.MARKET,
         )
+    return LimitOrderRequest(
+        symbol=order_legs[0].symbol,
+        qty=quantity,
+        side=order_legs[0].side,
+        order_class=order_class,
+        time_in_force=time_in_force,
+        extended_hours=extended_hours,
+        client_order_id=f"mcp_opt_{int(time.time())}",
+        type=OrderType.LIMIT,
+        limit_price=limit_price,
+    )
 
 
 def _format_option_order_response(order: Order, order_class: OrderClass, order_legs: List[OptionLegRequest]) -> str:
     result = f"""
-            Option Market Order Placed Successfully:
+            Option Order Placed Successfully:
             --------------------------------------
             Order ID: {order.id}
             Client Order ID: {order.client_order_id}

@@ -103,7 +103,7 @@ try:
         _validate_option_order_inputs,
         _convert_order_class_string,
         _process_option_legs,
-        _create_option_market_order_request,
+        _create_option_order_request,
         _format_option_order_response,
         _handle_option_api_error,
     )
@@ -125,7 +125,7 @@ except ImportError:
         _validate_option_order_inputs,
         _convert_order_class_string,
         _process_option_legs,
-        _create_option_market_order_request,
+        _create_option_order_request,
         _format_option_order_response,
         _handle_option_api_error,
     )
@@ -2913,9 +2913,11 @@ async def place_option_market_order(
         order_legs = processed_legs
         
         # Create order request
-        order_data = _create_option_market_order_request(
-            order_legs, order_class, quantity, time_in_force, extended_hours
+        order_data = _create_option_order_request(
+            order_legs, order_class, quantity, time_in_force, extended_hours, "market", None
         )
+        if isinstance(order_data, str):
+            return order_data
         
         # Submit order
         order = trade_client.submit_order(order_data)
@@ -2926,6 +2928,93 @@ async def place_option_market_order(
     except APIError as api_error:
         return _handle_option_api_error(str(api_error), order_legs, order_class)
         
+    except Exception as e:
+        return f"""
+        Unexpected error placing option order: {str(e)}
+
+        Please try:
+        1. Verifying all input parameters
+        2. Checking your account status
+        3. Ensuring market is open
+        4. Contacting support if the issue persists
+        """
+
+@mcp.tool()
+async def place_option_order(
+    legs: List[Dict[str, Any]],
+    order_type: str = "market",
+    limit_price: Optional[float] = None,
+    order_class: Optional[Union[str, OrderClass]] = None,
+    quantity: int = 1,
+    time_in_force: Union[str, TimeInForce] = "day",
+    extended_hours: bool = False
+) -> str:
+    """
+    Places an options order (market or limit) for single or multi-leg strategies.
+
+    Supported order types for options: market, limit
+    Time in force: DAY only
+    Extended hours: not supported by Alpaca for options (kept for API compatibility)
+
+    Args:
+        legs (List[Dict[str, Any]]): List of option legs with symbol, side, ratio_qty
+        order_type (str): "market" or "limit"
+        limit_price (Optional[float]): Required for limit orders
+        order_class (Optional[Union[str, OrderClass]]): simple or mleg (auto-detected if None)
+        quantity (int): Base quantity for the order
+        time_in_force (Union[str, TimeInForce]): day only
+        extended_hours (bool): Not supported for options
+    """
+    _ensure_clients()
+    order_legs: List[OptionLegRequest] = []
+
+    try:
+        # Validate inputs
+        validation_error = _validate_option_order_inputs(legs, quantity, time_in_force)
+        if validation_error:
+            return validation_error
+        if order_type.lower() not in ["market", "limit"]:
+            return "Invalid order_type for options. Use: market, limit."
+        if order_type.lower() == "limit" and limit_price is None:
+            return "limit_price is required for LIMIT option orders."
+
+        # Convert order class string to enum if needed
+        converted_order_class = _convert_order_class_string(order_class)
+        if isinstance(converted_order_class, OrderClass):
+            order_class = converted_order_class
+        elif isinstance(converted_order_class, str):  # Error message returned
+            return converted_order_class
+
+        # Convert time_in_force to enum if it's a string
+        if isinstance(time_in_force, str):
+            time_in_force = TimeInForce.DAY  # Options only support DAY
+
+        # Determine order class if not provided
+        if order_class is None:
+            order_class = OrderClass.MLEG if len(legs) > 1 else OrderClass.SIMPLE
+
+        # Process legs
+        processed_legs = _process_option_legs(legs)
+        if isinstance(processed_legs, str):
+            return processed_legs
+        order_legs = processed_legs
+
+        # Create order request
+        order_data = _create_option_order_request(
+            order_legs, order_class, quantity, time_in_force, extended_hours, order_type, limit_price
+        )
+        if isinstance(order_data, str):
+            return order_data
+
+        # Submit order
+        order = trade_client.submit_order(order_data)
+
+        # Format and return response
+        return _format_option_order_response(order, order_class, order_legs)
+
+    except APIError as api_error:
+        return _handle_option_api_error(str(api_error), order_legs, order_class)
+
     except Exception as e:
         return f"""
         Unexpected error placing option order: {str(e)}
