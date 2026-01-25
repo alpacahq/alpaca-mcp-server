@@ -557,7 +557,10 @@ These examples demonstrate the server's ability to provide:
 * `get_orders(status=None, limit=None, after=None, until=None, direction=None, nested=None, side=None, symbols=None)` – Retrieve all or filtered orders
 * `place_stock_order(symbol, side, quantity, order_type="market", limit_price=None, stop_price=None, trail_price=None, trail_percent=None, time_in_force="day", extended_hours=False, client_order_id=None)` – Place a stock order of any type (market, limit, stop, stop_limit, trailing_stop)
 * `place_crypto_order(symbol, side, order_type="market", time_in_force="gtc", qty=None, notional=None, limit_price=None, stop_price=None, client_order_id=None)` – Place a crypto order supporting market, limit, and stop_limit types with GTC/IOC time in force
-* `place_option_market_order(legs, order_class=None, quantity=1, time_in_force="day", extended_hours=False)` – Execute option strategy (single or multi-leg)
+* `place_option_order(legs, order_type="market", limit_price=None, order_class=None, quantity=1, time_in_force="day", extended_hours=False)` – Place an options order (market or limit), single or multi-leg
+
+**Deprecated / removed**:
+- `place_option_market_order(...)` – removed in favor of `place_option_order(..., order_type="market")`
 
 </details>
 <details>
