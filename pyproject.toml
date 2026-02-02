@@ -13,7 +13,7 @@ build-backend = "hatchling.build"
 [project]
 # Package identification and metadata
 name = "alpaca-mcp-server"
-version = "1.0.10"
+version = "1.0.11"
 description = "Alpaca Trading API integration for Model Context Protocol (MCP)"
 readme = "README.md"
 requires-python = ">=3.10"
