@@ -13,7 +13,7 @@ build-backend = "hatchling.build"
 [project]
 # Package identification and metadata
 name = "alpaca-mcp-server"
-version = "1.0.11"
+version = "1.0.12"
 description = "Alpaca Trading API integration for Model Context Protocol (MCP)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,11 +43,13 @@ classifiers = [
 
 # Runtime dependencies (keep minimal and compatible with current requirements.txt)
 dependencies = [
-    "mcp>=1.21.0,<1.25.0",           # Model Context Protocol framework
+    "mcp>=1.23.0,<1.25.0",           # Model Context Protocol framework (includes DNS rebinding protection defaults)
     "alpaca-py>=0.29.0",           # Alpaca Trading API client
     "python-dotenv>=1.0.0",        # Environment variable management
     "click>=8.1.0",                # CLI framework for commands
-    "pytz>=2024.1"                 # Required by alpaca-py for timezone handling
+    "pytz>=2024.1",                # Required by alpaca-py for timezone handling
+    "python-multipart>=0.0.22",    # Security fix: avoid vulnerable multipart versions
+    "urllib3>=2.6.3"               # Security fix: avoid redirect decompression bomb issue
 ]
 
 # Optional development dependencies
