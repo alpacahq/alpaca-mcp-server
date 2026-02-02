@@ -19,7 +19,7 @@ Key Features:
 """
 
 # Package version (should match pyproject.toml)
-__version__ = "1.0.10"
+__version__ = "1.0.11"
 
 # Package metadata
 __author__ = "Alpaca"
