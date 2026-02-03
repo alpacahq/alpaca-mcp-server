@@ -1067,14 +1067,29 @@ Cryptocurrency services are provided by Alpaca Crypto LLC ("Alpaca Crypto"), a F
 
 This is not an offer, solicitation of an offer, or advice to buy or sell securities or cryptocurrencies or open a brokerage account or cryptocurrency account in any jurisdiction where Alpaca Securities or Alpaca Crypto, respectively, are not registered or licensed, as applicable.
 
+## Privacy Policy
+For information about how Alpaca handles your data, please review:
+- [Privacy Policy](https://s3.amazonaws.com/files.alpaca.markets/disclosures/PrivacyPolicy.pdf)
+- [Disclosure Library](https://alpaca.markets/disclosures)
+
+### Data Collection
+- **What is collected**: User agent string ('ALPACA-MCP-SERVER') for API calls
+- **How it's used**: To identify MCP server usage and improve user experience
+- **Third-party sharing**: Not shared with third parties
+- **Retention**: Retained per Alpaca's standard data retention policy
+- **Opt-out**: Modify the 'USER_AGENT' constant in '.github/core/user_agent_mixin.py' or remove 'UserAgentMixin' from client class definitions
+
 ## Security Notice
 
 This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
 
 **HTTP Transport Security**: When using HTTP transport, the server defaults to localhost (127.0.0.1:8000) for security. For remote access, you can bind to all interfaces with `--host 0.0.0.0`, use SSH tunneling (`ssh -L 8000:localhost:8000 user@server`), or set up a reverse proxy with authentication for secure access.
 
-## Usage Analytics Notice
-The user agent for API calls defaults to 'ALPACA-MCP-SERVER' to help Alpaca identify MCP server usage and improve user experience. You can opt out by modifying the 'USER_AGENT' constant in '.github/core/user_agent_mixin.py' or by removing the 'UserAgentMixin' from the client class definitions in 'src/alpaca_mcp_server/server.py' — though we kindly hope you'll keep it enabled to support ongoing improvements.
+## Support
+For issues or questions, please contact us at support@alpaca.markets.
+
+GitHub Issues: https://github.com/alpacahq/alpaca-mcp-server/issues
+GitHub Pull requiests: https://github.com/alpacahq/alpaca-mcp-server/pulls
 
 ### MCP Registry Metadata
 mcp-name: io.github.alpacahq/alpaca-mcp-server

@@ -215,7 +215,13 @@ def _ensure_clients():
 # Account and Positions Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Account Info",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_account_info() -> str:
     """
     Retrieves and formats the current account information including balances and status.
@@ -243,7 +249,13 @@ async def get_account_info() -> str:
             """
     return info
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get All Positions",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_all_positions() -> str:
     """
     Retrieves and formats all current positions in the portfolio.
@@ -270,7 +282,13 @@ async def get_all_positions() -> str:
                     """
     return result
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Open Position",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_open_position(symbol: str) -> str:
     """
     Retrieves and formats details for a specific open position.
@@ -307,7 +325,13 @@ async def get_open_position(symbol: str) -> str:
 # Asset Information Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Asset Info",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_asset(symbol: str) -> str:
     """
     Retrieves and formats detailed information about a specific asset.
@@ -337,7 +361,13 @@ async def get_asset(symbol: str) -> str:
     except Exception as e:
         return f"Error fetching asset information: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get All Assets",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_all_assets(
     status: Optional[str] = None,
     asset_class: Optional[str] = None,
@@ -396,7 +426,13 @@ async def get_all_assets(
 # Corporate Actions Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Corporate Actions",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_corporate_actions(
     ca_types: Optional[List[CorporateActionsType]] = None,
     start: Optional[date] = None,
@@ -508,7 +544,13 @@ async def get_corporate_actions(
 # Portfolio History Tool
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Portfolio History",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_portfolio_history(
     timeframe: Optional[str] = None,
     period: Optional[str] = None,
@@ -592,7 +634,13 @@ async def get_portfolio_history(
 # Watchlist Management Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Create Watchlist",
+        "destructiveHint": True,
+        "openWorldHint": True
+    }
+)
 async def create_watchlist(name: str, symbols: List[str]) -> str:
     """
     Creates a new watchlist with specified symbols.
@@ -612,7 +660,13 @@ async def create_watchlist(name: str, symbols: List[str]) -> str:
     except Exception as e:
         return f"Error creating watchlist: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Watchlists",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_watchlists() -> str:
     """
     Get all watchlists for the account.
@@ -633,7 +687,14 @@ async def get_watchlists() -> str:
     except Exception as e:
         return f"Error fetching watchlists: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Update Watchlist",
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
 async def update_watchlist_by_id(watchlist_id: str, name: str = None, symbols: List[str] = None) -> str:
     """
     Update an existing watchlist.
@@ -654,7 +715,13 @@ async def update_watchlist_by_id(watchlist_id: str, name: str = None, symbols: L
     except Exception as e:
         return f"Error updating watchlist: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Watchlist by ID",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_watchlist_by_id(watchlist_id: str) -> str:
     """
     Get a specific watchlist by its ID.
@@ -679,7 +746,14 @@ async def get_watchlist_by_id(watchlist_id: str) -> str:
     except Exception as e:
         return f"Error fetching watchlist by id: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Add Asset to Watchlist",
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
 async def add_asset_to_watchlist_by_id(watchlist_id: str, symbol: str) -> str:
     """
     Add an asset by symbol to a specific watchlist.
@@ -699,7 +773,14 @@ async def add_asset_to_watchlist_by_id(watchlist_id: str, symbol: str) -> str:
     except Exception as e:
         return f"Error adding asset to watchlist: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Remove Asset from Watchlist",
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
 async def remove_asset_from_watchlist_by_id(watchlist_id: str, symbol: str) -> str:
     """
     Remove an asset by symbol from a specific watchlist.
@@ -719,7 +800,14 @@ async def remove_asset_from_watchlist_by_id(watchlist_id: str, symbol: str) -> s
     except Exception as e:
         return f"Error removing asset from watchlist: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Delete Watchlist",
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
 async def delete_watchlist_by_id(watchlist_id: str) -> str:
     """
     Delete a specific watchlist by its ID.
@@ -741,7 +829,13 @@ async def delete_watchlist_by_id(watchlist_id: str) -> str:
 # Market Calendar Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Market Calendar",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_calendar(start_date: str, end_date: str) -> str:
     """
     Retrieves and formats market calendar for specified date range.
@@ -774,7 +868,13 @@ async def get_calendar(start_date: str, end_date: str) -> str:
 # Market Clock Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Market Clock",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_clock() -> str:
     """
     Retrieves and formats current market status and next open/close times.
@@ -800,7 +900,13 @@ async def get_clock() -> str:
 # Stock Market Data Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Bars",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_bars(
     symbol: Union[str, List[str]],
     days: int = 5,
@@ -946,7 +1052,13 @@ async def get_stock_bars(
         symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
         return f"Error fetching bars for {symbol_str}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Quotes",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_quotes(
     symbol: Union[str, List[str]],
     days: int = 0,
@@ -1082,7 +1194,13 @@ async def get_stock_quotes(
         symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
         return f"Error fetching quotes for {symbol_str}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Trades",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_trades(
     symbol: Union[str, List[str]],
     days: int = 0,
@@ -1192,7 +1310,13 @@ async def get_stock_trades(
     except Exception as e:
         return f"Error fetching trades: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Latest Bar",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_latest_bar(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = None,
@@ -1249,7 +1373,13 @@ async def get_stock_latest_bar(
         return f"Error fetching latest bar for {requested}: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Latest Quote",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_latest_quote(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = None,    
@@ -1307,7 +1437,13 @@ async def get_stock_latest_quote(
         requested = ", ".join(symbols) if symbols else ""
         return f"Error fetching quote for {requested}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Latest Trade",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_latest_trade(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = None,
@@ -1364,7 +1500,13 @@ async def get_stock_latest_trade(
         return f"Error fetching latest trade for {requested}: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Snapshot",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_snapshot(
     symbol_or_symbols: Union[str, List[str]], 
     feed: Optional[DataFeed] = None,
@@ -1446,7 +1588,13 @@ async def get_stock_snapshot(
 # Crypto Market Data Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Bars",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_bars(
     symbol: Union[str, List[str]], 
     days: int = 1,
@@ -1563,7 +1711,13 @@ async def get_crypto_bars(
         symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
         return f"Error fetching historical crypto data for {symbol_str}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Quotes",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_quotes(
     symbol: Union[str, List[str]],
     days: int = 0,
@@ -1664,7 +1818,13 @@ async def get_crypto_quotes(
         symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
         return f"Error fetching historical crypto quotes for {symbol_str}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Trades",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_trades(
     symbol: Union[str, List[str]],
     days: int = 0,
@@ -1781,7 +1941,13 @@ async def get_crypto_trades(
         symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
         return f"Error fetching historical crypto trades for {symbol_str}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Latest Bar",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_latest_bar(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1809,7 +1975,13 @@ async def get_crypto_latest_bar(
     except Exception as e:
         return f"Error retrieving latest crypto bar for {symbol}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Latest Quote",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_latest_quote(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1844,7 +2016,13 @@ async def get_crypto_latest_quote(
     except Exception as e:
         return f"Error retrieving latest crypto quote for {symbol}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Latest Trade",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_latest_trade(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1872,7 +2050,13 @@ async def get_crypto_latest_trade(
         return f"Error retrieving latest crypto trade for {symbol}: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Snapshot",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_snapshot(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1920,7 +2104,13 @@ async def get_crypto_snapshot(
         return f"Error retrieving crypto snapshots: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Orderbook",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_latest_orderbook(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1960,7 +2150,13 @@ async def get_crypto_latest_orderbook(
 # Options Market Data Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Option Contracts",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_option_contracts(
     underlying_symbols: Union[str, List[str]],
     expiration_date: Optional[date] = None,
@@ -2080,7 +2276,13 @@ async def get_option_contracts(
     except Exception as e:
         return f"Error: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Option Latest Quote",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_option_latest_quote(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[OptionsFeed] = None
@@ -2150,7 +2352,13 @@ async def get_option_latest_quote(
         return f"Error fetching option quote for {requested}: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Option Snapshot",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_option_snapshot(
     symbol_or_symbols: Union[str, List[str]], 
     feed: Optional[OptionsFeed] = None
@@ -2247,7 +2455,13 @@ async def get_option_snapshot(
         return f"Error retrieving option snapshots: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Option Chain",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_option_chain(
     underlying_symbol: str,
     feed: Optional[OptionsFeed] = None,
@@ -2342,7 +2556,13 @@ async def get_option_chain(
 # Order Management Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Orders",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_orders(
     status: str = "all", 
     limit: int = 10,
@@ -2501,7 +2721,13 @@ async def get_orders(
     except Exception as e:
         return f"Error fetching orders: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Place Stock Order",
+        "destructiveHint": True,
+        "openWorldHint": True
+    }
+)
 async def place_stock_order(
     symbol: str,
     side: str,
@@ -2674,7 +2900,13 @@ async def place_stock_order(
     except Exception as e:
         return f"Error placing order: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Place Crypto Order",
+        "destructiveHint": True,
+        "openWorldHint": True
+    }
+)
 async def place_crypto_order(
     symbol: str,
     side: str,
@@ -2829,7 +3061,13 @@ async def place_crypto_order(
     except Exception as e:
         return f"Error placing crypto order: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Place Option Order",
+        "destructiveHint": True,
+        "openWorldHint": True
+    }
+)
 async def place_option_order(
     legs: List[Dict[str, Any]],
     order_type: str = "market",
@@ -2920,7 +3158,14 @@ async def place_option_order(
 # Position Management Tools
 # =======================================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Cancel All Orders",
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
 async def cancel_all_orders() -> str:
     """
     Cancel all open orders.
@@ -2953,7 +3198,14 @@ async def cancel_all_orders() -> str:
     except Exception as e:
         return f"Error cancelling orders: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Cancel Order",
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
 async def cancel_order_by_id(order_id: str) -> str:
     """
     Cancel a specific order by its ID.
@@ -2986,7 +3238,13 @@ async def cancel_order_by_id(order_id: str) -> str:
     except Exception as e:
         return f"Error cancelling order {order_id}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Close Position",
+        "destructiveHint": True,
+        "openWorldHint": True
+    }
+)
 async def close_position(symbol: str, qty: Optional[str] = None, percentage: Optional[str] = None) -> str:
     """
     Closes a specific position for a single symbol. 
@@ -3039,7 +3297,14 @@ async def close_position(symbol: str, qty: Optional[str] = None, percentage: Opt
     except Exception as e:
         return f"Error closing position: {str(e)}"
     
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Close All Positions",
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
 async def close_all_positions(cancel_orders: bool = False) -> str:
     """
     Closes all open positions.
@@ -3075,7 +3340,14 @@ async def close_all_positions(cancel_orders: bool = False) -> str:
         return f"Error closing positions: {str(e)}"
 
 # Position Management Tools (Options)
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Exercise Option",
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
 async def exercise_options_position(symbol_or_contract_id: str) -> str:
     """
     Exercises a held option contract, converting it into the underlying asset.

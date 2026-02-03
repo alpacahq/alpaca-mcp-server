@@ -4,6 +4,7 @@
   "_purpose": "Metadata for GitHub MCP Registry listing and tool discovery",
   "version": "1.0.12",
   "schema_version": "0.2.0",
+  "manifest_version": "0.3",
   "name": "alpaca-mcp-server",
   "display_name": "Alpaca MCP Server",
   "description": "Comprehensive Alpaca Trading API integration for Model Context Protocol, enabling natural language trading operations through AI assistants",
@@ -14,6 +15,7 @@
   "documentation": "https://github.com/alpacahq/alpaca-mcp-server#readme",
   "categories": ["finance", "trading", "data", "api"],
   "tags": ["alpaca", "stocks", "options", "crypto", "portfolio", "market-data"],
+  "privacy_policies": ["https://s3.amazonaws.com/files.alpaca.markets/disclosures/PrivacyPolicy.pdf"],
 
   "installation": {
     "uvx": "alpaca-mcp-server",
