@@ -261,29 +261,34 @@ async def get_account_info() -> str:
 )
 async def get_all_positions() -> str:
     """
-    Retrieves and formats all current positions in the portfolio.
+    Retrieves all current positions in the portfolio as JSON.
 
     Returns:
-        str: List of positions with symbol, quantity, market value, entry/current price, and P/L
+        str: JSON array of position objects with symbol, qty, side, avg_entry_price,
+             current_price, market_value, cost_basis, unrealized_pl, unrealized_plpc,
+             change_today fields.
     """
     _ensure_clients()
     positions = trade_client.get_all_positions()
-    
+
     if not positions:
         return "No open positions found."
-    
-    result = "Current Positions:\n-------------------\n"
+
+    result = []
     for position in positions:
-        result += f"""
-                    Symbol: {position.symbol}
-                    Quantity: {position.qty} shares
-                    Market Value: ${float(position.market_value):.2f}
-                    Average Entry Price: ${float(position.avg_entry_price):.2f}
-                    Current Price: ${float(position.current_price):.2f}
-                    Unrealized P/L: ${float(position.unrealized_pl):.2f} ({float(position.unrealized_plpc) * 100:.2f}%)
-                    -------------------
-                    """
-    return result
+        result.append({
+            "symbol": position.symbol,
+            "qty": str(position.qty),
+            "side": position.side.value if hasattr(position.side, "value") else str(position.side),
+            "avg_entry_price": str(position.avg_entry_price),
+            "current_price": str(position.current_price),
+            "market_value": str(position.market_value),
+            "cost_basis": str(position.cost_basis),
+            "unrealized_pl": str(position.unrealized_pl),
+            "unrealized_plpc": str(position.unrealized_plpc),
+            "change_today": str(getattr(position, "change_today", "0")),
+        })
+    return json.dumps(result)
 
 @mcp.tool(
     annotations={
