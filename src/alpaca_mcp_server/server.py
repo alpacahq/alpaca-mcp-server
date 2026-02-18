@@ -81,7 +81,9 @@ from alpaca.trading.requests import (
     MarketOrderRequest,
     OptionLegRequest,
     StopLimitOrderRequest,
+    StopLossRequest,
     StopOrderRequest,
+    TakeProfitRequest,
     TrailingStopOrderRequest,
     UpdateWatchlistRequest,
 )
@@ -2740,7 +2742,9 @@ async def place_stock_order(
     trail_price: Optional[float] = None,
     trail_percent: Optional[float] = None,
     extended_hours: bool = False,
-    client_order_id: Optional[str] = None
+    client_order_id: Optional[str] = None,
+    take_profit_price: Optional[float] = None,
+    stop_loss_price: Optional[float] = None,
 ) -> str:
     """
     Places a stock order using the specified order type and parameters.
@@ -2758,9 +2762,11 @@ async def place_stock_order(
         trail_percent (Optional[float]): Trail percent (for TRAILING_STOP)
         extended_hours (bool): Allow extended hours execution
         client_order_id (Optional[str]): Custom order identifier
+        take_profit_price (Optional[float]): Take-profit limit price (for bracket orders)
+        stop_loss_price (Optional[float]): Stop-loss stop price (for bracket orders)
 
     Returns:
-        str: Order confirmation with details or error message
+        str: JSON string with order details, or error message
     """
     _ensure_clients()
     try:
@@ -2795,6 +2801,10 @@ async def place_stock_order(
         # Convert order type string to lowercase for comparison
         order_type_lower = type.lower()
 
+        # Build bracket legs if provided
+        take_profit_req = TakeProfitRequest(limit_price=take_profit_price) if take_profit_price is not None else None
+        stop_loss_req = StopLossRequest(stop_price=stop_loss_price) if stop_loss_price is not None else None
+
         # Create order based on type
         if order_type_lower == "market":
             order_data = MarketOrderRequest(
@@ -2805,7 +2815,9 @@ async def place_stock_order(
                 time_in_force=tif_enum,
                 order_class=order_class_enum,
                 extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{int(time.time())}"
+                client_order_id=client_order_id or f"order_{int(time.time())}",
+                take_profit=take_profit_req,
+                stop_loss=stop_loss_req,
             )
         elif order_type_lower == "limit":
             if limit_price is None:
@@ -2819,7 +2831,9 @@ async def place_stock_order(
                 order_class=order_class_enum,
                 limit_price=limit_price,
                 extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{int(time.time())}"
+                client_order_id=client_order_id or f"order_{int(time.time())}",
+                take_profit=take_profit_req,
+                stop_loss=stop_loss_req,
             )
         elif order_type_lower == "stop":
             if stop_price is None:
@@ -2869,34 +2883,26 @@ async def place_stock_order(
             return f"Invalid order type: {type}. Must be one of: MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP."
 
         order = trade_client.submit_order(order_data)
-        return f"""
-                Stock Order Placed Successfully: {order.id}
-                filled_avg_price: {order.filled_avg_price}
-                filled_qty: {order.filled_qty}
-                hwm: {order.hwm}
-                id: {order.id}
-                legs: {order.legs}
-                limit_price: {order.limit_price}
-                notional: {order.notional}
-                order_class: {order.order_class}
-                order_type: {order.order_type}
-                position_intent: {order.position_intent}
-                qty: {order.qty}
-                ratio_qty: {order.ratio_qty}
-                replaced_at: {order.replaced_at}
-                replaced_by: {order.replaced_by}
-                replaces: {order.replaces}
-                side: {order.side}
-                status: {order.status}
-                stop_price: {order.stop_price}
-                submitted_at: {order.submitted_at}
-                symbol: {order.symbol}
-                time_in_force: {order.time_in_force}
-                trail_percent: {order.trail_percent}
-                trail_price: {order.trail_price}
-                type: {order.type}
-                updated_at: {order.updated_at}
-                """
+        def _val(v):
+            return v.value if hasattr(v, 'value') else (str(v) if v is not None else None)
+        result = {
+            "id": str(order.id) if order.id else "",
+            "client_order_id": str(order.client_order_id) if order.client_order_id else "",
+            "status": _val(order.status) or "unknown",
+            "symbol": str(order.symbol) if order.symbol else symbol,
+            "side": _val(order.side) or side,
+            "qty": str(order.qty) if order.qty is not None else str(quantity),
+            "order_class": _val(order.order_class) or "simple",
+            "type": _val(order.type) or type,
+            "limit_price": float(order.limit_price) if order.limit_price is not None else None,
+            "stop_price": float(order.stop_price) if order.stop_price is not None else None,
+            "created_at": str(order.created_at) if order.created_at else "",
+            "legs": [
+                {"id": str(getattr(leg, "id", "") or ""), "symbol": str(getattr(leg, "symbol", "") or "")}
+                for leg in (order.legs or [])
+            ],
+        }
+        return json.dumps(result)
     except Exception as e:
         return f"Error placing order: {str(e)}"
 
