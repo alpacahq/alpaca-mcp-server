@@ -19,6 +19,7 @@ import os
 import re
 import sys
 import time
+import uuid
 import argparse
 from datetime import datetime, timedelta, date, timezone
 from typing import Dict, Any, List, Optional, Union
@@ -2815,7 +2816,7 @@ async def place_stock_order(
                 time_in_force=tif_enum,
                 order_class=order_class_enum,
                 extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{int(time.time())}",
+                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}",
                 take_profit=take_profit_req,
                 stop_loss=stop_loss_req,
             )
@@ -2831,7 +2832,7 @@ async def place_stock_order(
                 order_class=order_class_enum,
                 limit_price=limit_price,
                 extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{int(time.time())}",
+                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}",
                 take_profit=take_profit_req,
                 stop_loss=stop_loss_req,
             )
@@ -2847,7 +2848,7 @@ async def place_stock_order(
                 order_class=order_class_enum,
                 stop_price=stop_price,
                 extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{int(time.time())}"
+                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}"
             )
         elif order_type_lower == "stop_limit":
             if stop_price is None or limit_price is None:
@@ -2862,7 +2863,7 @@ async def place_stock_order(
                 stop_price=stop_price,
                 limit_price=limit_price,
                 extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{int(time.time())}"
+                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}"
             )
         elif order_type_lower == "trailing_stop":
             if trail_price is None and trail_percent is None:
@@ -2877,7 +2878,7 @@ async def place_stock_order(
                 trail_price=trail_price,
                 trail_percent=trail_percent,
                 extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{int(time.time())}"
+                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}"
             )
         else:
             return f"Invalid order type: {type}. Must be one of: MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP."
