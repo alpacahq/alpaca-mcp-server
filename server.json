@@ -1,0 +1,37 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.alpacahq/alpaca-mcp-server",
+  "title": "Alpaca's MCP Server",
+  "description": "Alpaca Trading API integration for Model Context Protocol (MCP)",
+  "repository": {
+    "url": "https://github.com/alpacahq/alpaca-mcp-server",
+    "source": "github"
+  },
+  "version": "1.0.12",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "alpaca-mcp-server",
+      "version": "1.0.12",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "ALPACA_API_KEY",
+          "description": "Alpaca Trading API key",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "ALPACA_SECRET_KEY",
+          "description": "Alpaca Trading API secret key",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

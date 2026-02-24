@@ -46,10 +46,10 @@ class ConfigManager:
             'api_key': os.getenv('ALPACA_API_KEY', ''),
             'secret_key': os.getenv('ALPACA_SECRET_KEY', ''),
             'paper_trade': os.getenv('ALPACA_PAPER_TRADE', 'True').lower() == 'true',
-            'trade_api_url': os.getenv('TRADE_API_URL'),
-            'trade_api_wss': os.getenv('TRADE_API_WSS'),
-            'data_api_url': os.getenv('DATA_API_URL'),
-            'stream_data_wss': os.getenv('STREAM_DATA_WSS')
+            'trade_api_url': os.getenv('TRADE_API_URL') if os.getenv('TRADE_API_URL') not in ['None', None, ''] else None,
+            'trade_api_wss': os.getenv('TRADE_API_WSS') if os.getenv('TRADE_API_WSS') not in ['None', None, ''] else None,
+            'data_api_url': os.getenv('DATA_API_URL') if os.getenv('DATA_API_URL') not in ['None', None, ''] else None,
+            'stream_data_wss': os.getenv('STREAM_DATA_WSS') if os.getenv('STREAM_DATA_WSS') not in ['None', None, ''] else None
         }
 
     def validate_config(self) -> bool:
@@ -83,11 +83,13 @@ class ConfigManager:
         """
         try:
             # Prompt for API keys if not provided
+            from getpass import getpass
+
             if not api_key:
                 api_key = input("Enter your Alpaca API key: ").strip()
 
             if not secret_key:
-                secret_key = input("Enter your Alpaca secret key: ").strip()
+                secret_key = getpass("Enter your Alpaca secret key: ").strip()
 
             # Confirm paper trading mode
             if paper_trade:
@@ -125,6 +127,13 @@ STREAM_DATA_WSS=None
 
             # Write the .env file
             self.env_file.write_text(env_content)
+
+            # Set restrictive permissions on Unix/POSIX systems (owner read/write only)
+            if os.name != "nt":  # Skip on Windows
+                try:
+                    os.chmod(self.env_file, 0o600)
+                except Exception as chmod_error:
+                    print(f"Warning: Could not set restrictive permissions on {self.env_file}: {chmod_error}")
 
             print(f"Configuration saved to {self.env_file}")
             if not api_key or not secret_key:

@@ -1,15 +1,24 @@
 FROM python:3.11-slim
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
 
-# Copy project files
-COPY pyproject.toml README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project
+
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
-COPY .github/core .github/core
+COPY .github/core/ ./.github/core/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
 
-# Run the MCP server using the CLI entry point
+ENV PATH="/app/.venv/bin:$PATH"
+
 CMD ["alpaca-mcp-server", "serve"]
+
+# For cloud deployment
+# CMD ["alpaca-mcp-server", "serve", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]

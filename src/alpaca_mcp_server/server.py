@@ -99,7 +99,7 @@ from .helpers import (
     _validate_option_order_inputs,
     _convert_order_class_string,
     _process_option_legs,
-    _create_option_market_order_request,
+    _create_option_order_request,
     _format_option_order_response,
     _handle_option_api_error,
 )
@@ -192,7 +192,13 @@ def _ensure_clients():
 # Asset Information Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Asset Info",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_asset(symbol: str) -> str:
     """
     Retrieves and formats detailed information about a specific asset.
@@ -227,7 +233,13 @@ async def get_asset(symbol: str) -> str:
     except Exception as e:
         return f"Error fetching asset information: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get All Assets",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_all_assets(
     status: Optional[str] = None,
     asset_class: Optional[str] = None,
@@ -283,7 +295,13 @@ async def get_all_assets(
 # Corporate Actions Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Corporate Actions",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_corporate_actions(
     ca_types: Optional[List[CorporateActionsType]] = None,
     start: Optional[date] = None,
@@ -395,7 +413,13 @@ async def get_corporate_actions(
 # Market Calendar Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Market Calendar",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_calendar(start_date: str, end_date: str) -> str:
     """
     Retrieves and formats market calendar for specified date range.
@@ -428,7 +452,13 @@ async def get_calendar(start_date: str, end_date: str) -> str:
 # Market Clock Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Market Clock",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_clock() -> str:
     """
     Retrieves and formats current market status and next open/close times.
@@ -458,7 +488,13 @@ async def get_clock() -> str:
 # Stock Market Data Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Bars",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_bars(
     symbol: Union[str, List[str]],
     days: int = 5,
@@ -602,7 +638,13 @@ async def get_stock_bars(
     except Exception as e:
         return f"Error fetching bars for {symbol}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Quotes",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_quotes(
     symbol: Union[str, List[str]],
     days: int = 0,
@@ -737,7 +779,13 @@ async def get_stock_quotes(
     except Exception as e:
         return f"Error fetching quotes for {symbol}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Trades",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_trades(
     symbol: Union[str, List[str]],
     days: int = 0,
@@ -848,7 +896,13 @@ async def get_stock_trades(
     except Exception as e:
         return f"Error fetching trades: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Latest Bar",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_latest_bar(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = DataFeed.IEX,
@@ -905,7 +959,13 @@ async def get_stock_latest_bar(
         requested = ", ".join(symbols_list) if symbols_list else ""
         return f"Error fetching latest bar for {requested}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Latest Quote",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_latest_quote(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = DataFeed.IEX,    
@@ -970,7 +1030,13 @@ async def get_stock_latest_quote(
         requested = ", ".join(symbols) if symbols else ""
         return f"Error fetching quote for {requested}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Latest Trade",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_latest_trade(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = DataFeed.IEX,
@@ -1027,7 +1093,13 @@ async def get_stock_latest_trade(
         requested = ", ".join(symbols_list) if symbols_list else ""
         return f"Error fetching latest trade for {requested}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Snapshot",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_stock_snapshot(
     symbol_or_symbols: Union[str, List[str]], 
     feed: Optional[DataFeed] = DataFeed.IEX,
@@ -1110,7 +1182,13 @@ async def get_stock_snapshot(
 # Crypto Market Data Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Bars",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_bars(
     symbol: Union[str, List[str]], 
     days: int = 1,
@@ -1225,7 +1303,13 @@ async def get_crypto_bars(
     except Exception as e:
         return f"Error fetching historical crypto data for {symbol}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Quotes",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_quotes(
     symbol: Union[str, List[str]],
     days: int = 0,
@@ -1325,7 +1409,13 @@ async def get_crypto_quotes(
     except Exception as e:
         return f"Error fetching historical crypto quotes for {symbol}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Trades",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_trades(
     symbol: Union[str, List[str]],
     days: int = 0,
@@ -1441,7 +1531,13 @@ async def get_crypto_trades(
     except Exception as e:
         return f"Error fetching historical crypto trades for {symbol}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Latest Bar",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_latest_bar(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1469,7 +1565,13 @@ async def get_crypto_latest_bar(
     except Exception as e:
         return f"Error retrieving latest crypto bar for {symbol}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Latest Quote",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_latest_quote(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1504,7 +1606,13 @@ async def get_crypto_latest_quote(
     except Exception as e:
         return f"Error retrieving latest crypto quote for {symbol}: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Latest Trade",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_latest_trade(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1532,7 +1640,13 @@ async def get_crypto_latest_trade(
         return f"Error retrieving latest crypto trade for {symbol}: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Snapshot",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_snapshot(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1573,7 +1687,13 @@ async def get_crypto_snapshot(
         return f"Error retrieving crypto snapshots: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Crypto Orderbook",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_crypto_latest_orderbook(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
@@ -1613,7 +1733,13 @@ async def get_crypto_latest_orderbook(
 # Options Market Data Tools
 # ============================================================================
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Option Contracts",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_option_contracts(
     underlying_symbols: Union[str, List[str]],
     expiration_date: Optional[date] = None,
@@ -1728,7 +1854,13 @@ async def get_option_contracts(
     except Exception as e:
         return f"Error: {str(e)}"
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Option Latest Quote",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_option_latest_quote(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[OptionsFeed] = OptionsFeed.INDICATIVE
@@ -1799,7 +1931,13 @@ async def get_option_latest_quote(
         return f"Error fetching option quote for {requested}: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Option Snapshot",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Optional[OptionsFeed] = OptionsFeed.INDICATIVE) -> str:
     """
     Retrieves comprehensive snapshots of option contracts including latest trade, quote, implied volatility, and Greeks.
@@ -1915,7 +2053,13 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
         return f"Error retrieving option snapshots: {str(e)}"
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations={
+        "title": "Get Option Chain",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
 async def get_option_chain(
     underlying_symbol: str,
     feed: Optional[OptionsFeed] = OptionsFeed.INDICATIVE,
