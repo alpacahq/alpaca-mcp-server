@@ -2155,31 +2155,143 @@ async def get_option_chain(
 # Compatibility wrapper for CLI
 # ============================================================================
 
+# ============================================================================
+# Server Entry Point and CLI
+# ============================================================================
+
 def parse_arguments() -> argparse.Namespace:
-    p = argparse.ArgumentParser("Alpaca MCP Server")
-    p.add_argument("--transport", choices=["stdio","streamable-http"], default="stdio")
-    # p.add_argument("--host", default=os.environ.get("HOST","127.0.0.1"))
-    p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
-    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+    """Parse command-line arguments for the Alpaca's MCP Server."""
+    p = argparse.ArgumentParser(
+        "Alpaca's MCP Server",
+        description="MCP server for Alpaca's Trading API integration"
+    )
+    p.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default="stdio",
+        help="Transport protocol to use (default: stdio)"
+    )
+    p.add_argument(
+        "--host",
+        default=os.environ.get("HOST", "127.0.0.1"),
+        help="Host to bind to for HTTP transport (default: 127.0.0.1 for security)"
+    )
+    p.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("PORT", 8000)),
+        help="Port to bind to for HTTP transport (default: 8000)"
+    )
+    p.add_argument(
+        "--allowed-hosts",
+        default=os.environ.get("ALLOWED_HOSTS", ""),
+        help="Comma-separated list of allowed Host header values for DNS rebinding protection. "
+             "Required for cloud deployments (e.g., 'example.onrender.com,api.example.com')"
+    )
     return p.parse_args()
 
+
 class AlpacaMCPServer:
+    """
+    Alpaca's MCP Server implementation.
+    
+    This server exposes Alpaca's Trading API functionality through the Model Context Protocol,
+    allowing AI assistants to interact with trading accounts, market data, and order management.
+    
+    Authentication is handled via environment variables (ALPACA_API_KEY, ALPACA_SECRET_KEY).
+    """
+    
     def __init__(self, config_file: Optional[Path] = None) -> None:
+        """
+        Initialize the Alpaca's MCP Server.
+        
+        Args:
+            config_file: Optional path to a custom .env configuration file.
+                        Note: Config file support is maintained for compatibility but
+                        generally not needed as environment variables are loaded at startup.
+        """
+        # Note: Environment variables are already loaded at module initialization.
+        # This __init__ is kept simple to avoid global state mutation antipatterns.
         pass
 
-    def run(self, transport: str = "stdio", host: str = "0.0.0.0", port: int = 8000) -> None:
-    # def run(self, transport: str = "stdio", host: str = "127.0.0.1", port: int = 8000) -> None:
+    def run(
+        self,
+        transport: str = "stdio",
+        host: str = "127.0.0.1",
+        port: int = 8000,
+        allowed_hosts: str = ""
+    ) -> None:
+        """Run the Alpaca's MCP Server.
+        
+        Use stdio (default) for local, or streamable-http with --allowed-hosts for cloud.
+        """
         if transport == "streamable-http":
-            # Configure FastMCP settings for host/port with current MCP versions
+            # Configure FastMCP settings for HTTP transport
             mcp.settings.host = host
             mcp.settings.port = port
+            
+            # Configure transport security for DNS rebinding protection
+            from mcp.server.transport_security import TransportSecuritySettings
+            
+            if allowed_hosts:
+                # Option 2: Enable protection with specific allowed hosts (RECOMMENDED)
+                # Parse comma-separated host list
+                hosts_list = [h.strip() for h in allowed_hosts.split(",") if h.strip()]
+                
+                # For each host, add both the bare hostname and wildcard port version
+                # This handles both "Host: example.com" and "Host: example.com:8000"
+                all_allowed_hosts = []
+                for h in hosts_list:
+                    if ":" not in h:
+                        # Add both bare hostname and wildcard pattern
+                        all_allowed_hosts.append(h)        # Matches "example.com"
+                        all_allowed_hosts.append(f"{h}:*") # Matches "example.com:8000"
+                    else:
+                        # Already has port or is a pattern, add as-is
+                        all_allowed_hosts.append(h)
+                
+                # Always include localhost variants for local testing
+                all_allowed_hosts.extend([
+                    "127.0.0.1", "127.0.0.1:*",
+                    "localhost", "localhost:*",
+                    "[::1]", "[::1]:*"
+                ])
+                
+                # Generate allowed origins for CORS (both http and https)
+                allowed_origins = (
+                    [f"https://{h}" for h in hosts_list] +
+                    [f"http://{h}" for h in hosts_list] +
+                    ["http://127.0.0.1:*", "http://localhost:*"]
+                )
+                
+                mcp.settings.transport_security = TransportSecuritySettings(
+                    enable_dns_rebinding_protection=True,
+                    allowed_hosts=all_allowed_hosts,
+                    allowed_origins=allowed_origins
+                )
+                
+                print(f"DNS protection enabled: {', '.join(hosts_list)}", file=sys.stderr)
+                
+            else:
+                print("DNS protection: localhost only", file=sys.stderr)
+            
+            # Start the server with streamable HTTP transport
             mcp.run(transport="streamable-http")
+            
         else:
+            # Use stdio transport (default)
             mcp.run(transport="stdio")
+
 
 if __name__ == "__main__":
     args = parse_arguments()
     try:
-        AlpacaMCPServer().run(args.transport, args.host, args.port)
+        AlpacaMCPServer().run(
+            transport=args.transport,
+            host=args.host,
+            port=args.port,
+            allowed_hosts=args.allowed_hosts
+        )
     except Exception as e:
-        print(f"Error starting server: {e}", file=sys.stderr); sys.exit(1)
+        print(f"Error starting server: {e}", file=sys.stderr)
+        sys.exit(1)
