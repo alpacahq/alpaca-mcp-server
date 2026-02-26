@@ -3430,25 +3430,34 @@ class AlpacaMCPServer:
         transport: str = "stdio",
         host: str = "127.0.0.1",
         port: int = 8000,
-        allowed_hosts: str = ""
+        allowed_hosts: str = "",
+        no_dns_protection: bool = False
     ) -> None:
         """Run the Alpaca's MCP Server.
-        
+
         Use stdio (default) for local, or streamable-http with --allowed-hosts for cloud.
         """
         if transport == "streamable-http":
             # Configure FastMCP settings for HTTP transport
             mcp.settings.host = host
             mcp.settings.port = port
-            
+
             # Configure transport security for DNS rebinding protection
             from mcp.server.transport_security import TransportSecuritySettings
-            
-            if allowed_hosts:
-                # Option 2: Enable protection with specific allowed hosts (RECOMMENDED)
+
+            if no_dns_protection:
+                # Explicitly disable DNS rebinding protection
+                # for trusted LAN / self-hosted deployments
+                mcp.settings.transport_security = TransportSecuritySettings(
+                    enable_dns_rebinding_protection=False
+                )
+                print("DNS rebinding protection DISABLED", file=sys.stderr)
+
+            elif allowed_hosts:
+                # Enable protection with specific allowed hosts (RECOMMENDED)
                 # Parse comma-separated host list
                 hosts_list = [h.strip() for h in allowed_hosts.split(",") if h.strip()]
-                
+
                 # For each host, add both the bare hostname and wildcard port version
                 # This handles both "Host: example.com" and "Host: example.com:8000"
                 all_allowed_hosts = []
@@ -3460,35 +3469,35 @@ class AlpacaMCPServer:
                     else:
                         # Already has port or is a pattern, add as-is
                         all_allowed_hosts.append(h)
-                
+
                 # Always include localhost variants for local testing
                 all_allowed_hosts.extend([
                     "127.0.0.1", "127.0.0.1:*",
                     "localhost", "localhost:*",
                     "[::1]", "[::1]:*"
                 ])
-                
+
                 # Generate allowed origins for CORS (both http and https)
                 allowed_origins = (
                     [f"https://{h}" for h in hosts_list] +
                     [f"http://{h}" for h in hosts_list] +
                     ["http://127.0.0.1:*", "http://localhost:*"]
                 )
-                
+
                 mcp.settings.transport_security = TransportSecuritySettings(
                     enable_dns_rebinding_protection=True,
                     allowed_hosts=all_allowed_hosts,
                     allowed_origins=allowed_origins
                 )
-                
+
                 print(f"DNS protection enabled: {', '.join(hosts_list)}", file=sys.stderr)
-                
+
             else:
                 print("DNS protection: localhost only", file=sys.stderr)
-            
+
             # Start the server with streamable HTTP transport
             mcp.run(transport="streamable-http")
-            
+
         else:
             # Use stdio transport (default)
             mcp.run(transport="stdio")
