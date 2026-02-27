@@ -196,6 +196,7 @@ def _ensure_clients():
     annotations={
         "title": "Get Asset Info",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -237,6 +238,7 @@ async def get_asset(symbol: str) -> str:
     annotations={
         "title": "Get All Assets",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -299,6 +301,7 @@ async def get_all_assets(
     annotations={
         "title": "Get Corporate Actions",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -417,6 +420,7 @@ async def get_corporate_actions(
     annotations={
         "title": "Get Market Calendar",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -456,6 +460,7 @@ async def get_calendar(start_date: str, end_date: str) -> str:
     annotations={
         "title": "Get Market Clock",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -492,6 +497,7 @@ async def get_clock() -> str:
     annotations={
         "title": "Get Stock Bars",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -642,6 +648,7 @@ async def get_stock_bars(
     annotations={
         "title": "Get Stock Quotes",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -783,6 +790,7 @@ async def get_stock_quotes(
     annotations={
         "title": "Get Stock Trades",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -900,6 +908,7 @@ async def get_stock_trades(
     annotations={
         "title": "Get Stock Latest Bar",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -963,6 +972,7 @@ async def get_stock_latest_bar(
     annotations={
         "title": "Get Stock Latest Quote",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1034,6 +1044,7 @@ async def get_stock_latest_quote(
     annotations={
         "title": "Get Stock Latest Trade",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1097,6 +1108,7 @@ async def get_stock_latest_trade(
     annotations={
         "title": "Get Stock Snapshot",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1186,6 +1198,7 @@ async def get_stock_snapshot(
     annotations={
         "title": "Get Crypto Bars",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1307,6 +1320,7 @@ async def get_crypto_bars(
     annotations={
         "title": "Get Crypto Quotes",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1413,6 +1427,7 @@ async def get_crypto_quotes(
     annotations={
         "title": "Get Crypto Trades",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1535,6 +1550,7 @@ async def get_crypto_trades(
     annotations={
         "title": "Get Crypto Latest Bar",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1569,6 +1585,7 @@ async def get_crypto_latest_bar(
     annotations={
         "title": "Get Crypto Latest Quote",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1610,6 +1627,7 @@ async def get_crypto_latest_quote(
     annotations={
         "title": "Get Crypto Latest Trade",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1644,6 +1662,7 @@ async def get_crypto_latest_trade(
     annotations={
         "title": "Get Crypto Snapshot",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1691,6 +1710,7 @@ async def get_crypto_snapshot(
     annotations={
         "title": "Get Crypto Orderbook",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1737,6 +1757,7 @@ async def get_crypto_latest_orderbook(
     annotations={
         "title": "Get Option Contracts",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1858,6 +1879,7 @@ async def get_option_contracts(
     annotations={
         "title": "Get Option Latest Quote",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -1935,6 +1957,7 @@ async def get_option_latest_quote(
     annotations={
         "title": "Get Option Snapshot",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -2057,6 +2080,7 @@ async def get_option_snapshot(symbol_or_symbols: Union[str, List[str]], feed: Op
     annotations={
         "title": "Get Option Chain",
         "readOnlyHint": True,
+        "destructiveHint": False,
         "openWorldHint": True
     }
 )
@@ -2150,10 +2174,6 @@ async def get_option_chain(
     except Exception as e:
         return f"Error retrieving option chain for {underlying_symbol}: {str(e)}"
 
-
-# ============================================================================
-# Compatibility wrapper for CLI
-# ============================================================================
 
 # ============================================================================
 # Server Entry Point and CLI
