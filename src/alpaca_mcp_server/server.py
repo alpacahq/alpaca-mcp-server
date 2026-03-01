@@ -109,6 +109,10 @@ try:
         _create_option_order_request,
         _format_option_order_response,
         _handle_option_api_error,
+        build_success_result,
+        build_error_result,
+        to_serializable,
+        compact_json,
     )
 except ImportError:
     # Handle direct script execution where __package__ is empty
@@ -131,9 +135,14 @@ except ImportError:
         _create_option_order_request,
         _format_option_order_response,
         _handle_option_api_error,
+        build_success_result,
+        build_error_result,
+        to_serializable,
+        compact_json,
     )
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import CallToolResult
 
 # Configure Python path for local imports (UserAgentMixin)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -456,20 +465,7 @@ async def get_corporate_actions(
     
     Args:
         ca_types (Optional[List[CorporateActionsType]]): List of corporate action types to filter by (default: all types)
-            Available types from https://alpaca.markets/sdks/python/api_reference/data/enums.html#corporateactionstype:
-            - CorporateActionsType.REVERSE_SPLIT: Reverse split
-            - CorporateActionsType.FORWARD_SPLIT: Forward split  
-            - CorporateActionsType.UNIT_SPLIT: Unit split
-            - CorporateActionsType.CASH_DIVIDEND: Cash dividend
-            - CorporateActionsType.STOCK_DIVIDEND: Stock dividend
-            - CorporateActionsType.SPIN_OFF: Spin off
-            - CorporateActionsType.CASH_MERGER: Cash merger
-            - CorporateActionsType.STOCK_MERGER: Stock merger
-            - CorporateActionsType.STOCK_AND_CASH_MERGER: Stock and cash merger
-            - CorporateActionsType.REDEMPTION: Redemption
-            - CorporateActionsType.NAME_CHANGE: Name change
-            - CorporateActionsType.WORTHLESS_REMOVAL: Worthless removal
-            - CorporateActionsType.RIGHTS_DISTRIBUTION: Rights distribution
+            Available types: CorporateActionsType.REVERSE_SPLIT, CorporateActionsType.FORWARD_SPLIT, CorporateActionsType.UNIT_SPLIT, CorporateActionsType.CASH_DIVIDEND, CorporateActionsType.STOCK_DIVIDEND, CorporateActionsType.SPIN_OFF, CorporateActionsType.CASH_MERGER, CorporateActionsType.STOCK_MERGER, CorporateActionsType.STOCK_AND_CASH_MERGER, CorporateActionsType.REDEMPTION, CorporateActionsType.NAME_CHANGE, CorporateActionsType.WORTHLESS_REMOVAL, CorporateActionsType.RIGHTS_DISTRIBUTION
         start (Optional[date]): Start date for the announcements (default: current day)
         end (Optional[date]): End date for the announcements (default: current day)
         symbols (Optional[List[str]]): Optional list of stock symbols to filter by
@@ -480,11 +476,6 @@ async def get_corporate_actions(
     
     Returns:
         str: Formatted string containing corporate announcement details
-        
-    References:
-        - API Documentation: https://docs.alpaca.markets/reference/corporateactions-1
-        - CorporateActionsType Enum: https://alpaca.markets/sdks/python/api_reference/data/enums.html#corporateactionstype
-        - CorporateActionsRequest: https://alpaca.markets/sdks/python/api_reference/data/corporate_actions/requests.html#corporateactionsrequest
     """
     _ensure_clients()
     try:
@@ -499,52 +490,21 @@ async def get_corporate_actions(
             sort=sort
         )
         announcements = corporate_actions_client.get_corporate_actions(request)
-        
-        if not announcements or not announcements.data:
-            return "No corporate announcements found for the specified criteria."
-        
-        results: List[str] = []
-        
-        # The response.data contains action types as keys (e.g., 'cash_dividends', 'forward_splits')
-        # Each value is a list of corporate actions
-        for action_type, actions_list in announcements.data.items():
-            if not actions_list:
-                continue
-            
-            for action in actions_list:
-                symbol = getattr(action, 'symbol', 'Unknown')
-                results.append(f"Symbol: {symbol}")
-                
-                # Display action details based on available attributes
-                if hasattr(action, 'corporate_action_type'):
-                    results.append(f"Type: {action.corporate_action_type}")
-                if hasattr(action, 'ex_date') and action.ex_date:
-                    results.append(f"Ex Date: {action.ex_date}")
-                if hasattr(action, 'record_date') and action.record_date:
-                    results.append(f"Record Date: {action.record_date}")
-                if hasattr(action, 'payable_date') and action.payable_date:
-                    results.append(f"Payable Date: {action.payable_date}")
-                if hasattr(action, 'process_date') and action.process_date:
-                    results.append(f"Process Date: {action.process_date}")
-                # Cash dividend specific fields
-                if hasattr(action, 'rate') and action.rate:
-                    results.append(f"Rate: ${action.rate:.6f}")
-                if hasattr(action, 'foreign') and hasattr(action, 'special'):
-                    results.append(f"Foreign: {action.foreign}, Special: {action.special}")
-                # Split specific fields
-                if hasattr(action, 'old_rate') and action.old_rate:
-                    results.append(f"Old Rate: {action.old_rate}")
-                if hasattr(action, 'new_rate') and action.new_rate:
-                    results.append(f"New Rate: {action.new_rate}")
-                # Due bill dates
-                if hasattr(action, 'due_bill_on_date') and action.due_bill_on_date:
-                    results.append(f"Due Bill On Date: {action.due_bill_on_date}")
-                if hasattr(action, 'due_bill_off_date') and action.due_bill_off_date:
-                    results.append(f"Due Bill Off Date: {action.due_bill_off_date}")
-                
-                results.append("")
-        
-        return "\n".join(results)
+        raw_data = getattr(announcements, "data", {}) if announcements else {}
+        payload = {
+            "request": {
+                "ca_types": to_serializable(ca_types),
+                "start": to_serializable(start),
+                "end": to_serializable(end),
+                "symbols": symbols,
+                "cusips": cusips,
+                "ids": ids,
+                "limit": limit,
+                "sort": sort,
+            },
+            "announcements": to_serializable(raw_data) if raw_data else {},
+        }
+        return compact_json(payload)
     except Exception as e:
         return f"Error fetching corporate announcements: {str(e)}"
 
@@ -574,8 +534,8 @@ async def get_portfolio_history(
     Retrieves account portfolio history (equity and P/L) over a requested time window.
 
     Args:
-        timeframe (Optional[str]): Resolution of each data point (e.g., "1Min", "5Min", "15Min", "1H", "1D").
-        period (Optional[str]): Window length (e.g., "1W", "1M", "3M", "6M", "1Y", "all").
+        timeframe (Optional[str]): Resolution of each data point.
+        period (Optional[str]): Window length.
         start (Optional[str]): Start time in ISO (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
         end (Optional[str]): End time in ISO (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
         date_end (Optional[str]): End date (alternative to end) as ISO date or datetime.
@@ -929,74 +889,71 @@ async def get_stock_bars(
     currency: Optional[SupportedCurrencies] = None,
     asof: Optional[str] = None,
     tz: str = "America/New_York"
-) -> str:
+) -> CallToolResult:
     """
     Retrieves and formats historical price bars for a stock with configurable timeframe and time range.
     
     Args:
         symbol (Union[str, List[str]]): Stock ticker symbol(s) (e.g., 'AAPL', 'MSFT' or ['AAPL', 'MSFT'])
-        days (int): Number of days to look back (default: 5, ignored if start is provided)
-        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
-        minutes (int): Number of minutes to look back (default: 30, ignored if start is provided)
+        days (int): Number of days to look back
+        hours (int): Number of hours to look back
+        minutes (int): Number of minutes to look back
         timeframe (str): Bar timeframe - supports flexible Alpaca's formats:
-            - Minutes: "1Min" to "59Min" (or "1T" to "59T"), e.g., "5Min", "15Min", "30Min"
-            - Hours: "1Hour" to "23Hour" (or "1H" to "23H"), e.g., "1Hour", "4Hour", "6Hour"
+            - Minutes: "1Min" to "59Min" (or "1T" to "59T")
+            - Hours: "1Hour" to "23Hour" (or "1H" to "23H")
             - Days: "1Day" (or "1D")
             - Weeks: "1Week" (or "1W")
             - Months: "1Month", "2Month", "3Month", "4Month", "6Month", or "12Month" (or use "M" suffix)
             (default: "1Day")
         limit (Optional[int]): Maximum number of bars to return (default: 1000)
-        start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
-        end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
-        sort (Optional[Sort]): Chronological order of response (ASC or DESC, default: ASC)
+        start (Optional[str]): Start time in ISO format
+        end (Optional[str]): End time in ISO format
+        sort (Optional[Sort]): Chronological order of response (ASC or DESC)
         feed (Optional[DataFeed]): The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
         currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
         asof (Optional[str]): The asof date in YYYY-MM-DD format
         tz (str): Timezone for naive datetime strings (default: "America/New_York")
-            Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
     
     Returns:
-        str: Formatted string containing historical price data with timestamps, OHLCV data
+        str: Historical price data with timestamps, OHLCV data
     """
     _ensure_clients()
+    tool_name = "get_stock_bars"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
-        # Parse timeframe string to TimeFrame object
         timeframe_obj = parse_timeframe_with_enums(timeframe)
         if timeframe_obj is None:
-            return f"Error: Invalid timeframe '{timeframe}'. Supported formats: 1Min, 2Min, 5Min, 15Min, 30Min, 1Hour, 2Hour, 4Hour, 1Day, 1Week, 1Month, etc."
-        
-        # Parse start/end times or calculate from days/hours/minutes
+            return build_error_result(
+                tool_name,
+                "invalid_timeframe",
+                "Unsupported timeframe format.",
+                field="timeframe",
+                details={"provided": timeframe},
+            )
+
         start_time = None
         end_time = None
-        now_utc = datetime.now(timezone.utc)  # Capture once for consistency
-
+        now_utc = datetime.now(timezone.utc)
         if start:
             try:
                 start_time = _parse_iso_datetime(start, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
-        
+                return build_error_result(tool_name, "invalid_start", str(e), field="start")
         if end:
             try:
                 end_time = _parse_iso_datetime(end, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
-        else:
-            end_time = None
-        
-        # Compute start_time fallback: use explicit days/hours/minutes parameters
+                return build_error_result(tool_name, "invalid_end", str(e), field="end")
         if not start_time:
-            
             if days > 0:
                 start_time = now_utc - timedelta(days=days)
             elif hours > 0:
                 start_time = now_utc - timedelta(hours=hours)
             elif minutes > 0:
                 start_time = now_utc - timedelta(minutes=minutes)
-        
-        # Create the request object
+
         request_params = StockBarsRequest(
-            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
+            symbol_or_symbols=symbols_list,
             timeframe=timeframe_obj,
             start=start_time,
             end=end_time,
@@ -1004,61 +961,72 @@ async def get_stock_bars(
             sort=sort,
             feed=feed,
             currency=currency,
-            asof=asof
+            asof=asof,
         )
-        
         bars = stock_historical_data_client.get_stock_bars(request_params)
-        
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        results: List[str] = []
-        
+        mapping_bars = getattr(bars, "data", None) or bars
+
+        bars_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+        counts: Dict[str, int] = {}
+        total_records = 0
         for sym in symbols_list:
-            if bars[sym]:
-                results.extend([
-                    f"Historical Bars for {sym} ({timeframe} timeframe):",
-                    f"Total Records: {len(bars[sym])}",
-                    ""
-                ])
-                
-                for bar in bars[sym]:
-                    # Format timestamp based on timeframe unit
-                    if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
-                        time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S') + " UTC"
-                    else:
-                        time_str = str(bar.timestamp.date())
-                    
-                    results.append(f"Time: {time_str}, Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}, Volume: {bar.volume}")
-                
-                results.append("")
-                if len(symbols_list) > 1:
-                    results.append("")  # Separator between symbols
-            else:
-                results.append(f"No bar data found for {sym} with {timeframe} timeframe in the specified time range.")
-        
-        if results:
-            return "\n".join(results)
-        else:
-            symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
-            return f"No bar data found for {symbol_str} with {timeframe} timeframe in the specified time range."
-            
+            sym_bars = mapping_bars.get(sym) if hasattr(mapping_bars, "get") else []
+            sym_serialized = [to_serializable(bar) for bar in (sym_bars or [])]
+            bars_by_symbol[sym] = sym_serialized
+            counts[sym] = len(sym_serialized)
+            total_records += len(sym_serialized)
+
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "symbols": symbols_list,
+                "days": days,
+                "hours": hours,
+                "minutes": minutes,
+                "timeframe": timeframe,
+                "limit": limit,
+                "start": start,
+                "end": end,
+                "sort": to_serializable(sort),
+                "feed": to_serializable(feed),
+                "currency": to_serializable(currency),
+                "asof": asof,
+                "tz": tz,
+            },
+            "counts": {"symbols": len(symbols_list), "records": total_records, "per_symbol": counts},
+            "bars": bars_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={total_records}",
+            content_text=compact_json(payload),
+        )
     except APIError as api_error:
         error_message = str(api_error)
         lower = error_message.lower()
         if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
-            fifteen_ago = datetime.now() - timedelta(minutes=15)
-            hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
-            return (
-                f"Free-plan limitation: Alpaca's REST SIP data is delayed by 15 minutes. "
-                f"Your request likely included the most recent 15 minutes. "
-                f"Retry with `end` <= {hint_end} (exclude the last 15 minutes), "
-                f"use the IEX feed where supported, or upgrade for real-time SIP.\n"
-                f"Original error: {error_message}"
+            fifteen_ago = datetime.now(timezone.utc) - timedelta(minutes=15)
+            hint_end = fifteen_ago.strftime("%Y-%m-%dT%H:%M:%S")
+            return build_error_result(
+                tool_name,
+                "sip_delay_window",
+                "SIP data is delayed by 15 minutes on free plan.",
+                details={"hint_end": hint_end, "original_error": error_message},
             )
-        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
-        return f"API Error fetching bars for {symbol_str}: {error_message}"
+        return build_error_result(
+            tool_name,
+            "api_error",
+            "Failed to fetch stock bars.",
+            details={"symbols": symbols_list, "original_error": error_message},
+        )
     except Exception as e:
-        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
-        return f"Error fetching bars for {symbol_str}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch stock bars.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -1080,45 +1048,40 @@ async def get_stock_quotes(
     currency: Optional[SupportedCurrencies] = None,
     asof: Optional[str] = None,
     tz: str = "America/New_York"
-) -> str:
+) -> CallToolResult:
     """
     Retrieves and formats historical quote data (level 1 bid/ask) for a stock.
     
     Args:
         symbol (Union[str, List[str]]): Stock ticker symbol(s) (e.g., 'AAPL', 'MSFT' or ['AAPL', 'MSFT'])
-        days (int): Number of days to look back (default: 0, ignored if start is provided)
-        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
-        minutes (int): Number of minutes to look back (default: 20, ignored if start is provided)
+        days (int): Number of days to look back
+        hours (int): Number of hours to look back
+        minutes (int): Number of minutes to look back
         limit (Optional[int]): Upper limit of number of data points to return (default: 1000)
-        start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
-        end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
+        start (Optional[str]): Start time in ISO format
+        end (Optional[str]): End time in ISO format
         sort (Optional[Sort]): Chronological order of response (ASC or DESC)
-        feed (Optional[DataFeed]): The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
+        feed (Optional[DataFeed]): The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP)
         currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
         asof (Optional[str]): The asof date in YYYY-MM-DD format
         tz (str): Timezone for naive datetime strings (default: "America/New_York")
-            Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
         
     Returns:
-        str: Formatted string containing quote summary or an error message
+        str: Formatted string containing quote summary or error message
     """
     _ensure_clients()
+    tool_name = "get_stock_quotes"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
-        # Set default limit if not provided
         if limit is None:
             limit = 1000
-        
-        # Capture current time once for consistency
         now_utc = datetime.now(timezone.utc)
-        
-        # Handle start time: use provided start or calculate from days/hours/minutes
         if start:
             try:
                 start_time = _parse_iso_datetime(start, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
+                return build_error_result(tool_name, "invalid_start", str(e), field="start")
         else:
-            # Calculate start time based on days, hours, or minutes (priority order)
             if days > 0:
                 start_time = now_utc - timedelta(days=days)
             elif hours > 0:
@@ -1126,81 +1089,87 @@ async def get_stock_quotes(
             elif minutes > 0:
                 start_time = now_utc - timedelta(minutes=minutes)
             else:
-                # Default fallback: let SDK handle defaults
                 start_time = None
-        
-        # Handle end time: use provided end
         if end:
             try:
                 end_time = _parse_iso_datetime(end, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
+                return build_error_result(tool_name, "invalid_end", str(e), field="end")
         else:
             end_time = None
-        
-        # Create the request object
+
         request_params = StockQuotesRequest(
-            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
+            symbol_or_symbols=symbols_list,
             start=start_time,
             end=end_time,
             limit=limit,
             sort=sort,
             feed=feed,
             currency=currency,
-            asof=asof
+            asof=asof,
         )
-        
         quotes = stock_historical_data_client.get_stock_quotes(request_params)
-        
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        results: List[str] = []
-
+        mapping_quotes = getattr(quotes, "data", None) or quotes
+        quotes_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+        counts: Dict[str, int] = {}
+        total_records = 0
         for sym in symbols_list:
-            if quotes[sym]:
-                data = quotes[sym]
-                results.extend([
-                    f"Historical Quotes for {sym}",
-                    f"Total Records: {len(data)}",
-                    ""
-                ])
-                
-                for quote in data:
-                    results.extend([
-                        f"Timestamp: {quote.timestamp} UTC",
-                        f"  Bid Price: {quote.bid_price}",
-                        f"  Bid Size: {quote.bid_size}",
-                        f"  Bid Exchange: {quote.bid_exchange}",
-                        f"  Ask Price: {quote.ask_price}",
-                        f"  Ask Size: {quote.ask_size}",
-                        f"  Ask Exchange: {quote.ask_exchange}",
-                        f"  Conditions: {quote.conditions}",
-                        f"  Tape: {quote.tape}",
-                        ""
-                    ])
-                
-                results.append("")
-                if len(symbols_list) > 1:
-                    results.append("")  # Separator
-            else:
-                results.append(f"No quotes for {sym}")
+            sym_quotes = mapping_quotes.get(sym) if hasattr(mapping_quotes, "get") else []
+            sym_serialized = [to_serializable(q) for q in (sym_quotes or [])]
+            quotes_by_symbol[sym] = sym_serialized
+            counts[sym] = len(sym_serialized)
+            total_records += len(sym_serialized)
 
-        if results:
-            return "\n".join(results)
-        else:
-            return f"No quotes found"
-            
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "symbols": symbols_list,
+                "days": days,
+                "hours": hours,
+                "minutes": minutes,
+                "limit": limit,
+                "start": start,
+                "end": end,
+                "sort": to_serializable(sort),
+                "feed": to_serializable(feed),
+                "currency": to_serializable(currency),
+                "asof": asof,
+                "tz": tz,
+            },
+            "counts": {"symbols": len(symbols_list), "records": total_records, "per_symbol": counts},
+            "quotes": quotes_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={total_records}",
+            content_text=compact_json(payload),
+        )
     except APIError as api_error:
         error_message = str(api_error)
         lower = error_message.lower()
         if "subscription" in lower and "sip" in lower and ("recent" in lower or "15" in lower):
             fifteen_ago = datetime.now(timezone.utc) - timedelta(minutes=15)
-            hint_end = fifteen_ago.strftime('%Y-%m-%dT%H:%M:%S')
-            return f"Error: Free-plan limitation: Alpaca's REST SIP data is delayed by 15 minutes. Retry with `end` <= {hint_end} or use IEX feed. Original error: {error_message}"
-        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
-        return f"API Error fetching quotes for {symbol_str}: {error_message}"
+            hint_end = fifteen_ago.strftime("%Y-%m-%dT%H:%M:%S")
+            return build_error_result(
+                tool_name,
+                "sip_delay_window",
+                "SIP data is delayed by 15 minutes on free plan.",
+                details={"hint_end": hint_end, "original_error": error_message},
+            )
+        return build_error_result(
+            tool_name,
+            "api_error",
+            "Failed to fetch stock quotes.",
+            details={"symbols": symbols_list, "original_error": error_message},
+        )
     except Exception as e:
-        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
-        return f"Error fetching quotes for {symbol_str}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch stock quotes.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -1222,41 +1191,39 @@ async def get_stock_trades(
     currency: Optional[SupportedCurrencies] = None,
     asof: Optional[str] = None,
     tz: str = "America/New_York"
-) -> str:
+) -> CallToolResult:
     """
     Retrieves and formats historical trades for a stock.
     
     Args:
-        symbol (Union[str, List[str]]): Stock ticker symbol(s) (e.g., 'AAPL', 'MSFT' or ['AAPL', 'MSFT'])
-        days (int): Number of days to look back (default: 0, ignored if start is provided)
-        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
-        minutes (int): Number of minutes to look back (default: 30, ignored if start is provided)
+        symbol (Union[str, List[str]]): Stock ticker symbol(s)
+        days (int): Number of days to look back
+        hours (int): Number of hours to look back
+        minutes (int): Number of minutes to look back
         limit (Optional[int]): Upper limit of number of data points to return
-        start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
-        end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
+        start (Optional[str]): Start time in ISO format
+        end (Optional[str]): End time in ISO format
         sort (Optional[Sort]): Chronological order of response (ASC or DESC)
-        feed (Optional[DataFeed]): The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
-        currency (Optional[SupportedCurrencies]): Currency for prices (default: USD)
+        feed (Optional[DataFeed]): The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP)
+        currency (Optional[SupportedCurrencies]): Currency for prices
         asof (Optional[str]): The asof date in YYYY-MM-DD format
-        tz (str): Timezone for naive datetime strings (default: "America/New_York")
+        tz (str): Timezone for naive datetime strings
             Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
     
     Returns:
         str: Formatted string containing trade history or an error message
     """
     _ensure_clients()
+    tool_name = "get_stock_trades"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
-        # Capture current time once for consistency
         now_utc = datetime.now(timezone.utc)
-        
-        # Handle start time: use provided start or calculate from days/hours/minutes
         if start:
             try:
                 start_time = _parse_iso_datetime(start, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
+                return build_error_result(tool_name, "invalid_start", str(e), field="start")
         else:
-            # Calculate start time based on days, hours, or minutes (priority order)
             if days > 0:
                 start_time = now_utc - timedelta(days=days)
             elif hours > 0:
@@ -1264,59 +1231,71 @@ async def get_stock_trades(
             elif minutes > 0:
                 start_time = now_utc - timedelta(minutes=minutes)
             else:
-                # Default fallback: let SDK handle defaults
                 start_time = None
 
         if end:
             try:
                 end_time = _parse_iso_datetime(end, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
+                return build_error_result(tool_name, "invalid_end", str(e), field="end")
         else:
             end_time = None
-        
-        # Create the request object with all available parameters
+
         request_params = StockTradesRequest(
-            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
+            symbol_or_symbols=symbols_list,
             start=start_time,
             end=end_time,
             limit=limit,
             sort=sort,
             feed=feed,
             currency=currency,
-            asof=asof
+            asof=asof,
         )
-        
-        # Get the trades
         trades = stock_historical_data_client.get_stock_trades(request_params)
-        
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        results: List[str] = []
+        mapping_trades = getattr(trades, "data", None) or trades
 
+        trades_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+        counts: Dict[str, int] = {}
+        total_records = 0
         for sym in symbols_list:
-            if sym in trades:
-                results.extend([
-                    f"Historical Trades for {sym}:",
-                    f"Total Records: {len(trades[sym])}",
-                    ""
-                ])
-                
-                for trade in trades[sym]:
-                    results.append(f"Time: {trade.timestamp} UTC, Price: ${float(trade.price):.6f}, Size: {trade.size}, Exchange: {trade.exchange}, ID: {trade.id}, Conditions: {trade.conditions}, Tape: {trade.tape}")
-                    results.append("")
-                
-                results.append("")
-                if len(symbols_list) > 1:
-                    results.append("")  # Separator
-            else:
-                results.append(f"No trade data found for {sym} in the specified time range.")
+            sym_trades = mapping_trades.get(sym) if hasattr(mapping_trades, "get") else []
+            sym_serialized = [to_serializable(t) for t in (sym_trades or [])]
+            trades_by_symbol[sym] = sym_serialized
+            counts[sym] = len(sym_serialized)
+            total_records += len(sym_serialized)
 
-        if results:
-            return "\n".join(results)
-        else:
-            return f"No trade data found"
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "symbols": symbols_list,
+                "days": days,
+                "hours": hours,
+                "minutes": minutes,
+                "limit": limit,
+                "start": start,
+                "end": end,
+                "sort": to_serializable(sort),
+                "feed": to_serializable(feed),
+                "currency": to_serializable(currency),
+                "asof": asof,
+                "tz": tz,
+            },
+            "counts": {"symbols": len(symbols_list), "records": total_records, "per_symbol": counts},
+            "trades": trades_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={total_records}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error fetching trades: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch stock trades.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -1329,7 +1308,7 @@ async def get_stock_latest_bar(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None
-) -> str:
+) -> CallToolResult:
     """
     Get the latest minute bar for one or more stocks.
     
@@ -1339,46 +1318,42 @@ async def get_stock_latest_bar(
         currency: The currency for prices (optional, defaults to USD)
     
     Returns:
-        A formatted string containing the latest bar details or an error message
+        str: Latest bar(s) for one or more stocks
     """
     _ensure_clients()
+    tool_name = "get_stock_latest_bar"
+    symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+    if not symbols_list:
+        return build_error_result(tool_name, "missing_symbols", "No symbols provided.", field="symbol_or_symbols")
     try:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        if not symbols_list:
-            return "No symbols provided."
-        
-        # Create the request object with all available parameters
-        request_params = StockLatestBarRequest(
-            symbol_or_symbols=symbol_or_symbols,
-            feed=feed,
-            currency=currency
-        )
-        
-        # Get the latest bar
+        request_params = StockLatestBarRequest(symbol_or_symbols=symbol_or_symbols, feed=feed, currency=currency)
         latest_bars = stock_historical_data_client.get_stock_latest_bar(request_params)
-        
-        results: List[str] = []
-        for symbol in symbols_list:
-            bar = latest_bars.get(symbol)
-            if not bar:
-                results.append(f"No latest bar data found for {symbol}.")
-                continue
-            
-            results.extend([
-                f"Symbol: {symbol}",
-                f"Time: {bar.timestamp}",
-                f"Open: ${float(bar.open):.2f}",
-                f"High: ${float(bar.high):.2f}",
-                f"Low: ${float(bar.low):.2f}",
-                f"Close: ${float(bar.close):.2f}",
-                f"Volume: {bar.volume}",
-                ""
-            ])
-        return "\n".join(results).strip()
+        bars_by_symbol: Dict[str, Any] = {}
+        found = 0
+        for sym in symbols_list:
+            bar = latest_bars.get(sym) if hasattr(latest_bars, "get") else None
+            bars_by_symbol[sym] = to_serializable(bar) if bar else None
+            if bar:
+                found += 1
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols_list, "feed": to_serializable(feed), "currency": to_serializable(currency)},
+            "counts": {"symbols": len(symbols_list), "records": found},
+            "bars": bars_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} found={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        requested = ", ".join(symbols_list) if symbols_list else ""
-        return f"Error fetching latest bar for {requested}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch latest stock bar.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 
 @mcp.tool(
@@ -1392,7 +1367,7 @@ async def get_stock_latest_quote(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = None,    
     currency: Optional[SupportedCurrencies] = None
-    ) -> str:
+    ) -> CallToolResult:
     """
     Retrieves and formats the latest quote for one or more stocks.
     
@@ -1405,45 +1380,39 @@ async def get_stock_latest_quote(
         str: Latest bid/ask prices, sizes, and timestamp for each symbol
     """
     _ensure_clients()
+    tool_name = "get_stock_latest_quote"
+    symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+    if not symbols:
+        return build_error_result(tool_name, "missing_symbols", "No symbols provided.", field="symbol_or_symbols")
     try:
-        # Validate input before making API call
-        symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        if not symbols:
-            return "No symbols provided."
-        
-        request_params = StockLatestQuoteRequest(
-            symbol_or_symbols=symbol_or_symbols,
-            feed=feed,
-            currency=currency
-        )
-
+        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol_or_symbols, feed=feed, currency=currency)
         quotes = stock_historical_data_client.get_stock_latest_quote(request_params)
-
-        results: List[str] = []
-        for symbol in symbols:
-            quote = quotes.get(symbol)
-            if not quote:
-                results.append(f"No quote data found for {symbol}.")
-                continue
-
-            timestamp_value = getattr(quote, "timestamp", None)
-            timestamp = timestamp_value.isoformat() if hasattr(timestamp_value, "isoformat") else timestamp_value or "N/A"
-
-            results.extend([
-                f"Symbol: {symbol}",
-                f"Ask Price: ${quote.ask_price:.2f}",
-                f"Bid Price: ${quote.bid_price:.2f}",
-                f"Ask Size: {quote.ask_size}",
-                f"Bid Size: {quote.bid_size}",
-                f"Timestamp: {timestamp}",
-                "",
-            ])
-
-        return "\n".join(results).strip()
+        quotes_by_symbol: Dict[str, Any] = {}
+        found = 0
+        for sym in symbols:
+            quote = quotes.get(sym) if hasattr(quotes, "get") else None
+            quotes_by_symbol[sym] = to_serializable(quote) if quote else None
+            if quote:
+                found += 1
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols, "feed": to_serializable(feed), "currency": to_serializable(currency)},
+            "counts": {"symbols": len(symbols), "records": found},
+            "quotes": quotes_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols)} found={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        requested = ", ".join(symbols) if symbols else ""
-        return f"Error fetching quote for {requested}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch latest stock quote.",
+            details={"symbols": symbols, "original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -1456,7 +1425,7 @@ async def get_stock_latest_trade(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None
-) -> str:
+) -> CallToolResult:
     """Get the latest trade for one or more stocks.
     
     Args:
@@ -1465,47 +1434,42 @@ async def get_stock_latest_trade(
         currency: The currency for prices (optional, defaults to USD)
     
     Returns:
-        A formatted string containing the latest trade details or an error message
+        str: Latest trade(s) for one or more stocks
     """
     _ensure_clients()
+    tool_name = "get_stock_latest_trade"
+    symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+    if not symbols_list:
+        return build_error_result(tool_name, "missing_symbols", "No symbols provided.", field="symbol_or_symbols")
     try:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        if not symbols_list:
-            return "No symbols provided."
-        
-        # Create the request object with all available parameters
-        request_params = StockLatestTradeRequest(
-            symbol_or_symbols=symbol_or_symbols,
-            feed=feed,
-            currency=currency
-        )
-        
-        # Get the latest trade
+        request_params = StockLatestTradeRequest(symbol_or_symbols=symbol_or_symbols, feed=feed, currency=currency)
         latest_trades = stock_historical_data_client.get_stock_latest_trade(request_params)
-        
-        results: List[str] = []
-        for symbol in symbols_list:
-            trade = latest_trades.get(symbol)
-            if not trade:
-                results.append(f"No latest trade data found for {symbol}.")
-                continue
-            
-            results.extend([
-                f"Symbol: {symbol}",
-                f"Time: {trade.timestamp}",
-                f"Price: ${float(trade.price):.6f}",
-                f"Size: {trade.size}",
-                f"Exchange: {trade.exchange}",
-                f"ID: {trade.id}",
-                f"Conditions: {trade.conditions}",
-                ""
-            ])
-        
-        return "\n".join(results).strip()
+        trades_by_symbol: Dict[str, Any] = {}
+        found = 0
+        for sym in symbols_list:
+            trade = latest_trades.get(sym) if hasattr(latest_trades, "get") else None
+            trades_by_symbol[sym] = to_serializable(trade) if trade else None
+            if trade:
+                found += 1
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols_list, "feed": to_serializable(feed), "currency": to_serializable(currency)},
+            "counts": {"symbols": len(symbols_list), "records": found},
+            "trades": trades_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} found={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        requested = ", ".join(symbols_list) if symbols_list else ""
-        return f"Error fetching latest trade for {requested}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch latest stock trade.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 
 @mcp.tool(
@@ -1519,78 +1483,66 @@ async def get_stock_snapshot(
     symbol_or_symbols: Union[str, List[str]], 
     feed: Optional[DataFeed] = None,
     currency: Optional[SupportedCurrencies] = None
-) -> str:
+) -> CallToolResult:
     """
     Retrieves comprehensive snapshots of stock symbols including latest trade, quote, minute bar, daily bar, and previous daily bar.
     
     Args:
-        symbol_or_symbols: Single stock symbol or list of stock symbols (e.g., 'AAPL' or ['AAPL', 'MSFT'])
-        feed: The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP, default: None)
-        currency: The currency the data should be returned in (default: USD)
+        symbol_or_symbols: Single stock symbol or list of stock symbols
+        feed: The stock data feed to retrieve from (DataFeed.IEX or DataFeed.SIP)
+        currency: The currency the data should be returned in
     
     Returns:
-        Formatted string with comprehensive snapshots including:
-        - latest_quote: Current bid/ask prices and sizes
-        - latest_trade: Most recent trade price, size, and exchange
-        - minute_bar: Latest minute OHLCV bar
-        - daily_bar: Current day's OHLCV bar  
-        - previous_daily_bar: Previous trading day's OHLCV bar
+        str: Comprehensive snapshots including latest_quote, latest_trade, minute_bar, daily_bar, previous_daily_bar
     """
     _ensure_clients()
+    tool_name = "get_stock_snapshot"
+    symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
     try:
-        # Create and execute request
         request = StockSnapshotRequest(symbol_or_symbols=symbol_or_symbols, feed=feed, currency=currency)
         snapshots = stock_historical_data_client.get_stock_snapshot(request)
-        
-        # Format response
-        symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else symbol_or_symbols
-        results = ["Stock Snapshots:", "=" * 15, ""]
-        
-        for symbol in symbols:
-            snapshot = snapshots.get(symbol)
-            if not snapshot:
-                results.append(f"No data available for {symbol}\n")
-                continue
-            
-            # Build snapshot data using helper functions
-            snapshot_data = [
-                f"Symbol: {symbol}",
-                "-" * 15,
-                _format_quote_data(snapshot.latest_quote),
-                _format_trade_data(snapshot.latest_trade),
-                _format_ohlcv_bar(snapshot.minute_bar, "Latest Minute Bar", True),
-                _format_ohlcv_bar(snapshot.daily_bar, "Latest Daily Bar", False),
-                _format_ohlcv_bar(snapshot.previous_daily_bar, "Previous Daily Bar", False),
-            ]
-            
-            results.extend(filter(None, snapshot_data))  # Filter out empty strings
-        
-        return "\n".join(results)
-        
+        snapshots_by_symbol: Dict[str, Any] = {}
+        found = 0
+        for sym in symbols:
+            snapshot = snapshots.get(sym) if hasattr(snapshots, "get") else None
+            snapshots_by_symbol[sym] = to_serializable(snapshot) if snapshot else None
+            if snapshot:
+                found += 1
+
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols, "feed": to_serializable(feed), "currency": to_serializable(currency)},
+            "counts": {"symbols": len(symbols), "records": found},
+            "snapshots": snapshots_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols)} found={found}",
+            content_text=compact_json(payload),
+        )
     except APIError as api_error:
         error_message = str(api_error)
-        # Handle specific data feed subscription errors
         if "subscription" in error_message.lower() and ("sip" in error_message.lower() or "premium" in error_message.lower()):
-            return f"""
-                    Error: Premium data feed subscription required.
-
-                    The requested data feed requires a premium subscription. Available data feeds:
-
-                    • IEX (Default): Investor's Exchange data feed - Free with basic account
-                    • SIP: Securities Information Processor feed - Requires premium subscription
-                    • DELAYED_SIP: SIP data with 15-minute delay - Requires premium subscription  
-                    • OTC: Over the counter feed - Requires premium subscription
-
-                    Most users can access comprehensive market data using the default IEX feed.
-                    To use premium feeds (SIP, DELAYED_SIP, OTC), please upgrade your subscription.
-
-                    Original error: {error_message}
-                    """
-        else:
-            return f"API Error retrieving stock snapshots: {error_message}"
-            
+            return build_error_result(
+                tool_name,
+                "premium_feed_required",
+                "Premium data feed subscription required.",
+                details={"original_error": error_message},
+            )
+        return build_error_result(
+            tool_name,
+            "api_error",
+            "Failed to retrieve stock snapshots.",
+            details={"original_error": error_message},
+        )
     except Exception as e:
-        return f"Error retrieving stock snapshots: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to retrieve stock snapshots.",
+            details={"original_error": str(e)},
+        )
 
 # ============================================================================
 # Crypto Market Data Tools
@@ -1614,26 +1566,21 @@ async def get_crypto_bars(
     end: Optional[str] = None,
     feed: CryptoFeed = CryptoFeed.US,
     tz: str = "America/New_York"
-) -> str:
+) -> CallToolResult:
     """
     Retrieves and formats historical price bars for a cryptocurrency with configurable timeframe and time range.
     
     Args:
         symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD', 'ETH/USD' or ['BTC/USD', 'ETH/USD'])
-        days (int): Number of days to look back (default: 1, ignored if start is provided)
-        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
-        minutes (int): Number of minutes to look back (default: 30, ignored if start is provided)
+        days (int): Number of days to look back
+        hours (int): Number of hours to look back
+        minutes (int): Number of minutes to look back
         timeframe (str): Bar timeframe - supports flexible Alpaca's formats:
-            - Minutes: "1Min", "2Min", "3Min", "4Min", "5Min", "15Min", "30Min", etc.
-            - Hours: "1Hour", "2Hour", "3Hour", "4Hour", "6Hour", etc.
-            - Days: "1Day", "2Day", "3Day", etc.
-            - Weeks: "1Week", "2Week", etc.
-            - Months: "1Month", "2Month", etc.
-            (default: "1Hour")
+            - Minutes, Hours, Days, Weeks, Months (default: "1Hour")
         limit (Optional[int]): Maximum number of bars to return (optional)
-        start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
-        end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
-        feed (CryptoFeed): The crypto data feed to retrieve from (default: US)
+        start (Optional[str]): Start time in ISO format
+        end (Optional[str]): End time in ISO format
+        feed (CryptoFeed): The crypto data feed to retrieve from
         tz (str): Timezone for naive datetime strings (default: "America/New_York")
             Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
     
@@ -1641,83 +1588,90 @@ async def get_crypto_bars(
         str: Formatted string containing historical crypto price data with timestamps, OHLCV data
     """
     _ensure_clients()
+    tool_name = "get_crypto_bars"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
-        # Parse timeframe string to TimeFrame object
         timeframe_obj = parse_timeframe_with_enums(timeframe)
         if timeframe_obj is None:
-            return f"Error: Invalid timeframe '{timeframe}'. Supported formats: 1Min, 2Min, 4Min, 5Min, 15Min, 30Min, 1Hour, 2Hour, 4Hour, 1Day, 1Week, 1Month, etc."
-        
-        # Parse start/end times or calculate from days
+            return build_error_result(
+                tool_name,
+                "invalid_timeframe",
+                "Unsupported timeframe format.",
+                field="timeframe",
+                details={"provided": timeframe},
+            )
+
         start_time = None
         end_time = None
-        now_utc = datetime.now(timezone.utc)  # Capture once for consistency
-        
+        now_utc = datetime.now(timezone.utc)
         if start:
             try:
                 start_time = _parse_iso_datetime(start, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
-   
+                return build_error_result(tool_name, "invalid_start", str(e), field="start")
         if end:
             try:
                 end_time = _parse_iso_datetime(end, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
-        else:
-            end_time = None
-        
-        # Compute start_time fallback: use explicit days/hours/minutes parameters
+                return build_error_result(tool_name, "invalid_end", str(e), field="end")
         if not start_time:
-            
             if days > 0:
                 start_time = now_utc - timedelta(days=days)
             elif hours > 0:
                 start_time = now_utc - timedelta(hours=hours)
             elif minutes > 0:
                 start_time = now_utc - timedelta(minutes=minutes)
-        
+
         request_params = CryptoBarsRequest(
-            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
+            symbol_or_symbols=symbols_list,
             timeframe=timeframe_obj,
             start=start_time,
             end=end_time,
-            limit=limit
+            limit=limit,
         )
-        
         bars = crypto_historical_data_client.get_crypto_bars(request_params, feed=feed)
-        
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        results: List[str] = []
-        
+        mapping_bars = getattr(bars, "data", None) or bars
+
+        bars_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+        counts: Dict[str, int] = {}
+        total_records = 0
         for sym in symbols_list:
-            if bars[sym]:
-                results.extend([
-                    f"Historical Crypto Bars for {sym} ({timeframe} timeframe):",
-                    f"Total Records: {len(bars[sym])}",
-                    ""
-                ])
-                
-                for bar in bars[sym]:
-                    if timeframe_obj.unit_value in [TimeFrameUnit.Minute, TimeFrameUnit.Hour]:
-                        time_str = bar.timestamp.strftime('%Y-%m-%d %H:%M:%S') + " UTC"
-                    else:
-                        time_str = bar.timestamp.date()
-                    results.append(f"Time: {time_str}, Open: ${bar.open:.6f}, High: ${bar.high:.6f}, Low: ${bar.low:.6f}, Close: ${bar.close:.6f}, Volume: {bar.volume}")
-                
-                results.append("")
-                if len(symbols_list) > 1:
-                    results.append("")  # Separator between symbols
-            else:
-                results.append(f"No bar data found for {sym} with {timeframe} timeframe in the specified time range.")
-        
-        if results:
-            return "\n".join(results)
-        else:
-            symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
-            return f"No bar data found for {symbol_str} with {timeframe} timeframe in the specified time range."
+            sym_bars = mapping_bars.get(sym) if hasattr(mapping_bars, "get") else []
+            sym_serialized = [to_serializable(b) for b in (sym_bars or [])]
+            bars_by_symbol[sym] = sym_serialized
+            counts[sym] = len(sym_serialized)
+            total_records += len(sym_serialized)
+
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "symbols": symbols_list,
+                "days": days,
+                "hours": hours,
+                "minutes": minutes,
+                "timeframe": timeframe,
+                "limit": limit,
+                "start": start,
+                "end": end,
+                "feed": to_serializable(feed),
+                "tz": tz,
+            },
+            "counts": {"symbols": len(symbols_list), "records": total_records, "per_symbol": counts},
+            "bars": bars_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={total_records}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
-        return f"Error fetching historical crypto data for {symbol_str}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch historical crypto bars.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -1736,95 +1690,100 @@ async def get_crypto_quotes(
     end: Optional[str] = None,
     feed: CryptoFeed = CryptoFeed.US,
     tz: str = "America/New_York"
-) -> str:
+) -> CallToolResult:
     """
-    Retrieves and formats historical quote data for a cryptocurrency.
+    Returns historical quote data for one or more crypto symbols.
     
     Args:
-        symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD', 'ETH/USD' or ['BTC/USD', 'ETH/USD'])
-        days (int): Number of days to look back (default: 0, ignored if start is provided)
-        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
-        minutes (int): Number of minutes to look back (default: 15, ignored if start is provided)
+        symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD' or ['BTC/USD','ETH/USD'])
+        days (int): Number of days to look back
+        hours (int): Number of hours to look back
+        minutes (int): Number of minutes to look back
         limit (Optional[int]): Maximum number of quotes to return (optional)
-        start (Optional[str]): Start time in ISO format (e.g., "2023-01-01T09:30:00" or "2023-01-01")
-        end (Optional[str]): End time in ISO format (e.g., "2023-01-01T16:00:00" or "2023-01-01")
-        feed (CryptoFeed): The crypto data feed to retrieve from (default: US)
-        tz (str): Timezone for naive datetime strings (default: "America/New_York")
+        start (Optional[str]): Start time in ISO format
+        end (Optional[str]): End time in ISO format
+        feed (CryptoFeed): The crypto data feed to retrieve from
+        tz (str): Timezone for naive datetime strings
             Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
     
     Returns:
         str: Formatted string containing historical crypto quote data with timestamps, bid/ask prices and sizes
     """
     _ensure_clients()
+    tool_name = "get_crypto_quotes"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
-        # Set default limit if not provided
         if limit is None:
             limit = 1000
-
-        # Parse start/end times or calculate from days
         start_time = None
         end_time = None
-        now_utc = datetime.now(timezone.utc)  # Capture once for consistency
-        
+        now_utc = datetime.now(timezone.utc)
         if start:
             try:
                 start_time = _parse_iso_datetime(start, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
+                return build_error_result(tool_name, "invalid_start", str(e), field="start")
         else:
-            # Calculate start time based on days, hours, or minutes (priority order)
             if days > 0:
                 start_time = now_utc - timedelta(days=days)
             elif hours > 0:
                 start_time = now_utc - timedelta(hours=hours)
             elif minutes > 0:
                 start_time = now_utc - timedelta(minutes=minutes)
-
         if end:
             try:
                 end_time = _parse_iso_datetime(end, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
-        else:
-            end_time = None 
-        
-        # Create the request object
+                return build_error_result(tool_name, "invalid_end", str(e), field="end")
+
         request_params = CryptoQuoteRequest(
-            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
+            symbol_or_symbols=symbols_list,
             start=start_time,
             end=end_time,
-            limit=limit
+            limit=limit,
         )
-        
         quotes = crypto_historical_data_client.get_crypto_quotes(request_params, feed=feed)
+        mapping_quotes = getattr(quotes, "data", None) or quotes
 
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        results: List[str] = []
-
-        mapping_quotes = getattr(quotes, 'data', None) or quotes
+        quotes_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+        counts: Dict[str, int] = {}
+        total_records = 0
         for sym in symbols_list:
-            sym_quotes = mapping_quotes.get(sym) if hasattr(mapping_quotes, 'get') else None
-            if not sym_quotes:
-                results.append(f"No historical crypto quotes found for {sym} in the specified time range.")
-                continue
+            sym_quotes = mapping_quotes.get(sym) if hasattr(mapping_quotes, "get") else []
+            sym_serialized = [to_serializable(q) for q in (sym_quotes or [])]
+            quotes_by_symbol[sym] = sym_serialized
+            counts[sym] = len(sym_serialized)
+            total_records += len(sym_serialized)
 
-            results.extend([
-                f"Historical Crypto Quotes for {sym}:", f"Total Records: {len(sym_quotes)}",""])
-            
-            for quote in sym_quotes:
-                results.extend([
-                    f"Timestamp: {quote.timestamp} UTC",
-                    f"  Bid Price: ${quote.bid_price:.6f}",
-                    f"  Bid Size: {quote.bid_size:.6f}",
-                    f"  Ask Price: ${quote.ask_price:.6f}",
-                    f"  Ask Size: {quote.ask_size:.6f}",
-                    ""
-                ])
-
-        return "\n".join(results)
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "symbols": symbols_list,
+                "days": days,
+                "hours": hours,
+                "minutes": minutes,
+                "limit": limit,
+                "start": start,
+                "end": end,
+                "feed": to_serializable(feed),
+                "tz": tz,
+            },
+            "counts": {"symbols": len(symbols_list), "records": total_records, "per_symbol": counts},
+            "quotes": quotes_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={total_records}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
-        return f"Error fetching historical crypto quotes for {symbol_str}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch historical crypto quotes.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -1844,60 +1803,55 @@ async def get_crypto_trades(
     sort: Optional[str] = None,
     feed: CryptoFeed = CryptoFeed.US,
     tz: str = "America/New_York"
-) -> str:
+) -> CallToolResult:
     """
-    Retrieves and formats historical trade prints for a cryptocurrency.
+    Returns historical trade data for one or more crypto symbols.
 
     Args:
         symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD' or ['BTC/USD','ETH/USD'])
-        days (int): Number of days to look back (default: 0, ignored if start is provided)
-        hours (int): Number of hours to look back (default: 0, ignored if start is provided)
-        minutes (int): Number of minutes to look back (default: 15, ignored if start is provided)
+        days (int): Number of days to look back
+        hours (int): Number of hours to look back
+        minutes (int): Number of minutes to look back
         limit (Optional[int]): Maximum number of trades to return
-        start (Optional[str]): ISO start time (e.g., "2023-01-01T09:30:00")
-        end (Optional[str]): ISO end time (e.g., "2023-01-01T16:00:00")
-        sort (Optional[str]): 'asc' or 'desc' chronological order
-        feed (CryptoFeed): Crypto data feed (default: US)
-        tz (str): Timezone for naive datetime strings (default: "America/New_York")
+        start (Optional[str]): ISO start time
+        end (Optional[str]): ISO end time
+        sort (Optional[str]): 'asc' or 'desc'
+        feed (CryptoFeed): Crypto data feed
+        tz (str): Timezone for naive datetime strings
             Supported: "UTC", "ET", "EST", "EDT", "America/New_York"
 
     Returns:
-        str: Formatted trade history
+        str: Formatted string containing trade history or error message
     """
     _ensure_clients()
+    tool_name = "get_crypto_trades"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
-        # Set default limit if not provided
         if limit is None:
             limit = 1000
-        
-        # Capture current time once for consistency
         now_utc = datetime.now(timezone.utc)
-        
-        # Handle start time: use provided start or calculate from days/hours/minutes
         if start:
             try:
                 start_time = _parse_iso_datetime(start, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
+                return build_error_result(tool_name, "invalid_start", str(e), field="start")
         else:
-            # Calculate start time based on days, hours, or minutes (priority order)
             if days > 0:
                 start_time = now_utc - timedelta(days=days)
             elif hours > 0:
                 start_time = now_utc - timedelta(hours=hours)
             elif minutes > 0:
                 start_time = now_utc - timedelta(minutes=minutes)
-        
-        # Handle end time: use provided end or default to now
+            else:
+                start_time = None
         if end:
             try:
                 end_time = _parse_iso_datetime(end, default_timezone=tz)
             except ValueError as e:
-                return f"Error: {str(e)}"
+                return build_error_result(tool_name, "invalid_end", str(e), field="end")
         else:
             end_time = None
 
-        # Sort mapping (default to ascending)
         sort_enum = Sort.ASC
         if sort:
             if sort.lower() == "asc":
@@ -1905,49 +1859,64 @@ async def get_crypto_trades(
             elif sort.lower() == "desc":
                 sort_enum = Sort.DESC
             else:
-                return f"Invalid sort: {sort}. Must be 'asc' or 'desc'."
+                return build_error_result(
+                    tool_name,
+                    "invalid_sort",
+                    "Sort must be 'asc' or 'desc'.",
+                    field="sort",
+                    details={"provided": sort},
+                )
 
         request_params = CryptoTradesRequest(
-            symbol_or_symbols=[symbol] if isinstance(symbol, str) else symbol,
+            symbol_or_symbols=symbols_list,
             start=start_time,
             end=end_time,
             limit=limit,
             sort=sort_enum,
         )
-
         trades = crypto_historical_data_client.get_crypto_trades(request_params, feed=feed)
+        mapping_trades = getattr(trades, "data", None) or trades
 
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        results: List[str] = []
-
-        mapping_trades = getattr(trades, 'data', None) or trades
+        trades_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+        counts: Dict[str, int] = {}
+        total_records = 0
         for sym in symbols_list:
-            sym_trades = mapping_trades.get(sym) if hasattr(mapping_trades, 'get') else None
-            if not sym_trades:
-                results.append(f"No historical crypto trades found for {sym} in the specified time range.")
-                continue
-            
-            results.extend([
-                f"Historical Crypto Trades for {sym}:",
-                f"Total Records: {len(sym_trades)}",
-                ""
-            ])
-            
-            for t in sym_trades:
-                time_str = t.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
-                line = f"Time: {time_str}, Price: ${t.price:.6f}, Size: {t.size}"
-                if hasattr(t, 'exchange') and t.exchange:
-                    line += f", Exchange: {t.exchange}"
-                results.append(line)
-            
-            results.append("")
-            if len(symbols_list) > 1:
-                results.append("")  # Separator between symbols
+            sym_trades = mapping_trades.get(sym) if hasattr(mapping_trades, "get") else []
+            sym_serialized = [to_serializable(t) for t in (sym_trades or [])]
+            trades_by_symbol[sym] = sym_serialized
+            counts[sym] = len(sym_serialized)
+            total_records += len(sym_serialized)
 
-        return "\n".join(results)
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "symbols": symbols_list,
+                "days": days,
+                "hours": hours,
+                "minutes": minutes,
+                "limit": limit,
+                "start": start,
+                "end": end,
+                "sort": sort,
+                "feed": to_serializable(feed),
+                "tz": tz,
+            },
+            "counts": {"symbols": len(symbols_list), "records": total_records, "per_symbol": counts},
+            "trades": trades_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={total_records}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbol_str = ", ".join(symbol) if isinstance(symbol, list) else symbol
-        return f"Error fetching historical crypto trades for {symbol_str}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch historical crypto trades.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -1959,29 +1928,50 @@ async def get_crypto_trades(
 async def get_crypto_latest_bar(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
-) -> str:
+) -> CallToolResult:
     """
     Returns the latest minute bar for one or more crypto symbols.
+
+    Args:
+        symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD' or ['BTC/USD','ETH/USD'])
+        feed (CryptoFeed): The crypto data feed (default: US)
+
+    Returns:
+        str: Formatted string containing latest bar(s) or error message
     """
     _ensure_clients()
+    tool_name = "get_crypto_latest_bar"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
         request_params = CryptoLatestBarRequest(symbol_or_symbols=symbol)
         latest = crypto_historical_data_client.get_crypto_latest_bar(request_params, feed=feed)
-
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        outputs: List[str] = []
-        mapping_latest_bars = getattr(latest, 'data', None) or latest
+        mapping_latest_bars = getattr(latest, "data", None) or latest
+        bars_by_symbol: Dict[str, Any] = {}
+        found = 0
         for sym in symbols_list:
-            bar = mapping_latest_bars.get(sym) if hasattr(mapping_latest_bars, 'get') else None
-            if not bar:
-                outputs.append(f"No latest crypto bar available for {sym}.")
-                continue
-            outputs.append(
-                _format_ohlcv_bar(bar, f"Latest Crypto Bar for {sym}", True)
-            )
-        return "\n".join(outputs)
+            bar = mapping_latest_bars.get(sym) if hasattr(mapping_latest_bars, "get") else None
+            bars_by_symbol[sym] = to_serializable(bar) if bar else None
+            if bar:
+                found += 1
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols_list, "feed": to_serializable(feed)},
+            "counts": {"symbols": len(symbols_list), "records": found},
+            "bars": bars_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} found={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error retrieving latest crypto bar for {symbol}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to retrieve latest crypto bar.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -1993,7 +1983,7 @@ async def get_crypto_latest_bar(
 async def get_crypto_latest_quote(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
-) -> str:
+) -> CallToolResult:
     """
     Returns the latest quote for one or more crypto symbols.
 
@@ -2002,27 +1992,41 @@ async def get_crypto_latest_quote(
         feed (CryptoFeed): The crypto data feed (default: US)
 
     Returns:
-        str: Formatted latest quote(s)
+        str: Formatted string containing latest quote(s) or error message
     """
     _ensure_clients()
+    tool_name = "get_crypto_latest_quote"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
         request_params = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
         latest = crypto_historical_data_client.get_crypto_latest_quote(request_params, feed=feed)
-
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        outputs: List[str] = []
-        mapping_latest_quotes = getattr(latest, 'data', None) or latest
+        mapping_latest_quotes = getattr(latest, "data", None) or latest
+        quotes_by_symbol: Dict[str, Any] = {}
+        found = 0
         for sym in symbols_list:
-            quote = mapping_latest_quotes.get(sym) if hasattr(mapping_latest_quotes, 'get') else None
-            if not quote:
-                outputs.append(f"No latest crypto quote available for {sym}.")
-                continue
-            outputs.append(
-                _format_quote_data(quote).replace("Latest Quote:", f"Latest Crypto Quote for {sym}:")
-            )
-        return "\n".join(outputs)
+            quote = mapping_latest_quotes.get(sym) if hasattr(mapping_latest_quotes, "get") else None
+            quotes_by_symbol[sym] = to_serializable(quote) if quote else None
+            if quote:
+                found += 1
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols_list, "feed": to_serializable(feed)},
+            "counts": {"symbols": len(symbols_list), "records": found},
+            "quotes": quotes_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} found={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error retrieving latest crypto quote for {symbol}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to retrieve latest crypto quote.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -2034,28 +2038,50 @@ async def get_crypto_latest_quote(
 async def get_crypto_latest_trade(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
-) -> str:
+) -> CallToolResult:
     """
     Returns the latest trade for one or more crypto symbols.
+
+    Args:
+        symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD' or ['BTC/USD','ETH/USD'])
+        feed (CryptoFeed): The crypto data feed (default: US)
+
+    Returns:
+        str: Formatted string containing latest trade(s) or error message
     """
     _ensure_clients()
+    tool_name = "get_crypto_latest_trade"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
         request_params = CryptoLatestTradeRequest(symbol_or_symbols=symbol)
         latest = crypto_historical_data_client.get_crypto_latest_trade(request_params, feed=feed)
-
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        outputs: List[str] = []
-        mapping_latest_trades = getattr(latest, 'data', None) or latest
+        mapping_latest_trades = getattr(latest, "data", None) or latest
+        trades_by_symbol: Dict[str, Any] = {}
+        found = 0
         for sym in symbols_list:
-            trade = mapping_latest_trades.get(sym) if hasattr(mapping_latest_trades, 'get') else None
-            if not trade:
-                outputs.append(f"No latest crypto trade available for {sym}.")
-                continue
-            formatted = _format_trade_data(trade).replace("Latest Trade:", f"Latest Crypto Trade for {sym}:")
-            outputs.append(formatted)
-        return "\n".join(outputs)
+            trade = mapping_latest_trades.get(sym) if hasattr(mapping_latest_trades, "get") else None
+            trades_by_symbol[sym] = to_serializable(trade) if trade else None
+            if trade:
+                found += 1
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols_list, "feed": to_serializable(feed)},
+            "counts": {"symbols": len(symbols_list), "records": found},
+            "trades": trades_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} found={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error retrieving latest crypto trade for {symbol}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to retrieve latest crypto trade.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 
 @mcp.tool(
@@ -2068,7 +2094,7 @@ async def get_crypto_latest_trade(
 async def get_crypto_snapshot(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
-) -> str:
+) -> CallToolResult:
     """
     Returns a snapshot for one or more crypto symbols including latest trade, quote,
     minute bar, daily bar, and previous daily bar.
@@ -2081,35 +2107,45 @@ async def get_crypto_snapshot(
         str: Snapshot with latest quote, trade, and OHLCV bars for each symbol
     """
     _ensure_clients()
+    tool_name = "get_crypto_snapshot"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
         request_params = CryptoSnapshotRequest(symbol_or_symbols=symbol)
         snapshots = crypto_historical_data_client.get_crypto_snapshot(request_params, feed=feed)
-
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        outputs: List[str] = []
-        mapping_snapshots = getattr(snapshots, 'data', None) or snapshots
+        mapping_snapshots = getattr(snapshots, "data", None) or snapshots
+        snapshots_by_symbol: Dict[str, Any] = {}
+        found = 0
         for sym in symbols_list:
-            snap = mapping_snapshots.get(sym) if hasattr(mapping_snapshots, 'get') else None
-            if not snap:
-                outputs.append(f"No crypto snapshot available for {sym}.")
-                continue
-            parts: List[str] = [f"Crypto Snapshot for {sym}:"]
-            parts.append(_format_ohlcv_bar(getattr(snap, 'minute_bar', None), "Latest Minute Bar", True))
-            parts.append(_format_ohlcv_bar(getattr(snap, 'daily_bar', None), "Latest Daily Bar", False))
-            parts.append(_format_ohlcv_bar(getattr(snap, 'previous_daily_bar', None), "Previous Daily Bar", False))
-            parts.append(_format_quote_data(getattr(snap, 'latest_quote', None)))
-            trade = getattr(snap, 'latest_trade', None)
-            if trade:
-                parts.append(
-                    f"Latest Trade:\n  Price: ${trade.price:.2f}, Size: {trade.size}\n  Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}\n\n"
-                )
-            outputs.append("".join(filter(None, parts)))
-        return "\n".join(outputs)
+            snap = mapping_snapshots.get(sym) if hasattr(mapping_snapshots, "get") else None
+            snapshots_by_symbol[sym] = to_serializable(snap) if snap else None
+            if snap:
+                found += 1
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols_list, "feed": to_serializable(feed)},
+            "counts": {"symbols": len(symbols_list), "records": found},
+            "snapshots": snapshots_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} found={found}",
+            content_text=compact_json(payload),
+        )
     except APIError as api_error:
-        error_message = str(api_error)
-        return f"API Error retrieving crypto snapshots: {error_message}"
+        return build_error_result(
+            tool_name,
+            "api_error",
+            "Failed to retrieve crypto snapshots.",
+            details={"original_error": str(api_error)},
+        )
     except Exception as e:
-        return f"Error retrieving crypto snapshots: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to retrieve crypto snapshots.",
+            details={"original_error": str(e)},
+        )
 
 
 @mcp.tool(
@@ -2122,37 +2158,50 @@ async def get_crypto_snapshot(
 async def get_crypto_latest_orderbook(
     symbol: Union[str, List[str]],
     feed: CryptoFeed = CryptoFeed.US
-) -> str:
+) -> CallToolResult:
     """
     Returns the latest orderbook for one or more crypto symbols.
+
+    Args:
+        symbol (Union[str, List[str]]): Crypto symbol(s) (e.g., 'BTC/USD' or ['BTC/USD','ETH/USD'])
+        feed (CryptoFeed): The crypto data feed (default: US)
+
+    Returns:
+        str: Formatted string containing latest orderbook(s) or error message
     """
     _ensure_clients()
+    tool_name = "get_crypto_latest_orderbook"
+    symbols_list = symbol if isinstance(symbol, list) else [symbol]
     try:
         request_params = CryptoLatestOrderbookRequest(symbol_or_symbols=symbol)
         books = crypto_historical_data_client.get_crypto_latest_orderbook(request_params, feed=feed)
-
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        outputs: List[str] = []
-        mapping_books = getattr(books, 'data', None) or books
+        mapping_books = getattr(books, "data", None) or books
+        orderbooks_by_symbol: Dict[str, Any] = {}
+        found = 0
         for sym in symbols_list:
-            ob = mapping_books.get(sym) if hasattr(mapping_books, 'get') else None
-            if not ob:
-                outputs.append(f"No latest crypto orderbook available for {sym}.")
-                continue
-            best_bid = ob.bids[0] if getattr(ob, 'bids', None) else None
-            best_ask = ob.asks[0] if getattr(ob, 'asks', None) else None
-            ts = getattr(ob, 'timestamp', None)
-            ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if ts else ""
-            line = f"Latest Crypto Orderbook for {sym}:\n"
-            if best_bid:
-                line += f"Bid: ${best_bid.price:.6f} x {best_bid.size} | "
-            line += f"Ask: ${best_ask.price:.6f} x {best_ask.size}\n" if best_ask else "No asks available\n"
-            if ts_str:
-                line += f"Timestamp: {ts_str}\n"
-            outputs.append(line)
-        return "\n".join(outputs)
+            orderbook = mapping_books.get(sym) if hasattr(mapping_books, "get") else None
+            orderbooks_by_symbol[sym] = to_serializable(orderbook) if orderbook else None
+            if orderbook:
+                found += 1
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols_list, "feed": to_serializable(feed)},
+            "counts": {"symbols": len(symbols_list), "records": found},
+            "orderbooks": orderbooks_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} found={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error retrieving latest crypto orderbook for {symbol}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to retrieve latest crypto orderbook.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 # ============================================================================
 # Options Market Data Tools
@@ -2177,39 +2226,34 @@ async def get_option_contracts(
     status: Optional[AssetStatus] = None,
     root_symbol: Optional[str] = None,
     limit: Optional[int] = None
-) -> str:
+) -> CallToolResult:
     """
     Retrieves option contracts for underlying symbol(s).
 
     Args:
-        underlying_symbols (Union[str, List[str]]): Underlying asset symbol(s) (e.g., 'SPY', 'AAPL')
+        underlying_symbols (Union[str, List[str]]): Underlying asset symbol(s)
         expiration_date (Optional[date]): Specific expiration date
         expiration_date_gte (Optional[date]): Minimum expiration date
         expiration_date_lte (Optional[date]): Maximum expiration date
-        expiration_expression (Optional[str]): Natural language (e.g., "week of September 2, 2025")
+        expiration_expression (Optional[str]): Natural language
         strike_price_gte (Optional[str]): Minimum strike price
         strike_price_lte (Optional[str]): Maximum strike price
         contract_type (Optional[str]): Filter by 'call' or 'put'
-        status (Optional[AssetStatus]): Filter by status (default: 'active')
+        status (Optional[AssetStatus]): Filter by status
         root_symbol (Optional[str]): Filter by root symbol
         limit (Optional[int]): Maximum number of contracts to return
 
     Returns:
         str: List of option contracts with symbol, strike, expiration, type, and status
-
-    Examples:
-        get_option_contracts("NVDA", expiration_expression="week of September 2, 2025")
-        get_option_contracts(["SPY", "AAPL"], expiration_date_gte=date(2025,9,1), expiration_date_lte=date(2025,9,5))
     """
 
     _ensure_clients()
+    tool_name = "get_option_contracts"
     try:
-        # Convert to list if single symbol
         symbols_list = [underlying_symbols] if isinstance(underlying_symbols, str) else list(underlying_symbols)
         if not symbols_list:
-            return "No symbols provided."
-        
-        # Convert string to ContractType enum
+            return build_error_result(tool_name, "missing_symbols", "No symbols provided.", field="underlying_symbols")
+
         contract_type_enum = None
         if contract_type and isinstance(contract_type, str):
             type_lower = contract_type.lower()
@@ -2217,21 +2261,22 @@ async def get_option_contracts(
                 contract_type_enum = ContractType.CALL
             elif type_lower == "put":
                 contract_type_enum = ContractType.PUT
-        
-        # Handle natural language expression
+
         if expiration_expression:
             parsed = _parse_expiration_expression(expiration_expression)
-            if parsed.get('error'):
-                return f"Error: {parsed['error']}"
-            
-            # Map parsed results directly to API parameters
-            if 'expiration_date' in parsed:
-                expiration_date = parsed['expiration_date']
-            elif 'expiration_date_gte' in parsed:
-                expiration_date_gte = parsed['expiration_date_gte']
-                expiration_date_lte = parsed['expiration_date_lte']
-        
-        # Create API request - direct mapping like your baseline example
+            if parsed.get("error"):
+                return build_error_result(
+                    tool_name,
+                    "invalid_expiration_expression",
+                    parsed["error"],
+                    field="expiration_expression",
+                )
+            if "expiration_date" in parsed:
+                expiration_date = parsed["expiration_date"]
+            elif "expiration_date_gte" in parsed:
+                expiration_date_gte = parsed["expiration_date_gte"]
+                expiration_date_lte = parsed["expiration_date_lte"]
+
         request = GetOptionContractsRequest(
             underlying_symbols=symbols_list,
             expiration_date=expiration_date,
@@ -2242,47 +2287,41 @@ async def get_option_contracts(
             type=contract_type_enum,
             status=status,
             root_symbol=root_symbol,
-            limit=limit
+            limit=limit,
         )
-        
-        # Execute API call
         response = trade_client.get_option_contracts(request)
-        
-        if not response or not response.option_contracts:
-            symbols_str = ", ".join(symbols_list)
-            return f"No option contracts found for {symbols_str}."
-        
-        # Format results
-        contracts = response.option_contracts
-        result: List[str] = []
-        
-        for contract in contracts:
-            type_str = "Call" if contract.type == ContractType.CALL else "Put"
-            result.extend([
-                f"ID: {contract.id}",
-                f"Symbol: {contract.symbol}",
-                f"  Name: {contract.name}",
-                f"  Type: {type_str}",
-                f"  Strike: ${contract.strike_price}",
-                f"  Expiration: {contract.expiration_date}",
-                f"  Style: {contract.style}",
-                f"  Contract Size: {contract.size}",
-                f"  Open Interest: {contract.open_interest or 'N/A'}",
-                f"  Open Interest Date: {contract.open_interest_date or 'N/A'}",
-                f"  Close Price: ${contract.close_price or 'N/A'}",
-                f"  Close Price Date: {contract.close_price_date or 'N/A'}",
-                f"  Tradable: {contract.tradable}",
-                f"  Status: {contract.status}",
-                f"  Root Symbol: {contract.root_symbol}",
-                f"  Underlying Asset ID: {contract.underlying_asset_id}",
-                f"  Underlying Symbol: {contract.underlying_symbol}",
-                ""
-            ])
-        
-        return "\n".join(result)
-        
+        contracts = (response.option_contracts if response and response.option_contracts else [])
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "underlying_symbols": symbols_list,
+                "expiration_date": to_serializable(expiration_date),
+                "expiration_date_gte": to_serializable(expiration_date_gte),
+                "expiration_date_lte": to_serializable(expiration_date_lte),
+                "expiration_expression": expiration_expression,
+                "strike_price_gte": strike_price_gte,
+                "strike_price_lte": strike_price_lte,
+                "contract_type": contract_type,
+                "status": to_serializable(status),
+                "root_symbol": root_symbol,
+                "limit": limit,
+            },
+            "counts": {"symbols": len(symbols_list), "records": len(contracts)},
+            "contracts": [to_serializable(c) for c in contracts],
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={len(contracts)}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to retrieve option contracts.",
+            details={"original_error": str(e)},
+        )
 
 @mcp.tool(
     annotations={
@@ -2294,7 +2333,7 @@ async def get_option_contracts(
 async def get_option_latest_quote(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[OptionsFeed] = None
-) -> str:
+) -> CallToolResult:
     """
     Retrieves and formats the latest quote for one or more option contracts. This endpoint returns real-time
     pricing and market data, including bid/ask prices, sizes, and exchange information.
@@ -2306,58 +2345,46 @@ async def get_option_latest_quote(
     
     Returns:
         str: Formatted string containing the latest quote information including:
-            - Ask Price and Ask Size
-            - Bid Price and Bid Size
-            - Ask Exchange and Bid Exchange
-            - Trade Conditions
-            - Tape Information
-            - Timestamp (in UTC)
+            - Ask Price, Ask Size, Bid Price, Bid Size, Ask Exchange, Bid Exchange, Trade Conditions, Tape Information, Timestamp (in UTC)
     
     Note:
         This endpoint returns real-time market data. For contract specifications and static data,
         use get_option_contracts instead.
     """
     _ensure_clients()
+    tool_name = "get_option_latest_quote"
+    symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+    if not symbols_list:
+        return build_error_result(tool_name, "missing_symbols", "No symbols provided.", field="symbol_or_symbols")
     try:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        if not symbols_list:
-            return "No symbols provided."
-        
-        # Create the request object
-        request = OptionLatestQuoteRequest(
-            symbol_or_symbols=symbol_or_symbols,
-            feed=feed
-        )
-        
-        # Get the latest quote
+        request = OptionLatestQuoteRequest(symbol_or_symbols=symbol_or_symbols, feed=feed)
         quotes = option_historical_data_client.get_option_latest_quote(request)
-        
-        results: List[str] = []
-        for symbol in symbols_list:
-            quote = quotes.get(symbol)
-            if not quote:
-                results.append(f"No quote data found for {symbol}.")
-                continue
-            
-            results.extend([
-                f"Symbol: {symbol}",
-                f"Ask Price: ${float(quote.ask_price):.2f}",
-                f"Ask Size: {quote.ask_size}",
-                f"Ask Exchange: {quote.ask_exchange}",
-                f"Bid Price: ${float(quote.bid_price):.2f}",
-                f"Bid Size: {quote.bid_size}",
-                f"Bid Exchange: {quote.bid_exchange}",
-                f"Conditions: {quote.conditions}",
-                f"Tape: {quote.tape}",
-                f"Timestamp: {quote.timestamp}",
-                ""
-            ])
-        
-        return "\n".join(results).strip()
+        quotes_by_symbol: Dict[str, Any] = {}
+        found = 0
+        for sym in symbols_list:
+            quote = quotes.get(sym) if hasattr(quotes, "get") else None
+            quotes_by_symbol[sym] = to_serializable(quote) if quote else None
+            if quote:
+                found += 1
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols_list, "feed": to_serializable(feed)},
+            "counts": {"symbols": len(symbols_list), "records": found},
+            "quotes": quotes_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} found={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        requested = ", ".join(symbols_list) if symbols_list else ""
-        return f"Error fetching option quote for {requested}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to fetch option latest quote.",
+            details={"symbols": symbols_list, "original_error": str(e)},
+        )
 
 
 @mcp.tool(
@@ -2370,97 +2397,51 @@ async def get_option_latest_quote(
 async def get_option_snapshot(
     symbol_or_symbols: Union[str, List[str]], 
     feed: Optional[OptionsFeed] = None
-) -> str:
+) -> CallToolResult:
     """
     Retrieves comprehensive snapshots of option contracts including latest trade, quote,
     implied volatility, and Greeks.
 
     Args:
-        symbol_or_symbols (Union[str, List[str]]): Option symbol(s) (e.g., 'AAPL250613P00205000')
+        symbol_or_symbols (Union[str, List[str]]): Option symbol(s)
         feed (Optional[OptionsFeed]): Data feed source (OPRA or INDICATIVE)
 
     Returns:
         str: Snapshot with quote, trade, implied volatility, and Greeks for each contract
     """
     _ensure_clients()
+    tool_name = "get_option_snapshot"
+    symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
     try:
-        # Create snapshot request
-        request = OptionSnapshotRequest(
-            symbol_or_symbols=symbol_or_symbols,
-            feed=feed
-        )
-        
-        # Get snapshots
+        request = OptionSnapshotRequest(symbol_or_symbols=symbol_or_symbols, feed=feed)
         snapshots = option_historical_data_client.get_option_snapshot(request)
-        
-        # Format the response
-        result = "Option Snapshots:\n"
-        result += "================\n\n"
-        
-        # Handle both single symbol and list of symbols
-        symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else symbol_or_symbols
-        
-        for symbol in symbols:
-            snapshot = snapshots.get(symbol)
-            if snapshot is None:
-                result += f"No data available for {symbol}\n"
-                continue
-                
-            result += f"Symbol: {symbol}\n"
-            result += "-----------------\n"
-            
-            # Latest Quote
-            if snapshot.latest_quote:
-                quote = snapshot.latest_quote
-                result += f"Latest Quote:\n"
-                result += f"  Bid Price: ${quote.bid_price:.6f}\n"
-                result += f"  Bid Size: {quote.bid_size}\n"
-                result += f"  Bid Exchange: {quote.bid_exchange}\n"
-                result += f"  Ask Price: ${quote.ask_price:.6f}\n"
-                result += f"  Ask Size: {quote.ask_size}\n"
-                result += f"  Ask Exchange: {quote.ask_exchange}\n"
-                if quote.conditions:
-                    result += f"  Conditions: {quote.conditions}\n"
-                if quote.tape:
-                    result += f"  Tape: {quote.tape}\n"
-                result += f"  Timestamp: {quote.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f %Z')}\n"
-            
-            # Latest Trade
-            if snapshot.latest_trade:
-                trade = snapshot.latest_trade
-                result += f"Latest Trade:\n"
-                result += f"  Price: ${trade.price:.6f}\n"
-                result += f"  Size: {trade.size}\n"
-                if trade.exchange:
-                    result += f"  Exchange: {trade.exchange}\n"
-                if trade.conditions:
-                    result += f"  Conditions: {trade.conditions}\n"
-                if trade.tape:
-                    result += f"  Tape: {trade.tape}\n"
-                if trade.id:
-                    result += f"  Trade ID: {trade.id}\n"
-                result += f"  Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S.%f %Z')}\n"
-            
-            # Implied Volatility
-            if snapshot.implied_volatility is not None:
-                result += f"Implied Volatility: {snapshot.implied_volatility:.2%}\n"
-            
-            # Greeks
-            if snapshot.greeks:
-                greeks = snapshot.greeks
-                result += f"Greeks:\n"
-                result += f"  Delta: {greeks.delta:.4f}\n"
-                result += f"  Gamma: {greeks.gamma:.4f}\n"
-                result += f"  Rho: {greeks.rho:.4f}\n"
-                result += f"  Theta: {greeks.theta:.4f}\n"
-                result += f"  Vega: {greeks.vega:.4f}\n"
-            
-            result += "\n"
+        snapshots_by_symbol: Dict[str, Any] = {}
+        found = 0
+        for sym in symbols:
+            snapshot = snapshots.get(sym) if hasattr(snapshots, "get") else None
+            snapshots_by_symbol[sym] = to_serializable(snapshot) if snapshot else None
+            if snapshot:
+                found += 1
 
-        return result
-        
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols, "feed": to_serializable(feed)},
+            "counts": {"symbols": len(symbols), "records": found},
+            "snapshots": snapshots_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols)} found={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error retrieving option snapshots: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to retrieve option snapshots.",
+            details={"symbols": symbols, "original_error": str(e)},
+        )
 
 
 @mcp.tool(
@@ -2481,14 +2462,14 @@ async def get_option_chain(
     expiration_date_lte: Optional[Union[date, str]] = None,
     root_symbol: Optional[str] = None,
     limit: Optional[int] = None
-) -> str:
+) -> CallToolResult:
     """
     Retrieves option chain data for an underlying symbol, including latest trade, quote,
     implied volatility, and greeks for each contract.
 
     Args:
-        underlying_symbol (str): The underlying symbol (e.g., 'AAPL', 'SPY')
-        feed (Optional[OptionsFeed]): Data feed source (OPRA or INDICATIVE) (default: OPRA if the user has the options subscription, INDICATIVE otherwise)
+        underlying_symbol (str): The underlying symbol
+        feed (Optional[OptionsFeed]): Data feed source (OPRA or INDICATIVE)
         contract_type (Optional[str]): Filter by contract type ('call', 'put', or None for both)
         strike_price_gte (Optional[float]): Minimum strike price filter
         strike_price_lte (Optional[float]): Maximum strike price filter
@@ -2496,14 +2477,14 @@ async def get_option_chain(
         expiration_date_gte (Optional[Union[date, str]]): Minimum expiration date
         expiration_date_lte (Optional[Union[date, str]]): Maximum expiration date
         root_symbol (Optional[str]): Filter by root symbol
-        limit (Optional[int]): Max snapshots to return (1-1000, default 100)
+        limit (Optional[int]): Max snapshots to return (1-1000)
 
     Returns:
-        str: Formatted option chain with quote, trade, IV, and greeks for each contract
+        str: Option chain with quote, trade, IV, and greeks for each contract
     """
     _ensure_clients()
+    tool_name = "get_option_chain"
     try:
-        # Convert string to ContractType enum
         contract_type_enum = None
         if contract_type and isinstance(contract_type, str):
             type_lower = contract_type.lower()
@@ -2522,42 +2503,41 @@ async def get_option_chain(
             expiration_date_gte=expiration_date_gte,
             expiration_date_lte=expiration_date_lte,
             root_symbol=root_symbol,
-            limit=limit
+            limit=limit,
         )
-
         chain = option_historical_data_client.get_option_chain(request)
-
-        if not chain:
-            return f"No option chain data found for {underlying_symbol}."
-
-        result = f"Option Chain for {underlying_symbol}:\n"
-        result += "=" * 40 + "\n\n"
-
-        for symbol, snapshot in chain.items():
-            result += f"Contract: {symbol}\n"
-            result += "-" * 30 + "\n"
-
-            lines = []
-            if snapshot.latest_quote:
-                q = snapshot.latest_quote
-                lines.extend([
-                    f"Bid: ${q.bid_price:.3f} x {q.bid_size} ({q.bid_exchange})",
-                    f"Ask: ${q.ask_price:.3f} x {q.ask_size} ({q.ask_exchange})",
-                ])
-            if snapshot.latest_trade:
-                t = snapshot.latest_trade
-                lines.append(f"Trade: ${t.price:.3f} x {t.size} ({t.exchange or 'N/A'})")
-            iv = f"{snapshot.implied_volatility:.2%}" if snapshot.implied_volatility else "N/A"
-            lines.append(f"IV: {iv}")
-            if snapshot.greeks:
-                g = snapshot.greeks
-                lines.append(f"Greeks: delta={g.delta:.4f} gamma={g.gamma:.4f} theta={g.theta:.4f} vega={g.vega:.4f} rho={g.rho:.4f}")
-            result += "\n".join(lines) + "\n\n"
-
-        return result.strip()
-
+        mapping_chain = getattr(chain, "data", None) or chain or {}
+        chain_payload = {sym: to_serializable(snapshot) for sym, snapshot in mapping_chain.items()}
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "underlying_symbol": underlying_symbol,
+                "feed": to_serializable(feed),
+                "contract_type": contract_type,
+                "strike_price_gte": strike_price_gte,
+                "strike_price_lte": strike_price_lte,
+                "expiration_date": to_serializable(expiration_date),
+                "expiration_date_gte": to_serializable(expiration_date_gte),
+                "expiration_date_lte": to_serializable(expiration_date_lte),
+                "root_symbol": root_symbol,
+                "limit": limit,
+            },
+            "counts": {"records": len(chain_payload)},
+            "chain": chain_payload,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok contracts={len(chain_payload)}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error retrieving option chain for {underlying_symbol}: {str(e)}"
+        return build_error_result(
+            tool_name,
+            "internal_error",
+            "Failed to retrieve option chain.",
+            details={"underlying_symbol": underlying_symbol, "original_error": str(e)},
+        )
 
 
 # ============================================================================
@@ -2654,78 +2634,20 @@ async def get_orders(
         
         orders = trade_client.get_orders(request_params)
         
-        if not orders:
-            return f"No {status} orders found."
-        
-        result = f"{status.capitalize()} Orders (Last {len(orders)}):\n"
-        result += "-----------------------------------\n"
-        
-        for order in orders:
-            result += f"Symbol: {order.symbol}\n"
-            result += f"ID: {order.id}\n"
-            result += f"Type: {order.type}\n"
-            result += f"Side: {order.side}\n"
-            result += f"Quantity: {order.qty}\n"
-            result += f"Status: {order.status}\n"
-            result += f"Asset Class: {order.asset_class}\n"
-            result += f"Order Class: {order.order_class}\n"
-            result += f"Time In Force: {order.time_in_force}\n"
-            result += f"Extended Hours: {order.extended_hours}\n"
-            result += f"Submitted At: {order.submitted_at}\n"
-            result += f"Created At: {order.created_at}\n"
-            result += f"Updated At: {order.updated_at}\n"
-            
-            # Additional core fields (these are optional)
-            if hasattr(order, 'asset_id') and order.asset_id:
-                result += f"Asset ID: {order.asset_id}\n"
-            if hasattr(order, 'order_type') and order.order_type:
-                result += f"Order Type: {order.order_type}\n"
-            if hasattr(order, 'ratio_qty') and order.ratio_qty:
-                result += f"Ratio Quantity: {order.ratio_qty}\n"
-            
-            # Optional fields that may not always be present
-            if hasattr(order, 'filled_at') and order.filled_at:
-                result += f"Filled At: {order.filled_at}\n"
-            if hasattr(order, 'filled_avg_price') and order.filled_avg_price:
-                result += f"Filled Price: ${float(order.filled_avg_price):.2f}\n"
-            if hasattr(order, 'filled_qty') and order.filled_qty:
-                result += f"Filled Quantity: {order.filled_qty}\n"
-            if hasattr(order, 'limit_price') and order.limit_price:
-                result += f"Limit Price: ${float(order.limit_price):.2f}\n"
-            if hasattr(order, 'stop_price') and order.stop_price:
-                result += f"Stop Price: ${float(order.stop_price):.2f}\n"
-            if hasattr(order, 'trail_price') and order.trail_price:
-                result += f"Trail Price: ${float(order.trail_price):.2f}\n"
-            if hasattr(order, 'trail_percent') and order.trail_percent:
-                result += f"Trail Percent: {order.trail_percent}%\n"
-            if hasattr(order, 'notional') and order.notional:
-                result += f"Notional: ${float(order.notional):.2f}\n"
-            if hasattr(order, 'position_intent') and order.position_intent:
-                result += f"Position Intent: {order.position_intent}\n"
-            if hasattr(order, 'client_order_id') and order.client_order_id:
-                result += f"Client Order ID: {order.client_order_id}\n"
-            if hasattr(order, 'canceled_at') and order.canceled_at:
-                result += f"Canceled At: {order.canceled_at}\n"
-            if hasattr(order, 'expired_at') and order.expired_at:
-                result += f"Expired At: {order.expired_at}\n"
-            if hasattr(order, 'expires_at') and order.expires_at:
-                result += f"Expires At: {order.expires_at}\n"
-            if hasattr(order, 'failed_at') and order.failed_at:
-                result += f"Failed At: {order.failed_at}\n"
-            if hasattr(order, 'replaced_at') and order.replaced_at:
-                result += f"Replaced At: {order.replaced_at}\n"
-            if hasattr(order, 'replaced_by') and order.replaced_by:
-                result += f"Replaced By: {order.replaced_by}\n"
-            if hasattr(order, 'replaces') and order.replaces:
-                result += f"Replaces: {order.replaces}\n"
-            if hasattr(order, 'legs') and order.legs:
-                result += f"Legs: {order.legs}\n"
-            if hasattr(order, 'hwm') and order.hwm:
-                result += f"HWM: {order.hwm}\n"
-                
-            result += "-----------------------------------\n"
-            
-        return result
+        payload = {
+            "request": {
+                "status": status,
+                "limit": limit,
+                "after": after,
+                "until": until,
+                "direction": direction,
+                "nested": nested,
+                "side": side,
+                "symbols": symbols,
+            },
+            "orders": [to_serializable(order) for order in orders],
+        }
+        return compact_json(payload)
     except Exception as e:
         return f"Error fetching orders: {str(e)}"
 
@@ -2756,7 +2678,7 @@ async def place_stock_order(
     Places a stock order using the specified order type and parameters.
 
     Args:
-        symbol (str): Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        symbol (str): Stock ticker symbol
         side (str): Order side ('buy' or 'sell')
         quantity (float): Number of shares to trade
         type (str): Order type ('market', 'limit', 'stop', 'stop_limit', 'trailing_stop')
@@ -2772,7 +2694,7 @@ async def place_stock_order(
         stop_loss_price (Optional[float]): Stop-loss stop price (for bracket orders)
 
     Returns:
-        str: JSON string with order details, or error message
+        str: Compact JSON order payload or a concise error string
     """
     _ensure_clients()
     try:
@@ -2889,26 +2811,7 @@ async def place_stock_order(
             return f"Invalid order type: {type}. Must be one of: MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP."
 
         order = trade_client.submit_order(order_data)
-        def _val(v):
-            return v.value if hasattr(v, 'value') else (str(v) if v is not None else None)
-        result = {
-            "id": str(order.id) if order.id else "",
-            "client_order_id": str(order.client_order_id) if order.client_order_id else "",
-            "status": _val(order.status) or "unknown",
-            "symbol": str(order.symbol) if order.symbol else symbol,
-            "side": _val(order.side) or side,
-            "qty": str(order.qty) if order.qty is not None else str(quantity),
-            "order_class": _val(order.order_class) or "simple",
-            "type": _val(order.type) or type,
-            "limit_price": float(order.limit_price) if order.limit_price is not None else None,
-            "stop_price": float(order.stop_price) if order.stop_price is not None else None,
-            "created_at": str(order.created_at) if order.created_at else "",
-            "legs": [
-                {"id": str(getattr(leg, "id", "") or ""), "symbol": str(getattr(leg, "symbol", "") or "")}
-                for leg in (order.legs or [])
-            ],
-        }
-        return json.dumps(result)
+        return compact_json(to_serializable(order))
     except Exception as e:
         return f"Error placing order: {str(e)}"
 
@@ -2940,7 +2843,7 @@ async def place_crypto_order(
     - time_in_force: only GTC or IOC are supported for crypto orders
 
     Args:
-        symbol (str): Crypto symbol (e.g., 'BTC/USD', 'ETH/USD')
+        symbol (str): Crypto symbol
         side (str): Order side ('buy' or 'sell')
         order_type (str): Order type ('market', 'limit', 'stop_limit')
         time_in_force (Union[str, TimeInForce]): Time in force ('GTC' or 'IOC')
@@ -3030,46 +2933,7 @@ async def place_crypto_order(
             return "Invalid order type for crypto. Use: market, limit, stop_limit."
 
         order = trade_client.submit_order(order_data)
-
-        return f"""
-                Crypto Order Placed Successfully:
-                -------------------------------
-                asset_class: {order.asset_class}
-                asset_id: {order.asset_id}
-                canceled_at: {order.canceled_at}
-                client_order_id: {order.client_order_id}
-                created_at: {order.created_at}
-                expired_at: {order.expired_at}
-                expires_at: {order.expires_at}
-                extended_hours: {order.extended_hours}
-                failed_at: {order.failed_at}
-                filled_at: {order.filled_at}
-                filled_avg_price: {order.filled_avg_price}
-                filled_qty: {order.filled_qty}
-                hwm: {order.hwm}
-                id: {order.id}
-                legs: {order.legs}
-                limit_price: {order.limit_price}
-                notional: {order.notional}
-                order_class: {order.order_class}
-                order_type: {order.order_type}
-                position_intent: {order.position_intent}
-                qty: {order.qty}
-                ratio_qty: {order.ratio_qty}
-                replaced_at: {order.replaced_at}
-                replaced_by: {order.replaced_by}
-                replaces: {order.replaces}
-                side: {order.side}
-                status: {order.status}
-                stop_price: {order.stop_price}
-                submitted_at: {order.submitted_at}
-                symbol: {order.symbol}
-                time_in_force: {order.time_in_force}
-                trail_percent: {order.trail_percent}
-                trail_price: {order.trail_price}
-                type: {order.type}
-                updated_at: {order.updated_at}
-                """
+        return compact_json(to_serializable(order))
     except Exception as e:
         return f"Error placing crypto order: {str(e)}"
 
@@ -3100,10 +2964,13 @@ async def place_option_order(
         legs (List[Dict[str, Any]]): List of option legs with symbol, side, ratio_qty
         order_type (str): "market" or "limit"
         limit_price (Optional[float]): Required for limit orders
-        order_class (Optional[Union[str, OrderClass]]): simple or mleg (auto-detected if None)
+        order_class (Optional[Union[str, OrderClass]]): simple or mleg
         quantity (int): Base quantity for the order
         time_in_force (Union[str, TimeInForce]): day only
         extended_hours (bool): Not supported for options
+
+    Returns:
+        str: Order confirmation with order ID, status, and execution details
     """
     _ensure_clients()
     order_legs: List[OptionLegRequest] = []
@@ -3183,32 +3050,17 @@ async def cancel_all_orders() -> str:
     Cancel all open orders.
     
     Returns:
-        A formatted string containing the status of each cancelled order.
+        str: Compact JSON cancellation responses
     """
     _ensure_clients()
     try:
         # Cancel all orders
         cancel_responses = trade_client.cancel_orders()
         
-        if not cancel_responses:
-            return "No orders were found to cancel."
-        
-        # Format the response
-        response_parts = ["Order Cancellation Results:"]
-        response_parts.append("-" * 30)
-        
-        for response in cancel_responses:
-            status = "Success" if response.status == 200 else "Failed"
-            response_parts.append(f"Order ID: {response.id}")
-            response_parts.append(f"Status: {status}")
-            if response.body:
-                response_parts.append(f"Details: {response.body}")
-            response_parts.append("-" * 30)
-        
-        return "\n".join(response_parts)
+        return compact_json(to_serializable(cancel_responses or []))
         
     except Exception as e:
-        return f"Error cancelling orders: {str(e)}"
+        return compact_json({"error": {"code": "cancel_all_orders_failed", "message": str(e)}})
 
 @mcp.tool(
     annotations={
@@ -3226,7 +3078,7 @@ async def cancel_order_by_id(order_id: str) -> str:
         order_id: The UUID of the order to cancel
         
     Returns:
-        A formatted string containing the status of the cancelled order.
+        str: The status of the cancelled order.
     """
     _ensure_clients()
     try:
@@ -3268,7 +3120,7 @@ async def close_position(symbol: str, qty: Optional[str] = None, percentage: Opt
         percentage (Optional[str]): Optional percentage of shares to liquidate (must result in at least 1 share)
     
     Returns:
-        str: Formatted string containing position closure details or error message
+        str: Compact JSON order payload or a concise error string
     """
     _ensure_clients()
     try:
@@ -3283,31 +3135,17 @@ async def close_position(symbol: str, qty: Optional[str] = None, percentage: Opt
         # Close the position
         order = trade_client.close_position(symbol, close_options)
         
-        return f"""
-                Position Closed Successfully:
-                ----------------------------
-                Symbol: {symbol}
-                Order ID: {order.id}
-                Status: {order.status}
-                """
+        return compact_json(to_serializable(order))
                 
     except APIError as api_error:
         error_message = str(api_error)
         if "42210000" in error_message and "would result in order size of zero" in error_message:
-            return """
-            Error: Invalid position closure request.
-            
-            The requested percentage would result in less than 1 share.
-            Please either:
-            1. Use a higher percentage
-            2. Close the entire position (100%)
-            3. Specify an exact quantity using the qty parameter
-            """
+            return "Invalid close_position request: percentage results in 0 shares; use a higher percentage, qty, or 100%."
         else:
-            return f"Error closing position: {error_message}"
+            return compact_json({"error": {"code": "close_position_failed", "message": error_message}})
             
     except Exception as e:
-        return f"Error closing position: {str(e)}"
+        return compact_json({"error": {"code": "close_position_failed", "message": str(e)}})
     
 @mcp.tool(
     annotations={
