@@ -96,12 +96,8 @@ from alpaca.trading.requests import (
 try:
     from .helpers import (
         parse_timeframe_with_enums,
-        _validate_amount,
         _parse_iso_datetime,
         _parse_date_ymd,
-        _format_ohlcv_bar,
-        _format_quote_data,
-        _format_trade_data,
         _parse_expiration_expression,
         _validate_option_order_inputs,
         _convert_order_class_string,
@@ -125,9 +121,6 @@ except ImportError:
         _validate_amount,
         _parse_iso_datetime,
         _parse_date_ymd,
-        _format_ohlcv_bar,
-        _format_quote_data,
-        _format_trade_data,
         _parse_expiration_expression,
         _validate_option_order_inputs,
         _convert_order_class_string,
