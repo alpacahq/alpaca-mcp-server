@@ -225,7 +225,7 @@ def _ensure_clients():
         "title": "Get Asset Info",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -251,7 +251,7 @@ async def get_asset(symbol: str) -> str:
         "title": "Get All Assets",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -311,7 +311,7 @@ async def get_all_assets(
         "title": "Get Corporate Actions",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -382,7 +382,7 @@ async def get_corporate_actions(
         "title": "Get Market Calendar",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -423,7 +423,7 @@ async def get_calendar(start_date: str, end_date: str) -> str:
         "title": "Get Market Clock",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -450,7 +450,7 @@ async def get_clock() -> str:
         "title": "Get Stock Bars",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -614,7 +614,7 @@ async def get_stock_bars(
         "title": "Get Stock Quotes",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -759,7 +759,7 @@ async def get_stock_quotes(
         "title": "Get Stock Trades",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -887,7 +887,7 @@ async def get_stock_trades(
         "title": "Get Stock Latest Bar",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -948,7 +948,7 @@ async def get_stock_latest_bar(
         "title": "Get Stock Latest Quote",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1008,7 +1008,7 @@ async def get_stock_latest_quote(
         "title": "Get Stock Latest Trade",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1068,7 +1068,7 @@ async def get_stock_latest_trade(
         "title": "Get Stock Snapshot",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1146,7 +1146,7 @@ async def get_stock_snapshot(
         "title": "Get Crypto Bars",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1273,7 +1273,7 @@ async def get_crypto_bars(
         "title": "Get Crypto Quotes",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1387,7 +1387,7 @@ async def get_crypto_quotes(
         "title": "Get Crypto Trades",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1522,7 +1522,7 @@ async def get_crypto_trades(
         "title": "Get Crypto Latest Bar",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1579,7 +1579,7 @@ async def get_crypto_latest_bar(
         "title": "Get Crypto Latest Quote",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1636,7 +1636,7 @@ async def get_crypto_latest_quote(
         "title": "Get Crypto Latest Trade",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1694,7 +1694,7 @@ async def get_crypto_latest_trade(
         "title": "Get Crypto Snapshot",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1760,7 +1760,7 @@ async def get_crypto_snapshot(
         "title": "Get Crypto Orderbook",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1821,7 +1821,7 @@ async def get_crypto_latest_orderbook(
         "title": "Get Option Contracts",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1939,7 +1939,7 @@ async def get_option_contracts(
         "title": "Get Option Latest Quote",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -2005,7 +2005,7 @@ async def get_option_latest_quote(
         "title": "Get Option Snapshot",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -2064,7 +2064,7 @@ async def get_option_snapshot(
         "title": "Get Option Chain",
         "readOnlyHint": True,
         "destructiveHint": False,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -2155,616 +2155,6 @@ async def get_option_chain(
             "Failed to retrieve option chain.",
             details={"underlying_symbol": underlying_symbol, "original_error": str(e)},
         )
-
-
-# ============================================================================
-# Order Management Tools
-# ============================================================================
-
-async def get_orders(
-    status: str = "all", 
-    limit: int = 10,
-    after: Optional[str] = None,
-    until: Optional[str] = None,
-    direction: Optional[str] = None,
-    nested: Optional[bool] = None,
-    side: Optional[str] = None,
-    symbols: Optional[List[str]] = None
-) -> str:
-    """
-    Retrieves and formats orders with the specified filters.
-
-    Args:
-        status (str): Order status filter (open, closed, all)
-        limit (int): Max orders to return (default: 10, max: 500)
-        after (Optional[str]): Orders after this timestamp (ISO format)
-        until (Optional[str]): Orders until this timestamp (ISO format)
-        direction (Optional[str]): Sort order (asc or desc)
-        nested (Optional[bool]): Roll up multi-leg orders under legs field
-        side (Optional[str]): Filter by side (buy or sell)
-        symbols (Optional[List[str]]): Filter by symbols
-
-    Returns:
-        str: Order details with symbol, type, side, quantity, status, and fill info
-    """
-    _ensure_clients()
-    try:
-        # Convert status string to enum
-        if status.lower() == "open":
-            query_status = QueryOrderStatus.OPEN
-        elif status.lower() == "closed":
-            query_status = QueryOrderStatus.CLOSED
-        else:
-            query_status = QueryOrderStatus.ALL
-        
-        # Convert direction string to enum if provided
-        direction_enum = None
-        if direction:
-            if direction.lower() == "asc":
-                direction_enum = Sort.ASC
-            elif direction.lower() == "desc":
-                direction_enum = Sort.DESC
-            else:
-                return f"Invalid direction: {direction}. Must be 'asc' or 'desc'."
-        
-        # Convert side string to enum if provided
-        side_enum = None
-        if side:
-            if side.lower() == "buy":
-                side_enum = OrderSide.BUY
-            elif side.lower() == "sell":
-                side_enum = OrderSide.SELL
-            else:
-                return f"Invalid side: {side}. Must be 'buy' or 'sell'."
-        
-        # Parse datetime strings if provided
-        after_dt = None
-        until_dt = None
-        if after:
-            try:
-                after_dt = _parse_iso_datetime(after)
-            except ValueError:
-                return f"Invalid 'after' timestamp format: {after}. Use ISO format like '2023-01-01T09:30:00'"
-        if until:
-            try:
-                until_dt = _parse_iso_datetime(until)
-            except ValueError:
-                return f"Invalid 'until' timestamp format: {until}. Use ISO format like '2023-01-01T16:00:00'"
-            
-        request_params = GetOrdersRequest(
-            status=query_status,
-            limit=limit,
-            after=after_dt,
-            until=until_dt,
-            direction=direction_enum,
-            nested=nested,
-            side=side_enum,
-            symbols=symbols
-        )
-        
-        orders = trade_client.get_orders(request_params)
-        
-        payload = {
-            "request": {
-                "status": status,
-                "limit": limit,
-                "after": after,
-                "until": until,
-                "direction": direction,
-                "nested": nested,
-                "side": side,
-                "symbols": symbols,
-            },
-            "orders": [to_serializable(order) for order in orders],
-        }
-        return compact_json(payload)
-    except Exception as e:
-        return f"Error fetching orders: {str(e)}"
-
-async def place_stock_order(
-    symbol: str,
-    side: str,
-    quantity: float,
-    type: str = "market",
-    time_in_force: Union[str, TimeInForce] = "day",
-    order_class: Union[str, OrderClass] = None,
-    limit_price: Optional[float] = None,
-    stop_price: Optional[float] = None,
-    trail_price: Optional[float] = None,
-    trail_percent: Optional[float] = None,
-    extended_hours: bool = False,
-    client_order_id: Optional[str] = None,
-    take_profit_price: Optional[float] = None,
-    stop_loss_price: Optional[float] = None,
-) -> str:
-    """
-    Places a stock order using the specified order type and parameters.
-
-    Args:
-        symbol (str): Stock ticker symbol
-        side (str): Order side ('buy' or 'sell')
-        quantity (float): Number of shares to trade
-        type (str): Order type ('market', 'limit', 'stop', 'stop_limit', 'trailing_stop')
-        time_in_force (Union[str, TimeInForce]): Time in force ('day', 'gtc', 'opg', 'cls', 'ioc', 'fok' or TimeInForce enum)
-        order_class (Union[str, OrderClass]): Order class ('simple', 'bracket', 'oco', 'oto' or OrderClass enum)
-        limit_price (Optional[float]): Limit price (required for LIMIT, STOP_LIMIT)
-        stop_price (Optional[float]): Stop price (required for STOP, STOP_LIMIT)
-        trail_price (Optional[float]): Trail price (for TRAILING_STOP)
-        trail_percent (Optional[float]): Trail percent (for TRAILING_STOP)
-        extended_hours (bool): Allow extended hours execution
-        client_order_id (Optional[str]): Custom order identifier
-        take_profit_price (Optional[float]): Take-profit limit price (for bracket orders)
-        stop_loss_price (Optional[float]): Stop-loss stop price (for bracket orders)
-
-    Returns:
-        str: Compact JSON order payload or a concise error string
-    """
-    _ensure_clients()
-    try:
-        # Validate side
-        if side.lower() == "buy":
-            order_side = OrderSide.BUY
-        elif side.lower() == "sell":
-            order_side = OrderSide.SELL
-        else:
-            return f"Invalid order side: {side}. Must be 'buy' or 'sell'."
-
-        # Validate and convert time_in_force to enum
-        if isinstance(time_in_force, TimeInForce):
-            tif_enum = time_in_force
-        else:
-            try:
-                tif_enum = TimeInForce[time_in_force.upper()]
-            except (KeyError, AttributeError):
-                return f"Invalid time_in_force: {time_in_force}. Valid options are: day, gtc, opg, cls, ioc, fok"
-
-        # Convert order_class to enum (let API validate)
-        if order_class is None:
-            order_class_enum = None
-        elif isinstance(order_class, OrderClass):
-            order_class_enum = order_class
-        else:
-            try:
-                order_class_enum = OrderClass[order_class.upper()]
-            except (KeyError, AttributeError):
-                order_class_enum = None
-
-        # Convert order type string to lowercase for comparison
-        order_type_lower = type.lower()
-
-        # Build bracket legs if provided
-        take_profit_req = TakeProfitRequest(limit_price=take_profit_price) if take_profit_price is not None else None
-        stop_loss_req = StopLossRequest(stop_price=stop_loss_price) if stop_loss_price is not None else None
-
-        # Create order based on type
-        if order_type_lower == "market":
-            order_data = MarketOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side=order_side,
-                type=OrderType.MARKET,
-                time_in_force=tif_enum,
-                order_class=order_class_enum,
-                extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}",
-                take_profit=take_profit_req,
-                stop_loss=stop_loss_req,
-            )
-        elif order_type_lower == "limit":
-            if limit_price is None:
-                return "limit_price is required for LIMIT orders."
-            order_data = LimitOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side=order_side,
-                type=OrderType.LIMIT,
-                time_in_force=tif_enum,
-                order_class=order_class_enum,
-                limit_price=limit_price,
-                extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}",
-                take_profit=take_profit_req,
-                stop_loss=stop_loss_req,
-            )
-        elif order_type_lower == "stop":
-            if stop_price is None:
-                return "stop_price is required for STOP orders."
-            order_data = StopOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side=order_side,
-                type=OrderType.STOP,
-                time_in_force=tif_enum,
-                order_class=order_class_enum,
-                stop_price=stop_price,
-                extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}"
-            )
-        elif order_type_lower == "stop_limit":
-            if stop_price is None or limit_price is None:
-                return "Both stop_price and limit_price are required for STOP_LIMIT orders."
-            order_data = StopLimitOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side=order_side,
-                type=OrderType.STOP_LIMIT,
-                time_in_force=tif_enum,
-                order_class=order_class_enum,
-                stop_price=stop_price,
-                limit_price=limit_price,
-                extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}"
-            )
-        elif order_type_lower == "trailing_stop":
-            if trail_price is None and trail_percent is None:
-                return "Either trail_price or trail_percent is required for TRAILING_STOP orders."
-            order_data = TrailingStopOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side=order_side,
-                type=OrderType.TRAILING_STOP,
-                time_in_force=tif_enum,
-                order_class=order_class_enum,
-                trail_price=trail_price,
-                trail_percent=trail_percent,
-                extended_hours=extended_hours,
-                client_order_id=client_order_id or f"order_{uuid.uuid4().hex[:16]}"
-            )
-        else:
-            return f"Invalid order type: {type}. Must be one of: MARKET, LIMIT, STOP, STOP_LIMIT, TRAILING_STOP."
-
-        order = trade_client.submit_order(order_data)
-        return compact_json(to_serializable(order))
-    except Exception as e:
-        return f"Error placing order: {str(e)}"
-
-async def place_crypto_order(
-    symbol: str,
-    side: str,
-    order_type: str = "market",
-    time_in_force: Union[str, TimeInForce] = "gtc",
-    qty: Optional[float] = None,
-    notional: Optional[float] = None,
-    limit_price: Optional[float] = None,
-    stop_price: Optional[float] = None,
-    client_order_id: Optional[str] = None
-) -> str:
-    """
-    Place a crypto order (market, limit, stop_limit) with GTC/IOC time in force.
-
-    Rules:
-    - Market: require exactly one of qty or notional
-    - Limit: require qty and limit_price (notional not supported)
-    - Stop Limit: require qty, stop_price and limit_price (notional not supported)
-    - time_in_force: only GTC or IOC are supported for crypto orders
-
-    Args:
-        symbol (str): Crypto symbol
-        side (str): Order side ('buy' or 'sell')
-        order_type (str): Order type ('market', 'limit', 'stop_limit')
-        time_in_force (Union[str, TimeInForce]): Time in force ('GTC' or 'IOC')
-        qty (Optional[float]): Quantity to trade
-        notional (Optional[float]): Notional value (market orders only)
-        limit_price (Optional[float]): Limit price (required for limit/stop_limit)
-        stop_price (Optional[float]): Stop price (required for stop_limit)
-        client_order_id (Optional[str]): Custom order identifier
-
-    Returns:
-        str: Order confirmation with order ID, status, and execution details
-    """
-    _ensure_clients()
-    try:
-        # Validate side
-        if side.lower() == "buy":
-            order_side = OrderSide.BUY
-        elif side.lower() == "sell":
-            order_side = OrderSide.SELL
-        else:
-            return f"Invalid order side: {side}. Must be 'buy' or 'sell'."
-
-        # Validate and convert time_in_force to enum, allow only GTC/IOC
-        if isinstance(time_in_force, TimeInForce):
-            if time_in_force not in (TimeInForce.GTC, TimeInForce.IOC):
-                return "Invalid time_in_force for crypto. Use GTC or IOC."
-            tif_enum = time_in_force
-        elif isinstance(time_in_force, str):
-            tif_upper = time_in_force.upper()
-            if tif_upper == "GTC":
-                tif_enum = TimeInForce.GTC
-            elif tif_upper == "IOC":
-                tif_enum = TimeInForce.IOC
-            else:
-                return f"Invalid time_in_force: {time_in_force}. Valid options for crypto are: GTC, IOC"
-        else:
-            return f"Invalid time_in_force type: {type(time_in_force)}. Must be string or TimeInForce enum."
-
-        order_type_lower = order_type.lower()
-
-        if order_type_lower == "market":
-            if (qty is None and notional is None) or (qty is not None and notional is not None):
-                return "For MARKET orders, provide exactly one of qty or notional."
-            order_data = MarketOrderRequest(
-                symbol=symbol,
-                qty=qty,
-                notional=notional,
-                side=order_side,
-                type=OrderType.MARKET,
-                time_in_force=tif_enum,
-                client_order_id=client_order_id or f"crypto_{int(time.time())}"
-            )
-        elif order_type_lower == "limit":
-            if limit_price is None:
-                return "limit_price is required for LIMIT orders."
-            if qty is None:
-                return "qty is required for LIMIT orders."
-            if notional is not None:
-                return "notional is not supported for LIMIT orders. Use qty instead."
-            order_data = LimitOrderRequest(
-                symbol=symbol,
-                qty=qty,
-                side=order_side,
-                type=OrderType.LIMIT,
-                time_in_force=tif_enum,
-                limit_price=limit_price,
-                client_order_id=client_order_id or f"crypto_{int(time.time())}"
-            )
-        elif order_type_lower == "stop_limit":
-            if stop_price is None or limit_price is None:
-                return "Both stop_price and limit_price are required for STOP_LIMIT orders."
-            if qty is None:
-                return "qty is required for STOP_LIMIT orders."
-            if notional is not None:
-                return "notional is not supported for STOP_LIMIT orders. Use qty instead."
-            order_data = StopLimitOrderRequest(
-                symbol=symbol,
-                qty=qty,
-                side=order_side,
-                type=OrderType.STOP_LIMIT,
-                time_in_force=tif_enum,
-                stop_price=stop_price,
-                limit_price=limit_price,
-                client_order_id=client_order_id or f"crypto_{int(time.time())}"
-            )
-        else:
-            return "Invalid order type for crypto. Use: market, limit, stop_limit."
-
-        order = trade_client.submit_order(order_data)
-        return compact_json(to_serializable(order))
-    except Exception as e:
-        return f"Error placing crypto order: {str(e)}"
-
-async def place_option_order(
-    legs: List[Dict[str, Any]],
-    order_type: str = "market",
-    limit_price: Optional[float] = None,
-    order_class: Optional[Union[str, OrderClass]] = None,
-    quantity: int = 1,
-    time_in_force: Union[str, TimeInForce] = "day",
-    extended_hours: bool = False
-) -> str:
-    """
-    Places an options order (market or limit) for single or multi-leg strategies.
-
-    Supported order types for options: market, limit
-    Time in force: DAY only
-    Extended hours: not supported by Alpaca for options (kept for API compatibility)
-
-    Args:
-        legs (List[Dict[str, Any]]): List of option legs with symbol, side, ratio_qty
-        order_type (str): "market" or "limit"
-        limit_price (Optional[float]): Required for limit orders
-        order_class (Optional[Union[str, OrderClass]]): simple or mleg
-        quantity (int): Base quantity for the order
-        time_in_force (Union[str, TimeInForce]): day only
-        extended_hours (bool): Not supported for options
-
-    Returns:
-        str: Order confirmation with order ID, status, and execution details
-    """
-    _ensure_clients()
-    order_legs: List[OptionLegRequest] = []
-
-    try:
-        # Validate inputs
-        validation_error = _validate_option_order_inputs(legs, quantity, time_in_force)
-        if validation_error:
-            return validation_error
-        if order_type.lower() not in ["market", "limit"]:
-            return "Invalid order_type for options. Use: market, limit."
-        if order_type.lower() == "limit" and limit_price is None:
-            return "limit_price is required for LIMIT option orders."
-
-        # Convert order class string to enum if needed
-        converted_order_class = _convert_order_class_string(order_class)
-        if isinstance(converted_order_class, OrderClass):
-            order_class = converted_order_class
-        elif isinstance(converted_order_class, str):  # Error message returned
-            return converted_order_class
-
-        # Convert time_in_force to enum if it's a string
-        if isinstance(time_in_force, str):
-            time_in_force = TimeInForce.DAY  # Options only support DAY
-
-        # Determine order class if not provided
-        if order_class is None:
-            order_class = OrderClass.MLEG if len(legs) > 1 else OrderClass.SIMPLE
-
-        # Process legs
-        processed_legs = _process_option_legs(legs)
-        if isinstance(processed_legs, str):
-            return processed_legs
-        order_legs = processed_legs
-
-        # Create order request
-        order_data = _create_option_order_request(
-            order_legs, order_class, quantity, time_in_force, extended_hours, order_type, limit_price
-        )
-        if isinstance(order_data, str):
-            return order_data
-
-        # Submit order
-        order = trade_client.submit_order(order_data)
-
-        # Format and return response
-        return _format_option_order_response(order, order_class, order_legs)
-
-    except APIError as api_error:
-        return _handle_option_api_error(str(api_error), order_legs, order_class)
-
-    except Exception as e:
-        return f"""
-        Unexpected error placing option order: {str(e)}
-
-        Please try:
-        1. Verifying all input parameters
-        2. Checking your account status
-        3. Ensuring market is open
-        4. Contacting support if the issue persists
-        """
-
-# =======================================================================================
-# Position Management Tools
-# =======================================================================================
-
-async def cancel_all_orders() -> str:
-    """
-    Cancel all open orders.
-    
-    Returns:
-        str: Compact JSON cancellation responses
-    """
-    _ensure_clients()
-    try:
-        # Cancel all orders
-        cancel_responses = trade_client.cancel_orders()
-        
-        return compact_json(to_serializable(cancel_responses or []))
-        
-    except Exception as e:
-        return compact_json({"error": {"code": "cancel_all_orders_failed", "message": str(e)}})
-
-async def cancel_order_by_id(order_id: str) -> str:
-    """
-    Cancel a specific order by its ID.
-    
-    Args:
-        order_id: The UUID of the order to cancel
-        
-    Returns:
-        str: The status of the cancelled order.
-    """
-    _ensure_clients()
-    try:
-        # Cancel the specific order
-        response = trade_client.cancel_order_by_id(order_id)
-        
-        # Format the response
-        status = "Success" if response.status == 200 else "Failed"
-        result = f"""
-        Order Cancellation Result:
-        ------------------------
-        Order ID: {response.id}
-        Status: {status}
-        """
-        
-        if response.body:
-            result += f"Details: {response.body}\n"
-            
-        return result
-        
-    except Exception as e:
-        return f"Error cancelling order {order_id}: {str(e)}"
-
-async def close_position(symbol: str, qty: Optional[str] = None, percentage: Optional[str] = None) -> str:
-    """
-    Closes a specific position for a single symbol. 
-    This method will throw an error if the position does not exist!
-    
-    Args:
-        symbol (str): The symbol of the position to close
-        qty (Optional[str]): Optional number of shares to liquidate
-        percentage (Optional[str]): Optional percentage of shares to liquidate (must result in at least 1 share)
-    
-    Returns:
-        str: Compact JSON order payload or a concise error string
-    """
-    _ensure_clients()
-    try:
-        # Create close position request if options are provided
-        close_options = None
-        if qty or percentage:
-            close_options = ClosePositionRequest(
-                qty=qty,
-                percentage=percentage
-            )
-        
-        # Close the position
-        order = trade_client.close_position(symbol, close_options)
-        
-        return compact_json(to_serializable(order))
-                
-    except APIError as api_error:
-        error_message = str(api_error)
-        if "42210000" in error_message and "would result in order size of zero" in error_message:
-            return "Invalid close_position request: percentage results in 0 shares; use a higher percentage, qty, or 100%."
-        else:
-            return compact_json({"error": {"code": "close_position_failed", "message": error_message}})
-            
-    except Exception as e:
-        return compact_json({"error": {"code": "close_position_failed", "message": str(e)}})
-    
-async def close_all_positions(cancel_orders: bool = False) -> str:
-    """
-    Closes all open positions.
-    
-    Args:
-        cancel_orders (bool): If True, cancels all open orders before liquidating positions
-    
-    Returns:
-        str: Formatted string containing position closure results
-    """
-    _ensure_clients()
-    try:
-        # Close all positions
-        close_responses = trade_client.close_all_positions(cancel_orders=cancel_orders)
-        
-        if not close_responses:
-            return "No positions were found to close."
-        
-        # Format the response
-        response_parts = ["Position Closure Results:"]
-        response_parts.append("-" * 30)
-        
-        for response in close_responses:
-            response_parts.append(f"Symbol: {response.symbol}")
-            response_parts.append(f"Status: {response.status}")
-            if response.order_id:
-                response_parts.append(f"Order ID: {response.order_id}")
-            response_parts.append("-" * 30)
-        
-        return "\n".join(response_parts)
-        
-    except Exception as e:
-        return f"Error closing positions: {str(e)}"
-
-# Position Management Tools (Options)
-async def exercise_options_position(symbol_or_contract_id: str) -> str:
-    """
-    Exercises a held option contract, converting it into the underlying asset.
-    
-    Args:
-        symbol_or_contract_id (str): Option contract symbol (e.g., 'NVDA250919C001680') or contract ID
-    
-    Returns:
-        str: Success message or error details
-    """
-    _ensure_clients()
-    try:
-        trade_client.exercise_options_position(symbol_or_contract_id=symbol_or_contract_id)
-        return f"Successfully submitted exercise request for option contract: {symbol_or_contract_id}"
-    except Exception as e:
-        return f"Error exercising option contract '{symbol_or_contract_id}': {str(e)}"
-
 
 # ============================================================================
 # Server Entry Point and CLI
