@@ -4,7 +4,6 @@ from datetime import datetime, date, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union, Tuple
 from zoneinfo import ZoneInfo
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
-from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.models import Order
 from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest, OptionLegRequest
 from alpaca.trading.enums import (
@@ -260,7 +259,7 @@ def _parse_expiration_expression(expression: str) -> Dict[str, Any]:
             return {"error": f"Invalid date in expression: {str(e)}"}
 
     return {
-        "error": "Unable to parse expression '{expression}'. Supported formats: 'week of September 7, 2025', 'month of December 2025', 'September 7, 2025'",
+        "error": f"Unable to parse expression '{expression}'. Supported formats: 'week of September 7, 2025', 'month of December 2025', 'September 7, 2025'",
     }
 
 
