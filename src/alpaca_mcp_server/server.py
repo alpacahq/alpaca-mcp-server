@@ -387,7 +387,7 @@ async def get_calendar(start_date: str, end_date: str) -> str:
         end_date (str): End date in YYYY-MM-DD format
     
     Returns:
-        str: Formatted string containing market calendar information
+        str: Compact JSON market calendar payload about market calendar information
     """
     _ensure_clients()
     try:
@@ -395,14 +395,14 @@ async def get_calendar(start_date: str, end_date: str) -> str:
         start_dt = _parse_date_ymd(start_date)
         end_dt = _parse_date_ymd(end_date)
         
-        # Create the request object with the correct parameters
         calendar_request = GetCalendarRequest(start=start_dt, end=end_dt)
         calendar = trade_client.get_calendar(calendar_request)
-        
-        result = f"Market Calendar ({start_date} to {end_date}):\n----------------------------\n"
-        for day in calendar:
-            result += f"Date: {day.date}, Open: {day.open}, Close: {day.close}\n"
-        return result
+
+        payload = {
+            "request": {"start_date": start_date, "end_date": end_date},
+            "calendar": [to_serializable(day) for day in (calendar or [])],
+        }
+        return compact_json(payload)
     except Exception as e:
         return f"Error fetching market calendar: {str(e)}"
 
@@ -422,19 +422,12 @@ async def get_clock() -> str:
     Retrieves and formats current market status and next open/close times.
     
     Returns:
-        str: Market status with current time, open/closed state, and next open/close times
+        str: Compact JSON market clock payload with current time, open/closed state, and next open/close times
     """
     _ensure_clients()
     try:
         clock = trade_client.get_clock()
-        return f"""
-                Market Status:
-                -------------
-                Current Time: {clock.timestamp}
-                Is Open: {'Yes' if clock.is_open else 'No'}
-                Next Open: {clock.next_open}
-                Next Close: {clock.next_close}
-                """
+        return compact_json(to_serializable(clock))
     except Exception as e:
         return f"Error fetching market clock: {str(e)}"
 
