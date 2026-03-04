@@ -96,12 +96,8 @@ from alpaca.trading.requests import (
 try:
     from .helpers import (
         parse_timeframe_with_enums,
-        _validate_amount,
         _parse_iso_datetime,
         _parse_date_ymd,
-        _format_ohlcv_bar,
-        _format_quote_data,
-        _format_trade_data,
         _parse_expiration_expression,
         _validate_option_order_inputs,
         _convert_order_class_string,
@@ -125,9 +121,6 @@ except ImportError:
         _validate_amount,
         _parse_iso_datetime,
         _parse_date_ymd,
-        _format_ohlcv_bar,
-        _format_quote_data,
-        _format_trade_data,
         _parse_expiration_expression,
         _validate_option_order_inputs,
         _convert_order_class_string,
@@ -242,24 +235,12 @@ async def get_asset(symbol: str) -> str:
         symbol (str): The symbol of the asset to get information for
     
     Returns:
-        str: Asset details with name, exchange, class, status, and trading properties
+        str: Compact JSON asset payload with the asset details with name, exchange, class, status, and trading properties
     """
     _ensure_clients()
     try:
         asset = trade_client.get_asset(symbol)
-        return f"""
-                Asset Information for {symbol}:
-                ----------------------------
-                Name: {asset.name}
-                Exchange: {asset.exchange}
-                Class: {asset.asset_class}
-                Status: {asset.status}
-                Tradable: {'Yes' if asset.tradable else 'No'}
-                Marginable: {'Yes' if asset.marginable else 'No'}
-                Shortable: {'Yes' if asset.shortable else 'No'}
-                Easy to Borrow: {'Yes' if asset.easy_to_borrow else 'No'}
-                Fractionable: {'Yes' if asset.fractionable else 'No'}
-                """
+        return compact_json(to_serializable(asset))
     except Exception as e:
         return f"Error fetching asset information: {str(e)}"
 
@@ -286,7 +267,7 @@ async def get_all_assets(
         attributes (Optional[str]): Comma-separated values for multiple attributes
 
     Returns:
-        str: Formatted list of assets with symbol, name, exchange, class, and status
+        str: Compact JSON assets payload with assets with symbol, name, exchange, class, and status
     """
     _ensure_clients()
     try:
@@ -302,24 +283,17 @@ async def get_all_assets(
         
         # Get all assets
         assets = trade_client.get_all_assets(filter_params)
-        
-        if not assets:
-            return "No assets found matching the criteria."
-        
-        # Format the response
-        response_parts = ["Available Assets:"]
-        response_parts.append("-" * 30)
-        
-        for asset in assets:
-            response_parts.append(f"Symbol: {asset.symbol}")
-            response_parts.append(f"Name: {asset.name}")
-            response_parts.append(f"Exchange: {asset.exchange}")
-            response_parts.append(f"Class: {asset.asset_class}")
-            response_parts.append(f"Status: {asset.status}")
-            response_parts.append(f"Tradable: {'Yes' if asset.tradable else 'No'}")
-            response_parts.append("-" * 30)
-        
-        return "\n".join(response_parts)
+
+        payload = {
+            "request": {
+                "status": status,
+                "asset_class": asset_class,
+                "exchange": exchange,
+                "attributes": attributes,
+            },
+            "assets": [to_serializable(asset) for asset in (assets or [])],
+        }
+        return compact_json(payload)
         
     except Exception as e:
         return f"Error fetching assets: {str(e)}"
