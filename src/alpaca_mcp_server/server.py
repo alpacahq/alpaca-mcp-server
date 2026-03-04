@@ -232,27 +232,11 @@ async def get_account_info() -> str:
     Retrieves and formats the current account information including balances and status.
 
     Returns:
-        str: Account details with ID, status, buying power, cash, equity, and PDT status
+        str: Compact JSON account payload with ID, status, buying power, cash, equity, and PDT status
     """
     _ensure_clients()
     account = trade_client.get_account()
-    
-    info = f"""
-            Account Information:
-            -------------------
-            Account ID: {account.id}
-            Status: {account.status}
-            Currency: {account.currency}
-            Buying Power: ${float(account.buying_power):.2f}
-            Cash: ${float(account.cash):.2f}
-            Portfolio Value: ${float(account.portfolio_value):.2f}
-            Equity: ${float(account.equity):.2f}
-            Long Market Value: ${float(account.long_market_value):.2f}
-            Short Market Value: ${float(account.short_market_value):.2f}
-            Pattern Day Trader: {'Yes' if account.pattern_day_trader else 'No'}
-            Day Trades Remaining: {account.daytrade_count if hasattr(account, 'daytrade_count') else 'Unknown'}
-            """
-    return info
+    return compact_json(account)
 
 @mcp.tool(
     annotations={
@@ -307,27 +291,12 @@ async def get_open_position(symbol: str) -> str:
         symbol (str): The symbol name of the asset to get position for (e.g., 'AAPL', 'MSFT')
     
     Returns:
-        str: Formatted string containing the position details or an error message
+        str: Compact JSON position payload with the position details or an error message
     """
     _ensure_clients()
     try:
         position = trade_client.get_open_position(symbol)
-        
-        # Check if it's an options position by looking for the options symbol pattern
-        is_option = len(symbol) > 6 and any(c in symbol for c in ['C', 'P'])
-        
-        # Format quantity based on asset type
-        quantity_text = f"{position.qty} contracts" if is_option else f"{position.qty}"
-
-        return f"""
-                Position Details for {symbol}:
-                ---------------------------
-                Quantity: {quantity_text}
-                Market Value: ${float(position.market_value):.2f}
-                Average Entry Price: ${float(position.avg_entry_price):.2f}
-                Current Price: ${float(position.current_price):.2f}
-                Unrealized P/L: ${float(position.unrealized_pl):.2f}
-                """ 
+        return compact_json(to_serializable(position))
     except Exception as e:
         return f"Error fetching position: {str(e)}"
 
@@ -350,24 +319,12 @@ async def get_asset(symbol: str) -> str:
         symbol (str): The symbol of the asset to get information for
     
     Returns:
-        str: Asset details with name, exchange, class, status, and trading properties
+        str: Compact JSON asset payload with the asset details with name, exchange, class, status, and trading properties
     """
     _ensure_clients()
     try:
         asset = trade_client.get_asset(symbol)
-        return f"""
-                Asset Information for {symbol}:
-                ----------------------------
-                Name: {asset.name}
-                Exchange: {asset.exchange}
-                Class: {asset.asset_class}
-                Status: {asset.status}
-                Tradable: {'Yes' if asset.tradable else 'No'}
-                Marginable: {'Yes' if asset.marginable else 'No'}
-                Shortable: {'Yes' if asset.shortable else 'No'}
-                Easy to Borrow: {'Yes' if asset.easy_to_borrow else 'No'}
-                Fractionable: {'Yes' if asset.fractionable else 'No'}
-                """
+        return compact_json(to_serializable(asset))
     except Exception as e:
         return f"Error fetching asset information: {str(e)}"
 
@@ -394,7 +351,7 @@ async def get_all_assets(
         attributes (Optional[str]): Comma-separated values for multiple attributes
 
     Returns:
-        str: Formatted list of assets with symbol, name, exchange, class, and status
+        str: Compact JSON assets payload with assets with symbol, name, exchange, class, and status
     """
     _ensure_clients()
     try:
@@ -411,23 +368,16 @@ async def get_all_assets(
         # Get all assets
         assets = trade_client.get_all_assets(filter_params)
         
-        if not assets:
-            return "No assets found matching the criteria."
-        
-        # Format the response
-        response_parts = ["Available Assets:"]
-        response_parts.append("-" * 30)
-        
-        for asset in assets:
-            response_parts.append(f"Symbol: {asset.symbol}")
-            response_parts.append(f"Name: {asset.name}")
-            response_parts.append(f"Exchange: {asset.exchange}")
-            response_parts.append(f"Class: {asset.asset_class}")
-            response_parts.append(f"Status: {asset.status}")
-            response_parts.append(f"Tradable: {'Yes' if asset.tradable else 'No'}")
-            response_parts.append("-" * 30)
-        
-        return "\n".join(response_parts)
+        payload = {
+            "request": {
+                "status": status,
+                "asset_class": asset_class,
+                "exchange": exchange,
+                "attributes": attributes,
+            },
+            "assets": [to_serializable(asset) for asset in (assets or [])],
+        }
+        return compact_json(payload)
         
     except Exception as e:
         return f"Error fetching assets: {str(e)}"
@@ -598,7 +548,9 @@ async def get_portfolio_history(
 @mcp.tool(
     annotations={
         "title": "Create Watchlist",
-        "destructiveHint": True,
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
         "openWorldHint": True
     }
 )
@@ -633,26 +585,21 @@ async def get_watchlists() -> str:
     Get all watchlists for the account.
 
     Returns:
-        str: List of watchlists with name, ID, and timestamps
+        str: Compact JSON list of watchlists with name, ID, and timestamps
     """
     _ensure_clients()
     try:
         watchlists = trade_client.get_watchlists()
-        result = "Watchlists:\n------------\n"
-        for wl in watchlists:
-            result += f"Name: {wl.name}\n"
-            result += f"ID: {wl.id}\n"
-            result += f"Created: {wl.created_at}\n"
-            result += f"Updated: {wl.updated_at}\n\n"
-        return result
+        return compact_json([to_serializable(wl) for wl in (watchlists or [])])
     except Exception as e:
         return f"Error fetching watchlists: {str(e)}"
 
 @mcp.tool(
     annotations={
         "title": "Update Watchlist",
+        "readOnlyHint": False,
         "destructiveHint": True,
-        "idempotentHint": True,
+        "idempotentHint": False,
         "openWorldHint": True
     }
 )
@@ -691,27 +638,21 @@ async def get_watchlist_by_id(watchlist_id: str) -> str:
         watchlist_id (str): The UUID of the watchlist
 
     Returns:
-        str: Watchlist details including name, ID, timestamps, and symbols
+        str: Compact JSON watchlist payload with name, ID, and timestamps, and symbols
     """
     _ensure_clients()
     try:
         wl = trade_client.get_watchlist_by_id(watchlist_id)
-        result = "Watchlist:\n----------\n"
-        result += f"Name: {wl.name}\n"
-        result += f"ID: {wl.id}\n"
-        result += f"Created: {wl.created_at}\n"
-        result += f"Updated: {wl.updated_at}\n"
-        symbols_list = [a.symbol for a in (getattr(wl, 'assets', []) or [])]
-        result += f"Symbols: {', '.join(symbols_list)}\n"
-        return result
+        return compact_json(to_serializable(wl))
     except Exception as e:
         return f"Error fetching watchlist by id: {str(e)}"
 
 @mcp.tool(
     annotations={
         "title": "Add Asset to Watchlist",
-        "destructiveHint": True,
-        "idempotentHint": True,
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
         "openWorldHint": True
     }
 )
@@ -737,6 +678,7 @@ async def add_asset_to_watchlist_by_id(watchlist_id: str, symbol: str) -> str:
 @mcp.tool(
     annotations={
         "title": "Remove Asset from Watchlist",
+        "readOnlyHint": False,
         "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": True
@@ -764,6 +706,7 @@ async def remove_asset_from_watchlist_by_id(watchlist_id: str, symbol: str) -> s
 @mcp.tool(
     annotations={
         "title": "Delete Watchlist",
+        "readOnlyHint": False,
         "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": True
@@ -806,7 +749,7 @@ async def get_calendar(start_date: str, end_date: str) -> str:
         end_date (str): End date in YYYY-MM-DD format
     
     Returns:
-        str: Formatted string containing market calendar information
+        str: Compact JSON market calendar payload about market calendar information
     """
     _ensure_clients()
     try:
@@ -814,14 +757,13 @@ async def get_calendar(start_date: str, end_date: str) -> str:
         start_dt = _parse_date_ymd(start_date)
         end_dt = _parse_date_ymd(end_date)
         
-        # Create the request object with the correct parameters
         calendar_request = GetCalendarRequest(start=start_dt, end=end_dt)
         calendar = trade_client.get_calendar(calendar_request)
-        
-        result = f"Market Calendar ({start_date} to {end_date}):\n----------------------------\n"
-        for day in calendar:
-            result += f"Date: {day.date}, Open: {day.open}, Close: {day.close}\n"
-        return result
+        payload = {
+            "request": {"start_date": start_date, "end_date": end_date},
+            "calendar": [to_serializable(day) for day in (calendar or [])],
+        }
+        return compact_json(payload)
     except Exception as e:
         return f"Error fetching market calendar: {str(e)}"
 
@@ -841,19 +783,12 @@ async def get_clock() -> str:
     Retrieves and formats current market status and next open/close times.
     
     Returns:
-        str: Market status with current time, open/closed state, and next open/close times
+        str: Compact JSON market clock payload with current time, open/closed state, and next open/close times
     """
     _ensure_clients()
     try:
         clock = trade_client.get_clock()
-        return f"""
-                Market Status:
-                -------------
-                Current Time: {clock.timestamp}
-                Is Open: {'Yes' if clock.is_open else 'No'}
-                Next Open: {clock.next_open}
-                Next Close: {clock.next_close}
-                """
+        return compact_json(to_serializable(clock))
     except Exception as e:
         return f"Error fetching market clock: {str(e)}"
 
@@ -2647,7 +2582,9 @@ async def get_orders(
 @mcp.tool(
     annotations={
         "title": "Place Stock Order",
+        "readOnlyHint": False,
         "destructiveHint": True,
+        "idempotentHint": False,
         "openWorldHint": True
     }
 )
@@ -2811,7 +2748,9 @@ async def place_stock_order(
 @mcp.tool(
     annotations={
         "title": "Place Crypto Order",
+        "readOnlyHint": False,
         "destructiveHint": True,
+        "idempotentHint": False,
         "openWorldHint": True
     }
 )
@@ -2933,7 +2872,9 @@ async def place_crypto_order(
 @mcp.tool(
     annotations={
         "title": "Place Option Order",
+        "readOnlyHint": False,
         "destructiveHint": True,
+        "idempotentHint": False,
         "openWorldHint": True
     }
 )
@@ -3016,15 +2957,7 @@ async def place_option_order(
         return _handle_option_api_error(str(api_error), order_legs, order_class)
 
     except Exception as e:
-        return f"""
-        Unexpected error placing option order: {str(e)}
-
-        Please try:
-        1. Verifying all input parameters
-        2. Checking your account status
-        3. Ensuring market is open
-        4. Contacting support if the issue persists
-        """
+        return compact_json({"error": {"code": "place_option_order_failed", "message": str(e)}})
 
 # =======================================================================================
 # Position Management Tools
@@ -3033,6 +2966,7 @@ async def place_option_order(
 @mcp.tool(
     annotations={
         "title": "Cancel All Orders",
+        "readOnlyHint": False,
         "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": True
@@ -3058,6 +2992,7 @@ async def cancel_all_orders() -> str:
 @mcp.tool(
     annotations={
         "title": "Cancel Order",
+        "readOnlyHint": False,
         "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": True
@@ -3071,34 +3006,22 @@ async def cancel_order_by_id(order_id: str) -> str:
         order_id: The UUID of the order to cancel
         
     Returns:
-        str: The status of the cancelled order.
+        str: Compact JSON cancellation response
     """
     _ensure_clients()
     try:
-        # Cancel the specific order
         response = trade_client.cancel_order_by_id(order_id)
-        
-        # Format the response
-        status = "Success" if response.status == 200 else "Failed"
-        result = f"""
-        Order Cancellation Result:
-        ------------------------
-        Order ID: {response.id}
-        Status: {status}
-        """
-        
-        if response.body:
-            result += f"Details: {response.body}\n"
-            
-        return result
+        return compact_json(to_serializable(response))
         
     except Exception as e:
-        return f"Error cancelling order {order_id}: {str(e)}"
+        return compact_json({"error": {"code": "cancel_order_by_id_failed", "message": str(e), "order_id": order_id}})
 
 @mcp.tool(
     annotations={
         "title": "Close Position",
+        "readOnlyHint": False,
         "destructiveHint": True,
+        "idempotentHint": False,
         "openWorldHint": True
     }
 )
@@ -3143,6 +3066,7 @@ async def close_position(symbol: str, qty: Optional[str] = None, percentage: Opt
 @mcp.tool(
     annotations={
         "title": "Close All Positions",
+        "readOnlyHint": False,
         "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": True
@@ -3156,36 +3080,21 @@ async def close_all_positions(cancel_orders: bool = False) -> str:
         cancel_orders (bool): If True, cancels all open orders before liquidating positions
     
     Returns:
-        str: Formatted string containing position closure results
+        str: Compact JSON position closure responses
     """
     _ensure_clients()
     try:
-        # Close all positions
         close_responses = trade_client.close_all_positions(cancel_orders=cancel_orders)
-        
-        if not close_responses:
-            return "No positions were found to close."
-        
-        # Format the response
-        response_parts = ["Position Closure Results:"]
-        response_parts.append("-" * 30)
-        
-        for response in close_responses:
-            response_parts.append(f"Symbol: {response.symbol}")
-            response_parts.append(f"Status: {response.status}")
-            if response.order_id:
-                response_parts.append(f"Order ID: {response.order_id}")
-            response_parts.append("-" * 30)
-        
-        return "\n".join(response_parts)
+        return compact_json(to_serializable(close_responses or []))
         
     except Exception as e:
-        return f"Error closing positions: {str(e)}"
+        return compact_json({"error": {"code": "close_all_positions_failed", "message": str(e)}})
 
 # Position Management Tools (Options)
 @mcp.tool(
     annotations={
         "title": "Exercise Option",
+        "readOnlyHint": False,
         "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": True
