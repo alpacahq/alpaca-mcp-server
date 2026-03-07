@@ -46,6 +46,7 @@ class ConfigManager:
             'api_key': os.getenv('ALPACA_API_KEY', ''),
             'secret_key': os.getenv('ALPACA_SECRET_KEY', ''),
             'paper_trade': os.getenv('ALPACA_PAPER_TRADE', 'True').lower() == 'true',
+            'http_timeout_seconds': os.getenv('ALPACA_HTTP_TIMEOUT_SECONDS', '10'),
             'trade_api_url': os.getenv('TRADE_API_URL') if os.getenv('TRADE_API_URL') not in ['None', None, ''] else None,
             'trade_api_wss': os.getenv('TRADE_API_WSS') if os.getenv('TRADE_API_WSS') not in ['None', None, ''] else None,
             'data_api_url': os.getenv('DATA_API_URL') if os.getenv('DATA_API_URL') not in ['None', None, ''] else None,
@@ -117,6 +118,7 @@ ALPACA_SECRET_KEY={secret_key}
 # Trading Configuration
 # True = Paper trading (safe for testing), False = Live trading (real money)
 ALPACA_PAPER_TRADE={paper_trade}
+ALPACA_HTTP_TIMEOUT_SECONDS=10
 
 # API Endpoints (leave as None to use Alpaca defaults)
 TRADE_API_URL=None
@@ -162,5 +164,6 @@ STREAM_DATA_WSS=None
 - API Key: {api_key_display}
 - Secret Key: {secret_key_display}
 - Paper Trading: {config['paper_trade']}
+- HTTP Timeout Seconds: {config['http_timeout_seconds']}
 - Config File: {self.env_file}
 - File Exists: {self.env_file.exists()}"""
