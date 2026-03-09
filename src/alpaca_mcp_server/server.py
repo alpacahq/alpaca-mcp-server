@@ -898,7 +898,8 @@ async def get_stock_bars(
         tz (str): Timezone for naive datetime strings (default: "America/New_York")
     
     Returns:
-        str: Historical price data with timestamps, OHLCV data
+        CallToolResult: Result object containing historical price data with timestamps and OHLCV data,
+        including both human-readable text output and structured content.
     """
     _ensure_clients()
     tool_name = "get_stock_bars"
