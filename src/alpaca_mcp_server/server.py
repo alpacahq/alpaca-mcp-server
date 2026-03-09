@@ -1053,7 +1053,9 @@ async def get_stock_quotes(
         tz (str): Timezone for naive datetime strings (default: "America/New_York")
         
     Returns:
-        str: Formatted string containing quote summary or error message
+        CallToolResult: Tool result where `content` contains a human-readable
+        summary (or error text) and `structuredContent` contains quote data,
+        metadata, or structured error details for programmatic use.
     """
     _ensure_clients()
     tool_name = "get_stock_quotes"
