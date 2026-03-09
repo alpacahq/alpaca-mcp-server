@@ -29,13 +29,16 @@ from dotenv import load_dotenv
 
 from alpaca.common.enums import SupportedCurrencies
 from alpaca.common.exceptions import APIError
-from alpaca.data.enums import DataFeed, OptionsFeed, CorporateActionsType, CryptoFeed
+from alpaca.data.enums import DataFeed, MarketType, MostActivesBy, OptionsFeed, CorporateActionsType, CryptoFeed
 from alpaca.data.historical.option import OptionHistoricalDataClient
+from alpaca.data.historical.screener import ScreenerClient
 from alpaca.data.historical.stock import StockHistoricalDataClient
 from alpaca.data.historical.corporate_actions import CorporateActionsClient
 from alpaca.data.historical.crypto import CryptoHistoricalDataClient
 from alpaca.data.live.stock import StockDataStream
 from alpaca.data.requests import (
+    MarketMoversRequest,
+    MostActivesRequest,
     OptionBarsRequest,
     OptionLatestQuoteRequest,
     OptionLatestTradeRequest,
@@ -66,13 +69,16 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import (
     AssetStatus,
     ContractType,
+    DTBPCheck,
     OrderClass,
     OrderSide,
     OrderType,
+    PDTCheck,
     QueryOrderStatus,
     TimeInForce,
+    TradeConfirmationEmail,
 )
-from alpaca.trading.models import Order
+from alpaca.trading.models import AccountConfiguration, Order
 from alpaca.trading.requests import (
     ClosePositionRequest,
     CreateWatchlistRequest,
@@ -155,6 +161,7 @@ try:
     class OptionHistoricalDataClientSigned(UserAgentMixin, OptionHistoricalDataClient): pass
     class CorporateActionsClientSigned(UserAgentMixin, CorporateActionsClient): pass
     class CryptoHistoricalDataClientSigned(UserAgentMixin, CryptoHistoricalDataClient): pass
+    class ScreenerClientSigned(UserAgentMixin, ScreenerClient): pass
 except ImportError:
     # Fallback to unsigned clients if mixin not available
     TradingClientSigned = TradingClient
@@ -162,6 +169,7 @@ except ImportError:
     OptionHistoricalDataClientSigned = OptionHistoricalDataClient
     CorporateActionsClientSigned = CorporateActionsClient
     CryptoHistoricalDataClientSigned = CryptoHistoricalDataClient
+    ScreenerClientSigned = ScreenerClient
 
 # Load environment variables
 load_dotenv()
@@ -200,6 +208,7 @@ stock_data_stream_client = None
 option_historical_data_client = None
 corporate_actions_client = None
 crypto_historical_data_client = None
+screener_client = None
 
 def _ensure_clients():
     """
@@ -208,7 +217,8 @@ def _ensure_clients():
     """
     global _clients_initialized, trade_client, stock_historical_data_client, stock_data_stream_client
     global option_historical_data_client, corporate_actions_client, crypto_historical_data_client
-    
+    global screener_client
+
     if not _clients_initialized:
         trade_client = TradingClientSigned(TRADE_API_KEY, TRADE_API_SECRET, paper=ALPACA_PAPER_TRADE_BOOL)
         stock_historical_data_client = StockHistoricalDataClientSigned(TRADE_API_KEY, TRADE_API_SECRET)
@@ -216,6 +226,7 @@ def _ensure_clients():
         option_historical_data_client = OptionHistoricalDataClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
         corporate_actions_client = CorporateActionsClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
         crypto_historical_data_client = CryptoHistoricalDataClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
+        screener_client = ScreenerClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
         _clients_initialized = True
 
 # ============================================================================
@@ -255,6 +266,147 @@ async def get_account_info() -> str:
             Day Trades Remaining: {account.daytrade_count if hasattr(account, 'daytrade_count') else 'Unknown'}
             """
     return info
+
+@mcp.tool(
+    annotations={
+        "title": "Get Account Configuration",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
+async def get_account_config() -> str:
+    """
+    Retrieves the current account configuration settings, including trading restrictions,
+    margin settings, PDT checks, and options trading level.
+
+    Returns:
+        str: Formatted account configuration with all current settings
+    """
+    _ensure_clients()
+    try:
+        config = trade_client.get_account_configurations()
+
+        return f"""Account Configuration:
+---------------------
+Fractional Trading:       {config.fractional_trading}
+No Shorting (Long-only):  {config.no_shorting}
+Suspend Trading:          {config.suspend_trade}
+Max Margin Multiplier:    {config.max_margin_multiplier}x
+DTBP Check:               {config.dtbp_check}
+PDT Check:                {config.pdt_check}
+Trade Confirm Email:      {config.trade_confirm_email}
+PTP No Exception Entry:   {config.ptp_no_exception_entry}
+Max Options Trading Level: {config.max_options_trading_level if config.max_options_trading_level is not None else 'Not set'}
+  (0=disabled, 1=Covered Call/Cash-Secured Put, 2=Long Call/Put, 3=Spreads/Straddles)"""
+
+    except Exception as e:
+        return f"Error fetching account configuration: {str(e)}"
+
+@mcp.tool(
+    annotations={
+        "title": "Update Account Configuration",
+        "destructiveHint": True,
+        "openWorldHint": True
+    }
+)
+async def update_account_config(
+    fractional_trading: Optional[bool] = None,
+    no_shorting: Optional[bool] = None,
+    suspend_trade: Optional[bool] = None,
+    max_margin_multiplier: Optional[str] = None,
+    dtbp_check: Optional[str] = None,
+    pdt_check: Optional[str] = None,
+    trade_confirm_email: Optional[str] = None,
+    ptp_no_exception_entry: Optional[bool] = None,
+    max_options_trading_level: Optional[int] = None
+) -> str:
+    """
+    Updates one or more account configuration settings. Only the fields you provide
+    will be changed; all others retain their current values.
+
+    Args:
+        fractional_trading (Optional[bool]): Enable or disable fractional share trading
+        no_shorting (Optional[bool]): If True, account is set to long-only mode
+        suspend_trade (Optional[bool]): If True, account cannot submit new orders
+        max_margin_multiplier (Optional[str]): Margin multiplier between "1" and "4"
+        dtbp_check (Optional[str]): Day Trade Buying Power check timing: "both", "entry", or "exit"
+        pdt_check (Optional[str]): Pattern Day Trader check timing: "both", "entry", or "exit"
+        trade_confirm_email (Optional[str]): Trade confirmation emails: "all" or "none"
+        ptp_no_exception_entry (Optional[bool]): If True, accept orders for PTP symbols without exception
+        max_options_trading_level (Optional[int]): Options level: 0=disabled, 1=Covered/CSP, 2=Long, 3=Spreads
+
+    Returns:
+        str: Formatted updated account configuration
+    """
+    _ensure_clients()
+    provided = [v for v in [
+        fractional_trading, no_shorting, suspend_trade, max_margin_multiplier,
+        dtbp_check, pdt_check, trade_confirm_email, ptp_no_exception_entry,
+        max_options_trading_level
+    ] if v is not None]
+    if not provided:
+        return "Error: at least one configuration field must be provided to update."
+
+    try:
+        # Validate enum inputs before fetching current config
+        dtbp_check_enum = None
+        if dtbp_check is not None:
+            try:
+                dtbp_check_enum = DTBPCheck(dtbp_check.lower())
+            except ValueError:
+                return f"Invalid dtbp_check '{dtbp_check}'. Must be one of: both, entry, exit."
+
+        pdt_check_enum = None
+        if pdt_check is not None:
+            try:
+                pdt_check_enum = PDTCheck(pdt_check.lower())
+            except ValueError:
+                return f"Invalid pdt_check '{pdt_check}'. Must be one of: both, entry, exit."
+
+        trade_confirm_enum = None
+        if trade_confirm_email is not None:
+            try:
+                trade_confirm_enum = TradeConfirmationEmail(trade_confirm_email.lower())
+            except ValueError:
+                return f"Invalid trade_confirm_email '{trade_confirm_email}'. Must be one of: all, none."
+
+        if max_options_trading_level is not None and max_options_trading_level not in range(4):
+            return f"Invalid max_options_trading_level '{max_options_trading_level}'. Must be 0, 1, 2, or 3."
+
+        if max_margin_multiplier is not None and max_margin_multiplier not in {"1", "2", "3", "4"}:
+            return f"Invalid max_margin_multiplier '{max_margin_multiplier}'. Must be '1', '2', '3', or '4'."
+
+        # Fetch current config and apply only the provided fields (read-modify-write)
+        current = trade_client.get_account_configurations()
+
+        updated = AccountConfiguration(
+            dtbp_check=dtbp_check_enum if dtbp_check_enum is not None else current.dtbp_check,
+            fractional_trading=fractional_trading if fractional_trading is not None else current.fractional_trading,
+            max_margin_multiplier=max_margin_multiplier if max_margin_multiplier is not None else current.max_margin_multiplier,
+            no_shorting=no_shorting if no_shorting is not None else current.no_shorting,
+            pdt_check=pdt_check_enum if pdt_check_enum is not None else current.pdt_check,
+            suspend_trade=suspend_trade if suspend_trade is not None else current.suspend_trade,
+            trade_confirm_email=trade_confirm_enum if trade_confirm_enum is not None else current.trade_confirm_email,
+            ptp_no_exception_entry=ptp_no_exception_entry if ptp_no_exception_entry is not None else current.ptp_no_exception_entry,
+            max_options_trading_level=max_options_trading_level if max_options_trading_level is not None else current.max_options_trading_level,
+        )
+
+        result = trade_client.set_account_configurations(updated)
+
+        return f"""Account Configuration Updated:
+------------------------------
+Fractional Trading:       {result.fractional_trading}
+No Shorting (Long-only):  {result.no_shorting}
+Suspend Trading:          {result.suspend_trade}
+Max Margin Multiplier:    {result.max_margin_multiplier}x
+DTBP Check:               {result.dtbp_check}
+PDT Check:                {result.pdt_check}
+Trade Confirm Email:      {result.trade_confirm_email}
+PTP No Exception Entry:   {result.ptp_no_exception_entry}
+Max Options Trading Level: {result.max_options_trading_level if result.max_options_trading_level is not None else 'Not set'}"""
+
+    except Exception as e:
+        return f"Error updating account configuration: {str(e)}"
 
 @mcp.tool(
     annotations={
@@ -1595,6 +1747,77 @@ async def get_stock_snapshot(
             
     except Exception as e:
         return f"Error retrieving stock snapshots: {str(e)}"
+
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Screener",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
+async def get_stock_screener(
+    screener_type: str,
+    by: Optional[str] = None,
+    market_type: Optional[str] = None,
+    top: Optional[int] = None
+) -> str:
+    """
+    Screens the market for most active stocks or biggest movers.
+
+    Args:
+        screener_type (str): Type of screen to run:
+            - "most_actives": Top stocks by trading volume or number of trades
+            - "market_movers": Top gaining and losing stocks or crypto
+        by (Optional[str]): For most_actives only — ranking metric: "volume" (default) or "trades"
+        market_type (Optional[str]): For market_movers only — market to screen: "stocks" (default) or "crypto"
+        top (Optional[int]): Number of results to return (default determined by API)
+
+    Returns:
+        str: Formatted list of screener results with symbol, price, and change data
+    """
+    _ensure_clients()
+    try:
+        if screener_type == "most_actives":
+            by_enum = MostActivesBy(by.lower()) if by else MostActivesBy.VOLUME
+            request_kwargs = {"by": by_enum}
+            if top is not None:
+                request_kwargs["top"] = top
+            response = screener_client.get_most_actives(MostActivesRequest(**request_kwargs))
+
+            results = [f"Most Actives (by {by_enum.value}):", "-" * 40]
+            for stock in response.most_actives:
+                results.append(f"  Symbol:  {stock.symbol}")
+                results.append(f"  Volume:  {stock.volume:,}")
+                results.append(f"  Trades:  {stock.trade_count:,}")
+                results.append(f"  Price:   ${float(stock.price):.2f}")
+                results.append(f"  Change:  {float(stock.change):.2f} ({float(stock.change_percent):.2f}%)")
+                results.append("")
+            return "\n".join(results).strip()
+
+        elif screener_type == "market_movers":
+            mt_enum = MarketType(market_type.lower()) if market_type else MarketType.STOCKS
+            request_kwargs = {"market_type": mt_enum}
+            if top is not None:
+                request_kwargs["top"] = top
+            response = screener_client.get_market_movers(MarketMoversRequest(**request_kwargs))
+
+            results = [f"Market Movers ({mt_enum.value}):", "-" * 40]
+            results.append("Gainers:")
+            for stock in response.gainers:
+                results.append(f"  {stock.symbol}: ${float(stock.price):.2f}  +{float(stock.change):.2f} (+{float(stock.change_percent):.2f}%)")
+            results.append("")
+            results.append("Losers:")
+            for stock in response.losers:
+                results.append(f"  {stock.symbol}: ${float(stock.price):.2f}  {float(stock.change):.2f} ({float(stock.change_percent):.2f}%)")
+            return "\n".join(results)
+
+        else:
+            return f"Invalid screener_type '{screener_type}'. Must be 'most_actives' or 'market_movers'."
+
+    except ValueError as e:
+        return f"Invalid parameter value: {str(e)}"
+    except Exception as e:
+        return f"Error running stock screener: {str(e)}"
 
 # ============================================================================
 # Crypto Market Data Tools
