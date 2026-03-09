@@ -304,7 +304,7 @@ async def get_open_position(symbol: str) -> str:
         position = trade_client.get_open_position(symbol)
         return compact_json(to_serializable(position))
     except Exception as e:
-        return f"Error fetching position: {str(e)}"
+        return compact_json({"error": {"code": "get_open_position_failed", "message": str(e), "symbol": symbol}})
 
 # ============================================================================
 # Asset Information Tools
@@ -334,7 +334,7 @@ async def get_asset(symbol: str) -> str:
         asset = trade_client.get_asset(symbol)
         return compact_json(to_serializable(asset))
     except Exception as e:
-        return f"Error fetching asset information: {str(e)}"
+        return compact_json({"error": {"code": "get_asset_failed", "message": str(e), "symbol": symbol}})
 
 @mcp.tool(
     annotations={
@@ -390,7 +390,17 @@ async def get_all_assets(
         return compact_json(payload)
         
     except Exception as e:
-        return f"Error fetching assets: {str(e)}"
+        return compact_json(
+            {
+                "request": {
+                    "status": status,
+                    "asset_class": asset_class,
+                    "exchange": exchange,
+                    "attributes": attributes,
+                },
+                "error": {"code": "get_all_assets_failed", "message": str(e)},
+            }
+        )
 
 # ============================================================================
 # Corporate Actions Tools
@@ -461,7 +471,21 @@ async def get_corporate_actions(
         }
         return compact_json(payload)
     except Exception as e:
-        return f"Error fetching corporate announcements: {str(e)}"
+        return compact_json(
+            {
+                "request": {
+                    "ca_types": to_serializable(ca_types),
+                    "start": to_serializable(start),
+                    "end": to_serializable(end),
+                    "symbols": symbols,
+                    "cusips": cusips,
+                    "ids": ids,
+                    "limit": limit,
+                    "sort": sort,
+                },
+                "error": {"code": "get_corporate_actions_failed", "message": str(e)},
+            }
+        )
 
 # ============================================================================
 # Portfolio History Tool
@@ -608,7 +632,7 @@ async def get_watchlists() -> str:
         watchlists = trade_client.get_watchlists()
         return compact_json([to_serializable(wl) for wl in (watchlists or [])])
     except Exception as e:
-        return f"Error fetching watchlists: {str(e)}"
+        return compact_json({"error": {"code": "get_watchlists_failed", "message": str(e)}})
 
 @mcp.tool(
     annotations={
@@ -663,7 +687,9 @@ async def get_watchlist_by_id(watchlist_id: str) -> str:
         wl = trade_client.get_watchlist_by_id(watchlist_id)
         return compact_json(to_serializable(wl))
     except Exception as e:
-        return f"Error fetching watchlist by id: {str(e)}"
+        return compact_json(
+            {"error": {"code": "get_watchlist_by_id_failed", "message": str(e), "watchlist_id": watchlist_id}}
+        )
 
 @mcp.tool(
     annotations={
@@ -785,7 +811,12 @@ async def get_calendar(start_date: str, end_date: str) -> str:
         }
         return compact_json(payload)
     except Exception as e:
-        return f"Error fetching market calendar: {str(e)}"
+        return compact_json(
+            {
+                "request": {"start_date": start_date, "end_date": end_date},
+                "error": {"code": "get_calendar_failed", "message": str(e)},
+            }
+        )
 
 # ============================================================================
 # Market Clock Tools
@@ -812,7 +843,7 @@ async def get_clock() -> str:
         clock = trade_client.get_clock()
         return compact_json(to_serializable(clock))
     except Exception as e:
-        return f"Error fetching market clock: {str(e)}"
+        return compact_json({"error": {"code": "get_clock_failed", "message": str(e)}})
 
 # ============================================================================
 # Stock Market Data Tools
@@ -1462,6 +1493,14 @@ async def get_stock_snapshot(
     _ensure_clients()
     tool_name = "get_stock_snapshot"
     symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+    if not symbols:
+        return build_error_result(
+            tool_name,
+            "missing_symbols",
+            "At least one stock symbol must be provided.",
+            field="symbol_or_symbols",
+            details={"symbols": symbols},
+        )
     try:
         request = StockSnapshotRequest(symbol_or_symbols=symbol_or_symbols, feed=feed, currency=currency)
         snapshots = stock_historical_data_client.get_stock_snapshot(request)
@@ -2639,7 +2678,21 @@ async def get_orders(
         }
         return compact_json(payload)
     except Exception as e:
-        return f"Error fetching orders: {str(e)}"
+        return compact_json(
+            {
+                "request": {
+                    "status": status,
+                    "limit": limit,
+                    "after": after,
+                    "until": until,
+                    "direction": direction,
+                    "nested": nested,
+                    "side": side,
+                    "symbols": symbols,
+                },
+                "error": {"code": "get_orders_failed", "message": str(e)},
+            }
+        )
 
 @mcp.tool(
     annotations={
@@ -3118,7 +3171,17 @@ async def close_position(symbol: str, qty: Optional[str] = None, percentage: Opt
     except APIError as api_error:
         error_message = str(api_error)
         if "42210000" in error_message and "would result in order size of zero" in error_message:
-            return "Invalid close_position request: percentage results in 0 shares; use a higher percentage, qty, or 100%."
+            return compact_json(
+                {
+                    "error": {
+                        "code": "invalid_close_position_request",
+                        "message": "percentage results in 0 shares; use a higher percentage, qty, or 100%.",
+                        "symbol": symbol,
+                        "qty": qty,
+                        "percentage": percentage,
+                    }
+                }
+            )
         else:
             return compact_json({"error": {"code": "close_position_failed", "message": error_message}})
             
