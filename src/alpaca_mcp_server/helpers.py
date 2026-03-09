@@ -1,10 +1,11 @@
+import json
 import re
 import time
 from datetime import datetime, date, timedelta, timezone
+from enum import Enum
 from typing import Any, Dict, List, Optional, Union, Tuple
 from zoneinfo import ZoneInfo
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
-from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
 from alpaca.trading.models import Order
 from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest, OptionLegRequest
 from alpaca.trading.enums import (
@@ -16,6 +17,7 @@ from alpaca.trading.enums import (
     QueryOrderStatus,
     TimeInForce,
 )
+from mcp.types import CallToolResult, TextContent
 
 def _validate_amount(amount: int, unit: TimeFrameUnit) -> bool:
     if amount <= 0:
@@ -260,7 +262,7 @@ def _parse_expiration_expression(expression: str) -> Dict[str, Any]:
             return {"error": f"Invalid date in expression: {str(e)}"}
 
     return {
-        "error": "Unable to parse expression '{expression}'. Supported formats: 'week of September 7, 2025', 'month of December 2025', 'September 7, 2025'",
+        "error": f"Unable to parse expression '{expression}'. Supported formats: 'week of September 7, 2025', 'month of December 2025', 'September 7, 2025'",
     }
 
 
@@ -565,5 +567,72 @@ def _handle_option_api_error(error_message: str, order_legs: List[OptionLegReque
         3. The market is open for trading
         4. Your account has the required permissions
         """
+
+
+def to_serializable(value: Any) -> Any:
+    """Convert SDK objects and enums into JSON-serializable values."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, dict):
+        return {str(k): to_serializable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [to_serializable(v) for v in value]
+    if hasattr(value, "model_dump"):
+        try:
+            return to_serializable(value.model_dump())
+        except TypeError:
+            return to_serializable(value.model_dump(mode="json"))
+    if hasattr(value, "__dict__"):
+        data = {k: v for k, v in vars(value).items() if not k.startswith("_")}
+        if data:
+            return {str(k): to_serializable(v) for k, v in data.items()}
+    return str(value)
+
+
+def build_success_result(
+    tool_name: str,
+    payload: Dict[str, Any],
+    summary: Optional[str] = None,
+    content_text: Optional[str] = None,
+) -> CallToolResult:
+    """Return text content + structured payload for MCP tools."""
+    safe_payload = to_serializable(payload)
+    resolved_content = content_text if content_text is not None else (summary or f"{tool_name}: ok")
+    return CallToolResult(
+        content=[TextContent(type="text", text=resolved_content)],
+        structuredContent=safe_payload if isinstance(safe_payload, dict) else {"result": safe_payload},
+        isError=False,
+    )
+
+
+def build_error_result(
+    tool_name: str,
+    code: str,
+    message: str,
+    field: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+) -> CallToolResult:
+    """Return standardized compact tool error payload."""
+    error_obj: Dict[str, Any] = {"code": code, "message": message}
+    if field:
+        error_obj["field"] = field
+    if details:
+        error_obj["details"] = to_serializable(details)
+
+    payload = {"tool": tool_name, "error": error_obj}
+    return CallToolResult(
+        content=[TextContent(type="text", text=f"{tool_name}: error {code}")],
+        structuredContent=payload,
+        isError=True,
+    )
+
+
+def compact_json(value: Any) -> str:
+    """Serialize value for benchmarking/reporting with compact separators."""
+    return json.dumps(to_serializable(value), separators=(",", ":"), ensure_ascii=True)
 
 
