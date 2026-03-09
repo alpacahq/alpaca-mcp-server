@@ -349,6 +349,7 @@ def prompt_for_api_keys() -> Dict[str, str]:
         'ALPACA_API_KEY': api_key,
         'ALPACA_SECRET_KEY': secret_key,
         'ALPACA_PAPER_TRADE': paper_trade_value,
+        'ALPACA_HTTP_TIMEOUT_SECONDS': '10',
         'TRADE_API_URL': 'None',
         'TRADE_API_WSS': 'None',
         'DATA_API_URL': 'None',
@@ -371,6 +372,7 @@ ALPACA_SECRET_KEY = "{api_config['ALPACA_SECRET_KEY']}"
 
 # Trading Configuration
 ALPACA_PAPER_TRADE = {api_config['ALPACA_PAPER_TRADE']}
+ALPACA_HTTP_TIMEOUT_SECONDS = {api_config['ALPACA_HTTP_TIMEOUT_SECONDS']}
 
 # API Endpoints (leave as None for defaults)
 TRADE_API_URL = {api_config['TRADE_API_URL']}

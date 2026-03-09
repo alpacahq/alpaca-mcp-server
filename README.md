@@ -98,6 +98,7 @@ Method 2: Manually Update
 ALPACA_API_KEY = "your_alpaca_api_key_for_live_account"
 ALPACA_SECRET_KEY = "your_alpaca_secret_key_for_live_account"
 ALPACA_PAPER_TRADE = False
+ALPACA_HTTP_TIMEOUT_SECONDS = 10
 TRADE_API_URL = None
 TRADE_API_WSS = None
 DATA_API_URL = None
@@ -1042,6 +1043,7 @@ Replace `your_alpaca_api_key` and `your_alpaca_secret_key` with your actual Alpa
 - **uv/uvx not found**: Install uv from the official guide (https://docs.astral.sh/uv/getting-started/installation/) and then restart your terminal so `uv`/`uvx` are on PATH.
 - **`.env` not applied**: Ensure the server starts in the same directory as `.env`. Remember MCP client `env` overrides `.env`.
 - **Credentials missing**: Set `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` in `.env` or in the client's `env` block. Paper mode default is `ALPACA_PAPER_TRADE = True`.
+- **Requests hang too long**: Set `ALPACA_HTTP_TIMEOUT_SECONDS` in `.env` or the client's `env` block to fail slow Alpaca REST requests faster. Default is `10`.
 - **Client didn’t pick up new config**: Restart the client (Cursor, Claude Desktop, VS Code) after changes.
 - **HTTP port conflicts**: If using `--transport streamable-http`, change `--port` to a free port.
 

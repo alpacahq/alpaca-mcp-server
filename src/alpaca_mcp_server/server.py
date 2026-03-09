@@ -26,6 +26,7 @@ from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
 
 from dotenv import load_dotenv
+from requests.exceptions import Timeout as RequestsTimeout
 
 from alpaca.common.enums import SupportedCurrencies
 from alpaca.common.exceptions import APIError
@@ -137,6 +138,52 @@ except ImportError:
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult
 
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
+
+
+def _get_request_timeout_seconds() -> float:
+    """Read the Alpaca HTTP timeout from the environment with a safe fallback."""
+    raw_value = os.getenv("ALPACA_HTTP_TIMEOUT_SECONDS", "").strip()
+    if not raw_value:
+        return DEFAULT_REQUEST_TIMEOUT_SECONDS
+
+    try:
+        timeout_seconds = float(raw_value)
+    except ValueError:
+        return DEFAULT_REQUEST_TIMEOUT_SECONDS
+
+    if timeout_seconds <= 0:
+        return DEFAULT_REQUEST_TIMEOUT_SECONDS
+
+    return timeout_seconds
+
+
+def _format_timeout_error(timeout_seconds: float) -> str:
+    return (
+        f"Alpaca API request timed out after {timeout_seconds:g}s. "
+        "Set ALPACA_HTTP_TIMEOUT_SECONDS to a larger value if needed."
+    )
+
+
+class AlpacaRequestTimeoutError(TimeoutError):
+    """Raised when an Alpaca SDK request exceeds the configured timeout."""
+
+
+class RequestTimeoutMixin:
+    """Inject a default timeout into Alpaca SDK REST requests."""
+
+    def _one_request(self, method: str, url: str, opts: dict, retry: int) -> dict:
+        request_opts = dict(opts)
+        timeout_seconds = _get_request_timeout_seconds()
+        request_opts.setdefault("timeout", timeout_seconds)
+
+        try:
+            return super()._one_request(method, url, request_opts, retry)
+        except RequestsTimeout as exc:
+            raise AlpacaRequestTimeoutError(
+                _format_timeout_error(timeout_seconds)
+            ) from exc
+
 # Configure Python path for local imports (UserAgentMixin)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = Path(current_dir).parent.parent
@@ -148,18 +195,52 @@ if github_core_path.exists() and str(github_core_path) not in sys.path:
 try:
     from user_agent_mixin import UserAgentMixin
     # Define new classes using the mixin
-    class TradingClientSigned(UserAgentMixin, TradingClient): pass
-    class StockHistoricalDataClientSigned(UserAgentMixin, StockHistoricalDataClient): pass
-    class OptionHistoricalDataClientSigned(UserAgentMixin, OptionHistoricalDataClient): pass
-    class CorporateActionsClientSigned(UserAgentMixin, CorporateActionsClient): pass
-    class CryptoHistoricalDataClientSigned(UserAgentMixin, CryptoHistoricalDataClient): pass
+    class TradingClientSigned(RequestTimeoutMixin, UserAgentMixin, TradingClient):
+        pass
+
+    class StockHistoricalDataClientSigned(
+        RequestTimeoutMixin, UserAgentMixin, StockHistoricalDataClient
+    ):
+        pass
+
+    class OptionHistoricalDataClientSigned(
+        RequestTimeoutMixin, UserAgentMixin, OptionHistoricalDataClient
+    ):
+        pass
+
+    class CorporateActionsClientSigned(
+        RequestTimeoutMixin, UserAgentMixin, CorporateActionsClient
+    ):
+        pass
+
+    class CryptoHistoricalDataClientSigned(
+        RequestTimeoutMixin, UserAgentMixin, CryptoHistoricalDataClient
+    ):
+        pass
 except ImportError:
     # Fallback to unsigned clients if mixin not available
-    TradingClientSigned = TradingClient
-    StockHistoricalDataClientSigned = StockHistoricalDataClient
-    OptionHistoricalDataClientSigned = OptionHistoricalDataClient
-    CorporateActionsClientSigned = CorporateActionsClient
-    CryptoHistoricalDataClientSigned = CryptoHistoricalDataClient
+    class TradingClientSigned(RequestTimeoutMixin, TradingClient):
+        pass
+
+    class StockHistoricalDataClientSigned(
+        RequestTimeoutMixin, StockHistoricalDataClient
+    ):
+        pass
+
+    class OptionHistoricalDataClientSigned(
+        RequestTimeoutMixin, OptionHistoricalDataClient
+    ):
+        pass
+
+    class CorporateActionsClientSigned(
+        RequestTimeoutMixin, CorporateActionsClient
+    ):
+        pass
+
+    class CryptoHistoricalDataClientSigned(
+        RequestTimeoutMixin, CryptoHistoricalDataClient
+    ):
+        pass
 
 # Load environment variables
 load_dotenv()
