@@ -29,15 +29,21 @@ from dotenv import load_dotenv
 
 from alpaca.common.enums import SupportedCurrencies
 from alpaca.common.exceptions import APIError
-from alpaca.data.enums import DataFeed, OptionsFeed, CorporateActionsType, CryptoFeed
+from alpaca.data.enums import DataFeed, MarketType, MostActivesBy, OptionsFeed, CorporateActionsType, CryptoFeed
 from alpaca.data.historical.option import OptionHistoricalDataClient
+from alpaca.data.historical.screener import ScreenerClient
 from alpaca.data.historical.stock import StockHistoricalDataClient
 from alpaca.data.historical.corporate_actions import CorporateActionsClient
 from alpaca.data.historical.crypto import CryptoHistoricalDataClient
 from alpaca.data.live.stock import StockDataStream
 from alpaca.data.requests import (
+    MarketMoversRequest,
+    MostActivesRequest,
+    OptionBarsRequest,
     OptionLatestQuoteRequest,
+    OptionLatestTradeRequest,
     OptionSnapshotRequest,
+    OptionTradesRequest,
     Sort,
     StockBarsRequest,
     StockLatestBarRequest,
@@ -63,13 +69,16 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import (
     AssetStatus,
     ContractType,
+    DTBPCheck,
     OrderClass,
     OrderSide,
     OrderType,
+    PDTCheck,
     QueryOrderStatus,
     TimeInForce,
+    TradeConfirmationEmail,
 )
-from alpaca.trading.models import Order
+from alpaca.trading.models import AccountConfiguration, Order
 from alpaca.trading.requests import (
     ClosePositionRequest,
     CreateWatchlistRequest,
@@ -81,6 +90,7 @@ from alpaca.trading.requests import (
     LimitOrderRequest,
     MarketOrderRequest,
     OptionLegRequest,
+    ReplaceOrderRequest,
     StopLimitOrderRequest,
     StopLossRequest,
     StopOrderRequest,
@@ -153,6 +163,7 @@ try:
     class OptionHistoricalDataClientSigned(UserAgentMixin, OptionHistoricalDataClient): pass
     class CorporateActionsClientSigned(UserAgentMixin, CorporateActionsClient): pass
     class CryptoHistoricalDataClientSigned(UserAgentMixin, CryptoHistoricalDataClient): pass
+    class ScreenerClientSigned(UserAgentMixin, ScreenerClient): pass
 except ImportError:
     # Fallback to unsigned clients if mixin not available
     TradingClientSigned = TradingClient
@@ -160,6 +171,7 @@ except ImportError:
     OptionHistoricalDataClientSigned = OptionHistoricalDataClient
     CorporateActionsClientSigned = CorporateActionsClient
     CryptoHistoricalDataClientSigned = CryptoHistoricalDataClient
+    ScreenerClientSigned = ScreenerClient
 
 # Load environment variables
 load_dotenv()
@@ -198,6 +210,7 @@ stock_data_stream_client = None
 option_historical_data_client = None
 corporate_actions_client = None
 crypto_historical_data_client = None
+screener_client = None
 
 def _ensure_clients():
     """
@@ -206,7 +219,8 @@ def _ensure_clients():
     """
     global _clients_initialized, trade_client, stock_historical_data_client, stock_data_stream_client
     global option_historical_data_client, corporate_actions_client, crypto_historical_data_client
-    
+    global screener_client
+
     if not _clients_initialized:
         trade_client = TradingClientSigned(TRADE_API_KEY, TRADE_API_SECRET, paper=ALPACA_PAPER_TRADE_BOOL)
         stock_historical_data_client = StockHistoricalDataClientSigned(TRADE_API_KEY, TRADE_API_SECRET)
@@ -214,6 +228,7 @@ def _ensure_clients():
         option_historical_data_client = OptionHistoricalDataClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
         corporate_actions_client = CorporateActionsClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
         crypto_historical_data_client = CryptoHistoricalDataClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
+        screener_client = ScreenerClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
         _clients_initialized = True
 
 # ============================================================================
@@ -239,6 +254,147 @@ async def get_account_info() -> str:
     _ensure_clients()
     account = trade_client.get_account()
     return compact_json(account)
+
+@mcp.tool(
+    annotations={
+        "title": "Get Account Configuration",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
+async def get_account_config() -> str:
+    """
+    Retrieves the current account configuration settings, including trading restrictions,
+    margin settings, PDT checks, and options trading level.
+
+    Returns:
+        str: Formatted account configuration with all current settings
+    """
+    _ensure_clients()
+    try:
+        config = trade_client.get_account_configurations()
+
+        return f"""Account Configuration:
+---------------------
+Fractional Trading:       {config.fractional_trading}
+No Shorting (Long-only):  {config.no_shorting}
+Suspend Trading:          {config.suspend_trade}
+Max Margin Multiplier:    {config.max_margin_multiplier}x
+DTBP Check:               {config.dtbp_check}
+PDT Check:                {config.pdt_check}
+Trade Confirm Email:      {config.trade_confirm_email}
+PTP No Exception Entry:   {config.ptp_no_exception_entry}
+Max Options Trading Level: {config.max_options_trading_level if config.max_options_trading_level is not None else 'Not set'}
+  (0=disabled, 1=Covered Call/Cash-Secured Put, 2=Long Call/Put, 3=Spreads/Straddles)"""
+
+    except Exception as e:
+        return f"Error fetching account configuration: {str(e)}"
+
+@mcp.tool(
+    annotations={
+        "title": "Update Account Configuration",
+        "destructiveHint": True,
+        "openWorldHint": True
+    }
+)
+async def update_account_config(
+    fractional_trading: Optional[bool] = None,
+    no_shorting: Optional[bool] = None,
+    suspend_trade: Optional[bool] = None,
+    max_margin_multiplier: Optional[str] = None,
+    dtbp_check: Optional[str] = None,
+    pdt_check: Optional[str] = None,
+    trade_confirm_email: Optional[str] = None,
+    ptp_no_exception_entry: Optional[bool] = None,
+    max_options_trading_level: Optional[int] = None
+) -> str:
+    """
+    Updates one or more account configuration settings. Only the fields you provide
+    will be changed; all others retain their current values.
+
+    Args:
+        fractional_trading (Optional[bool]): Enable or disable fractional share trading
+        no_shorting (Optional[bool]): If True, account is set to long-only mode
+        suspend_trade (Optional[bool]): If True, account cannot submit new orders
+        max_margin_multiplier (Optional[str]): Margin multiplier between "1" and "4"
+        dtbp_check (Optional[str]): Day Trade Buying Power check timing: "both", "entry", or "exit"
+        pdt_check (Optional[str]): Pattern Day Trader check timing: "both", "entry", or "exit"
+        trade_confirm_email (Optional[str]): Trade confirmation emails: "all" or "none"
+        ptp_no_exception_entry (Optional[bool]): If True, accept orders for PTP symbols without exception
+        max_options_trading_level (Optional[int]): Options level: 0=disabled, 1=Covered/CSP, 2=Long, 3=Spreads
+
+    Returns:
+        str: Formatted updated account configuration
+    """
+    _ensure_clients()
+    provided = [v for v in [
+        fractional_trading, no_shorting, suspend_trade, max_margin_multiplier,
+        dtbp_check, pdt_check, trade_confirm_email, ptp_no_exception_entry,
+        max_options_trading_level
+    ] if v is not None]
+    if not provided:
+        return "Error: at least one configuration field must be provided to update."
+
+    try:
+        # Validate enum inputs before fetching current config
+        dtbp_check_enum = None
+        if dtbp_check is not None:
+            try:
+                dtbp_check_enum = DTBPCheck(dtbp_check.lower())
+            except ValueError:
+                return f"Invalid dtbp_check '{dtbp_check}'. Must be one of: both, entry, exit."
+
+        pdt_check_enum = None
+        if pdt_check is not None:
+            try:
+                pdt_check_enum = PDTCheck(pdt_check.lower())
+            except ValueError:
+                return f"Invalid pdt_check '{pdt_check}'. Must be one of: both, entry, exit."
+
+        trade_confirm_enum = None
+        if trade_confirm_email is not None:
+            try:
+                trade_confirm_enum = TradeConfirmationEmail(trade_confirm_email.lower())
+            except ValueError:
+                return f"Invalid trade_confirm_email '{trade_confirm_email}'. Must be one of: all, none."
+
+        if max_options_trading_level is not None and max_options_trading_level not in range(4):
+            return f"Invalid max_options_trading_level '{max_options_trading_level}'. Must be 0, 1, 2, or 3."
+
+        if max_margin_multiplier is not None and max_margin_multiplier not in {"1", "2", "3", "4"}:
+            return f"Invalid max_margin_multiplier '{max_margin_multiplier}'. Must be '1', '2', '3', or '4'."
+
+        # Fetch current config and apply only the provided fields (read-modify-write)
+        current = trade_client.get_account_configurations()
+
+        updated = AccountConfiguration(
+            dtbp_check=dtbp_check_enum if dtbp_check_enum is not None else current.dtbp_check,
+            fractional_trading=fractional_trading if fractional_trading is not None else current.fractional_trading,
+            max_margin_multiplier=max_margin_multiplier if max_margin_multiplier is not None else current.max_margin_multiplier,
+            no_shorting=no_shorting if no_shorting is not None else current.no_shorting,
+            pdt_check=pdt_check_enum if pdt_check_enum is not None else current.pdt_check,
+            suspend_trade=suspend_trade if suspend_trade is not None else current.suspend_trade,
+            trade_confirm_email=trade_confirm_enum if trade_confirm_enum is not None else current.trade_confirm_email,
+            ptp_no_exception_entry=ptp_no_exception_entry if ptp_no_exception_entry is not None else current.ptp_no_exception_entry,
+            max_options_trading_level=max_options_trading_level if max_options_trading_level is not None else current.max_options_trading_level,
+        )
+
+        result = trade_client.set_account_configurations(updated)
+
+        return f"""Account Configuration Updated:
+------------------------------
+Fractional Trading:       {result.fractional_trading}
+No Shorting (Long-only):  {result.no_shorting}
+Suspend Trading:          {result.suspend_trade}
+Max Margin Multiplier:    {result.max_margin_multiplier}x
+DTBP Check:               {result.dtbp_check}
+PDT Check:                {result.pdt_check}
+Trade Confirm Email:      {result.trade_confirm_email}
+PTP No Exception Entry:   {result.ptp_no_exception_entry}
+Max Options Trading Level: {result.max_options_trading_level if result.max_options_trading_level is not None else 'Not set'}"""
+
+    except Exception as e:
+        return f"Error updating account configuration: {str(e)}"
 
 @mcp.tool(
     annotations={
@@ -1550,6 +1706,77 @@ async def get_stock_snapshot(
             details={"original_error": str(e)},
         )
 
+@mcp.tool(
+    annotations={
+        "title": "Get Stock Screener",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
+async def get_stock_screener(
+    screener_type: str,
+    by: Optional[str] = None,
+    market_type: Optional[str] = None,
+    top: Optional[int] = None
+) -> str:
+    """
+    Screens the market for most active stocks or biggest movers.
+
+    Args:
+        screener_type (str): Type of screen to run:
+            - "most_actives": Top stocks by trading volume or number of trades
+            - "market_movers": Top gaining and losing stocks or crypto
+        by (Optional[str]): For most_actives only — ranking metric: "volume" (default) or "trades"
+        market_type (Optional[str]): For market_movers only — market to screen: "stocks" (default) or "crypto"
+        top (Optional[int]): Number of results to return (default determined by API)
+
+    Returns:
+        str: Formatted list of screener results with symbol, price, and change data
+    """
+    _ensure_clients()
+    try:
+        if screener_type == "most_actives":
+            by_enum = MostActivesBy(by.lower()) if by else MostActivesBy.VOLUME
+            request_kwargs = {"by": by_enum}
+            if top is not None:
+                request_kwargs["top"] = top
+            response = screener_client.get_most_actives(MostActivesRequest(**request_kwargs))
+
+            results = [f"Most Actives (by {by_enum.value}):", "-" * 40]
+            for stock in response.most_actives:
+                results.append(f"  Symbol:  {stock.symbol}")
+                results.append(f"  Volume:  {stock.volume:,}")
+                results.append(f"  Trades:  {stock.trade_count:,}")
+                results.append(f"  Price:   ${float(stock.price):.2f}")
+                results.append(f"  Change:  {float(stock.change):.2f} ({float(stock.change_percent):.2f}%)")
+                results.append("")
+            return "\n".join(results).strip()
+
+        elif screener_type == "market_movers":
+            mt_enum = MarketType(market_type.lower()) if market_type else MarketType.STOCKS
+            request_kwargs = {"market_type": mt_enum}
+            if top is not None:
+                request_kwargs["top"] = top
+            response = screener_client.get_market_movers(MarketMoversRequest(**request_kwargs))
+
+            results = [f"Market Movers ({mt_enum.value}):", "-" * 40]
+            results.append("Gainers:")
+            for stock in response.gainers:
+                results.append(f"  {stock.symbol}: ${float(stock.price):.2f}  +{float(stock.change):.2f} (+{float(stock.change_percent):.2f}%)")
+            results.append("")
+            results.append("Losers:")
+            for stock in response.losers:
+                results.append(f"  {stock.symbol}: ${float(stock.price):.2f}  {float(stock.change):.2f} ({float(stock.change_percent):.2f}%)")
+            return "\n".join(results)
+
+        else:
+            return f"Invalid screener_type '{screener_type}'. Must be 'most_actives' or 'market_movers'."
+
+    except ValueError as e:
+        return f"Invalid parameter value: {str(e)}"
+    except Exception as e:
+        return f"Error running stock screener: {str(e)}"
+
 # ============================================================================
 # Crypto Market Data Tools
 # ============================================================================
@@ -2412,6 +2639,265 @@ async def get_option_latest_quote(
             details={"symbols": symbols_list, "original_error": str(e)},
         )
 
+@mcp.tool(
+    annotations={
+        "title": "Get Option Bars",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
+async def get_option_bars(
+    symbol_or_symbols: Union[str, List[str]],
+    timeframe: str = "1Day",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    limit: Optional[int] = None,
+    sort: Optional[Sort] = Sort.ASC
+) -> str:
+    """
+    Retrieves historical bar (OHLCV) data for one or more option contracts.
+
+    Args:
+        symbol_or_symbols (Union[str, List[str]]): Option contract symbol(s) (e.g., 'AAPL250613P00205000')
+        timeframe (str): Bar timeframe. Supports flexible formats:
+            - Minutes: "1Min" to "59Min", e.g., "5Min", "15Min"
+            - Hours: "1Hour" to "23Hour", e.g., "1Hour", "4Hour"
+            - Days: "1Day"
+            - Weeks: "1Week"
+            - Months: "1Month", "2Month", etc.
+            (default: "1Day")
+        start (Optional[str]): Start time in ISO format (e.g., "2024-01-01" or "2024-01-01T09:30:00")
+        end (Optional[str]): End time in ISO format. Defaults to now.
+        limit (Optional[int]): Maximum number of bars to return per symbol
+        sort (Optional[Sort]): Chronological order of response (ASC or DESC, default: ASC)
+
+    Returns:
+        str: Formatted OHLCV bar data with timestamps for each symbol
+    """
+    _ensure_clients()
+    try:
+        timeframe_obj = parse_timeframe_with_enums(timeframe)
+        if timeframe_obj is None:
+            return f"Error: Invalid timeframe '{timeframe}'. Supported formats: 1Min, 5Min, 15Min, 1Hour, 4Hour, 1Day, 1Week, 1Month, etc."
+
+        start_dt = None
+        end_dt = None
+        if start:
+            try:
+                start_dt = _parse_iso_datetime(start)
+            except ValueError:
+                return f"Invalid 'start' timestamp format: {start}. Use ISO format like '2024-01-01' or '2024-01-01T09:30:00'"
+        if end:
+            try:
+                end_dt = _parse_iso_datetime(end)
+            except ValueError:
+                return f"Invalid 'end' timestamp format: {end}. Use ISO format like '2024-01-01' or '2024-01-01T16:00:00'"
+
+        request = OptionBarsRequest(
+            symbol_or_symbols=symbol_or_symbols,
+            timeframe=timeframe_obj,
+            start=start_dt,
+            end=end_dt,
+            limit=limit,
+            sort=sort
+        )
+
+        bars_data = option_historical_data_client.get_option_bars(request)
+
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        results: List[str] = []
+
+        for symbol in symbols_list:
+            bars = bars_data.get(symbol)
+            if not bars:
+                results.append(f"No bar data found for {symbol}.")
+                continue
+            results.append(f"Symbol: {symbol} ({len(bars)} bars)")
+            results.append("-" * 40)
+            for bar in bars:
+                results.append(f"  Timestamp: {bar.timestamp}")
+                results.append(f"  Open:  ${float(bar.open):.4f}")
+                results.append(f"  High:  ${float(bar.high):.4f}")
+                results.append(f"  Low:   ${float(bar.low):.4f}")
+                results.append(f"  Close: ${float(bar.close):.4f}")
+                results.append(f"  Volume: {bar.volume}")
+                results.append("")
+
+        return "\n".join(results).strip()
+
+    except Exception as e:
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        requested = ", ".join(symbols_list) if symbols_list else ""
+        return f"Error fetching option bars for {requested}: {str(e)}"
+
+@mcp.tool(
+    annotations={
+        "title": "Get Option Trades",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
+async def get_option_trades(
+    symbol_or_symbols: Union[str, List[str]],
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    limit: Optional[int] = None,
+    sort: Optional[Sort] = Sort.ASC
+) -> str:
+    """
+    Retrieves historical trade data for one or more option contracts.
+
+    Args:
+        symbol_or_symbols (Union[str, List[str]]): Option contract symbol(s) (e.g., 'AAPL250613P00205000')
+        start (Optional[str]): Start time in ISO format (e.g., "2024-01-01" or "2024-01-01T09:30:00")
+        end (Optional[str]): End time in ISO format. Defaults to now.
+        limit (Optional[int]): Maximum number of trades to return per symbol
+        sort (Optional[Sort]): Chronological order of response (ASC or DESC, default: ASC)
+
+    Returns:
+        str: Formatted trade data with price, size, exchange, and timestamp for each symbol
+    """
+    _ensure_clients()
+    try:
+        start_dt = None
+        end_dt = None
+        if start:
+            try:
+                start_dt = _parse_iso_datetime(start)
+            except ValueError:
+                return f"Invalid 'start' timestamp format: {start}. Use ISO format like '2024-01-01' or '2024-01-01T09:30:00'"
+        if end:
+            try:
+                end_dt = _parse_iso_datetime(end)
+            except ValueError:
+                return f"Invalid 'end' timestamp format: {end}. Use ISO format like '2024-01-01' or '2024-01-01T16:00:00'"
+
+        request = OptionTradesRequest(
+            symbol_or_symbols=symbol_or_symbols,
+            start=start_dt,
+            end=end_dt,
+            limit=limit,
+            sort=sort
+        )
+
+        trades_data = option_historical_data_client.get_option_trades(request)
+
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        results: List[str] = []
+
+        for symbol in symbols_list:
+            trades = trades_data.get(symbol)
+            if not trades:
+                results.append(f"No trade data found for {symbol}.")
+                continue
+            results.append(f"Symbol: {symbol} ({len(trades)} trades)")
+            results.append("-" * 40)
+            for trade in trades:
+                results.append(f"  Timestamp: {trade.timestamp}")
+                results.append(f"  Price: ${float(trade.price):.4f}")
+                results.append(f"  Size: {trade.size}")
+                if hasattr(trade, 'exchange') and trade.exchange:
+                    results.append(f"  Exchange: {trade.exchange}")
+                if hasattr(trade, 'conditions') and trade.conditions:
+                    results.append(f"  Conditions: {trade.conditions}")
+                results.append("")
+
+        return "\n".join(results).strip()
+
+    except Exception as e:
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        requested = ", ".join(symbols_list) if symbols_list else ""
+        return f"Error fetching option trades for {requested}: {str(e)}"
+
+@mcp.tool(
+    annotations={
+        "title": "Get Option Latest Trade",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
+async def get_option_latest_trade(
+    symbol_or_symbols: Union[str, List[str]],
+    feed: Optional[OptionsFeed] = None
+) -> str:
+    """
+    Retrieves the latest trade for one or more option contracts.
+
+    Args:
+        symbol_or_symbols (Union[str, List[str]]): Option contract symbol(s) (e.g., 'AAPL250613P00205000')
+        feed (Optional[OptionsFeed]): Data feed source (OptionsFeed.OPRA or OptionsFeed.INDICATIVE).
+            Default: OPRA if the user has the options subscription, INDICATIVE otherwise.
+
+    Returns:
+        str: Formatted latest trade data including price, size, exchange, and timestamp for each symbol
+    """
+    _ensure_clients()
+    try:
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+
+        request = OptionLatestTradeRequest(
+            symbol_or_symbols=symbol_or_symbols,
+            feed=feed
+        )
+
+        trades = option_historical_data_client.get_option_latest_trade(request)
+
+        results: List[str] = []
+        for symbol in symbols_list:
+            trade = trades.get(symbol)
+            if not trade:
+                results.append(f"No latest trade data found for {symbol}.")
+                continue
+            results.extend([
+                f"Symbol: {symbol}",
+                f"Price: ${float(trade.price):.4f}",
+                f"Size: {trade.size}",
+                f"Timestamp: {trade.timestamp}",
+            ])
+            if hasattr(trade, 'exchange') and trade.exchange:
+                results.append(f"Exchange: {trade.exchange}")
+            if hasattr(trade, 'conditions') and trade.conditions:
+                results.append(f"Conditions: {trade.conditions}")
+            results.append("")
+
+        return "\n".join(results).strip()
+
+    except Exception as e:
+        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
+        requested = ", ".join(symbols_list) if symbols_list else ""
+        return f"Error fetching option latest trade for {requested}: {str(e)}"
+
+@mcp.tool(
+    annotations={
+        "title": "Get Option Exchange Codes",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
+async def get_option_exchange_codes() -> str:
+    """
+    Retrieves the mapping of exchange codes to exchange names for option market data.
+    Useful for interpreting exchange fields returned by other option data tools.
+
+    Returns:
+        str: Formatted list of exchange codes and their corresponding exchange names
+    """
+    _ensure_clients()
+    try:
+        exchange_codes = option_historical_data_client.get_option_exchange_codes()
+
+        if not exchange_codes:
+            return "No exchange codes found."
+
+        results = ["Option Exchange Codes:", "-" * 30]
+        for code, name in sorted(exchange_codes.items()):
+            results.append(f"  {code}: {name}")
+
+        return "\n".join(results)
+
+    except Exception as e:
+        return f"Error fetching option exchange codes: {str(e)}"
+
 
 @mcp.tool(
     annotations={
@@ -3133,6 +3619,156 @@ async def cancel_order_by_id(order_id: str) -> str:
         
     except Exception as e:
         return compact_json({"error": {"code": "cancel_order_by_id_failed", "message": str(e), "order_id": order_id}})
+
+@mcp.tool(
+    annotations={
+        "title": "Get Order by ID",
+        "readOnlyHint": True,
+        "openWorldHint": True
+    }
+)
+async def get_order_by_id(order_id: str) -> str:
+    """
+    Retrieves a single order by its ID.
+
+    Args:
+        order_id (str): The UUID of the order to retrieve
+
+    Returns:
+        str: Formatted order details including symbol, type, side, quantity, status, and fill info
+    """
+    _ensure_clients()
+    try:
+        order = trade_client.get_order_by_id(order_id)
+
+        result = "Order Details:\n"
+        result += "--------------\n"
+        result += f"Symbol: {order.symbol}\n"
+        result += f"ID: {order.id}\n"
+        result += f"Type: {order.type}\n"
+        result += f"Side: {order.side}\n"
+        result += f"Quantity: {order.qty}\n"
+        result += f"Status: {order.status}\n"
+        result += f"Asset Class: {order.asset_class}\n"
+        result += f"Order Class: {order.order_class}\n"
+        result += f"Time In Force: {order.time_in_force}\n"
+        result += f"Extended Hours: {order.extended_hours}\n"
+        result += f"Submitted At: {order.submitted_at}\n"
+        result += f"Created At: {order.created_at}\n"
+        result += f"Updated At: {order.updated_at}\n"
+
+        if hasattr(order, 'filled_at') and order.filled_at:
+            result += f"Filled At: {order.filled_at}\n"
+        if hasattr(order, 'filled_avg_price') and order.filled_avg_price:
+            result += f"Filled Price: ${float(order.filled_avg_price):.2f}\n"
+        if hasattr(order, 'filled_qty') and order.filled_qty:
+            result += f"Filled Quantity: {order.filled_qty}\n"
+        if hasattr(order, 'limit_price') and order.limit_price:
+            result += f"Limit Price: ${float(order.limit_price):.2f}\n"
+        if hasattr(order, 'stop_price') and order.stop_price:
+            result += f"Stop Price: ${float(order.stop_price):.2f}\n"
+        if hasattr(order, 'trail_price') and order.trail_price:
+            result += f"Trail Price: ${float(order.trail_price):.2f}\n"
+        if hasattr(order, 'trail_percent') and order.trail_percent:
+            result += f"Trail Percent: {order.trail_percent}%\n"
+        if hasattr(order, 'notional') and order.notional:
+            result += f"Notional: ${float(order.notional):.2f}\n"
+        if hasattr(order, 'client_order_id') and order.client_order_id:
+            result += f"Client Order ID: {order.client_order_id}\n"
+        if hasattr(order, 'canceled_at') and order.canceled_at:
+            result += f"Canceled At: {order.canceled_at}\n"
+        if hasattr(order, 'expired_at') and order.expired_at:
+            result += f"Expired At: {order.expired_at}\n"
+
+        return result
+
+    except Exception as e:
+        return f"Error retrieving order {order_id}: {str(e)}"
+
+@mcp.tool(
+    annotations={
+        "title": "Replace Order",
+        "destructiveHint": True,
+        "openWorldHint": True
+    }
+)
+async def replace_order_by_id(
+    order_id: str,
+    qty: Optional[int] = None,
+    time_in_force: Optional[str] = None,
+    limit_price: Optional[float] = None,
+    stop_price: Optional[float] = None,
+    trail: Optional[float] = None,
+    client_order_id: Optional[str] = None
+) -> str:
+    """
+    Replaces an existing open order with updated parameters. At least one optional
+    field must be provided.
+
+    Args:
+        order_id (str): The UUID of the order to replace
+        qty (Optional[int]): New number of shares
+        time_in_force (Optional[str]): New expiration logic (day, gtc, opg, cls, ioc, fok)
+        limit_price (Optional[float]): New limit price (required if order type is limit or stop_limit)
+        stop_price (Optional[float]): New stop price (required if order type is stop or stop_limit)
+        trail (Optional[float]): New trail value in price or percent (for trailing_stop orders only)
+        client_order_id (Optional[str]): New client-assigned order identifier
+
+    Returns:
+        str: Formatted details of the updated order
+    """
+    _ensure_clients()
+    if all(v is None for v in [qty, time_in_force, limit_price, stop_price, trail, client_order_id]):
+        return "Error: at least one field must be provided to replace an order (qty, time_in_force, limit_price, stop_price, trail, or client_order_id)."
+    try:
+        tif_enum = None
+        if time_in_force:
+            tif_map = {
+                "day": TimeInForce.DAY,
+                "gtc": TimeInForce.GTC,
+                "opg": TimeInForce.OPG,
+                "cls": TimeInForce.CLS,
+                "ioc": TimeInForce.IOC,
+                "fok": TimeInForce.FOK,
+            }
+            tif_enum = tif_map.get(time_in_force.lower())
+            if tif_enum is None:
+                return f"Invalid time_in_force '{time_in_force}'. Must be one of: day, gtc, opg, cls, ioc, fok."
+
+        replace_request = ReplaceOrderRequest(
+            qty=qty,
+            time_in_force=tif_enum,
+            limit_price=limit_price,
+            stop_price=stop_price,
+            trail=trail,
+            client_order_id=client_order_id
+        )
+
+        order = trade_client.replace_order_by_id(order_id, replace_request)
+
+        result = "Order Replaced Successfully:\n"
+        result += "----------------------------\n"
+        result += f"New Order ID: {order.id}\n"
+        result += f"Symbol: {order.symbol}\n"
+        result += f"Type: {order.type}\n"
+        result += f"Side: {order.side}\n"
+        result += f"Quantity: {order.qty}\n"
+        result += f"Status: {order.status}\n"
+        result += f"Time In Force: {order.time_in_force}\n"
+        if hasattr(order, 'limit_price') and order.limit_price:
+            result += f"Limit Price: ${float(order.limit_price):.2f}\n"
+        if hasattr(order, 'stop_price') and order.stop_price:
+            result += f"Stop Price: ${float(order.stop_price):.2f}\n"
+        if hasattr(order, 'trail_price') and order.trail_price:
+            result += f"Trail Price: ${float(order.trail_price):.2f}\n"
+        if hasattr(order, 'trail_percent') and order.trail_percent:
+            result += f"Trail Percent: {order.trail_percent}%\n"
+        result += f"Submitted At: {order.submitted_at}\n"
+
+        return result
+
+    except Exception as e:
+        return f"Error replacing order {order_id}: {str(e)}"
 
 @mcp.tool(
     annotations={
