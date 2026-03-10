@@ -56,7 +56,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac) or 
   "mcpServers": {
     "alpaca": {
       "command": "uvx",
-      "args": ["alpaca-mcp-server", "serve"],
+      "args": ["alpaca-mcp-server"],
       "env": {
         "ALPACA_API_KEY": "your_alpaca_api_key",
         "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
@@ -75,7 +75,7 @@ Install from the [Cursor Directory](https://cursor.directory/mcp/alpaca) in a fe
   "mcpServers": {
     "alpaca": {
       "command": "uvx",
-      "args": ["alpaca-mcp-server", "serve"],
+      "args": ["alpaca-mcp-server"],
       "env": {
         "ALPACA_API_KEY": "your_alpaca_api_key",
         "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
@@ -96,7 +96,7 @@ Create `.vscode/mcp.json` in your project root. See the [official docs](https://
       "alpaca": {
         "type": "stdio",
         "command": "uvx",
-        "args": ["alpaca-mcp-server", "serve"],
+        "args": ["alpaca-mcp-server"],
         "env": {
           "ALPACA_API_KEY": "your_alpaca_api_key",
           "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
@@ -116,7 +116,7 @@ See the [official guide](https://www.jetbrains.com/help/ai-assistant/configure-a
 2. Add a new server:
    - **Type**: stdio
    - **Command**: uvx
-   - **Arguments**: alpaca-mcp-server serve
+   - **Arguments**: alpaca-mcp-server
 3. Set environment variables:
    ```
    ALPACA_API_KEY=your_alpaca_api_key
@@ -129,7 +129,7 @@ See the [official guide](https://www.jetbrains.com/help/ai-assistant/configure-a
 <summary><b>Claude Code</b></summary><br>
 
 ```bash
-claude mcp add alpaca --scope user --transport stdio uvx alpaca-mcp-server serve \
+claude mcp add alpaca --scope user --transport stdio uvx alpaca-mcp-server \
   --env ALPACA_API_KEY=your_alpaca_api_key \
   --env ALPACA_SECRET_KEY=your_alpaca_secret_key
 ```
@@ -151,7 +151,7 @@ Add to your `settings.json`:
     "alpaca": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["alpaca-mcp-server", "serve"],
+      "args": ["alpaca-mcp-server"],
       "env": {
         "ALPACA_API_KEY": "your_alpaca_api_key",
         "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
@@ -491,7 +491,7 @@ alpaca-mcp-server/
 ├── src/
 │   └── alpaca_mcp_server/
 │       ├── __init__.py
-│       ├── cli.py            ← CLI entry point (serve command)
+│       ├── cli.py            ← CLI entry point
 │       ├── server.py         ← FastMCP server built from OpenAPI specs
 │       ├── names.py          ← Tool name and description overrides
 │       ├── toolsets.py       ← Toolset → operationId allowlists
