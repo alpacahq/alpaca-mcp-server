@@ -149,12 +149,19 @@ def init(api_key: Optional[str], secret_key: Optional[str],
     help='Allowed hosts for cloud (comma-separated, env: ALLOWED_HOSTS)'
 )
 @click.option(
+    '--no-dns-protection',
+    is_flag=True,
+    default=False,
+    envvar='NO_DNS_PROTECTION',
+    help='Disable DNS rebinding protection (for trusted LAN/self-hosted deployments)'
+)
+@click.option(
     '--config-file',
     type=click.Path(path_type=Path),
     help='Path to .env configuration file (default: .env in current directory)'
 )
-def serve(transport: str, host: str, port: int, allowed_hosts: str, 
-          config_file: Optional[Path]):
+def serve(transport: str, host: str, port: int, allowed_hosts: str,
+          no_dns_protection: bool, config_file: Optional[Path]):
     """
     Start the Alpaca MCP server.
 
@@ -189,7 +196,11 @@ def serve(transport: str, host: str, port: int, allowed_hosts: str,
                 click.echo()
                 click.echo("Update the credentials above or export them as environment variables.")
             sys.exit(1)
-        
+
+        # When --no-dns-protection is set, auto-switch default host to 0.0.0.0
+        if no_dns_protection and host == '127.0.0.1':
+            host = '0.0.0.0'
+
         # Display startup information (unless in stdio mode for MCP clients)
         if transport != "stdio":
             click.echo("Starting Alpaca MCP Server")
@@ -198,7 +209,10 @@ def serve(transport: str, host: str, port: int, allowed_hosts: str,
             click.echo(f"   Config: {source_hint}")
             if transport == "streamable-http":
                 click.echo(f"   URL: http://{host}:{port}")
-                if allowed_hosts:
+                if no_dns_protection:
+                    click.echo("   WARNING: DNS rebinding protection DISABLED")
+                    click.echo("   Only use on trusted networks!")
+                elif allowed_hosts:
                     click.echo(f"   Allowed Hosts: {allowed_hosts}")
                 else:
                     click.echo("   DNS protection: localhost only")
@@ -210,7 +224,8 @@ def serve(transport: str, host: str, port: int, allowed_hosts: str,
             transport=transport,
             host=host,
             port=port,
-            allowed_hosts=allowed_hosts
+            allowed_hosts=allowed_hosts,
+            no_dns_protection=no_dns_protection
         )
 
     except KeyboardInterrupt:
