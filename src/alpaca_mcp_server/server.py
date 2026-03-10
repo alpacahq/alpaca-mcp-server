@@ -259,41 +259,43 @@ async def get_account_info() -> str:
     annotations={
         "title": "Get Account Configuration",
         "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
-async def get_account_config() -> str:
+async def get_account_config() -> CallToolResult:
     """
     Retrieves the current account configuration settings, including trading restrictions,
     margin settings, PDT checks, and options trading level.
 
     Returns:
-        str: Formatted account configuration with all current settings
+        CallToolResult: Account configuration with all current settings in both
+        human-readable text and structured content.
     """
     _ensure_clients()
+    tool_name = "get_account_config"
     try:
         config = trade_client.get_account_configurations()
-
-        return f"""Account Configuration:
----------------------
-Fractional Trading:       {config.fractional_trading}
-No Shorting (Long-only):  {config.no_shorting}
-Suspend Trading:          {config.suspend_trade}
-Max Margin Multiplier:    {config.max_margin_multiplier}x
-DTBP Check:               {config.dtbp_check}
-PDT Check:                {config.pdt_check}
-Trade Confirm Email:      {config.trade_confirm_email}
-PTP No Exception Entry:   {config.ptp_no_exception_entry}
-Max Options Trading Level: {config.max_options_trading_level if config.max_options_trading_level is not None else 'Not set'}
-  (0=disabled, 1=Covered Call/Cash-Secured Put, 2=Long Call/Put, 3=Spreads/Straddles)"""
-
+        payload = {
+            "tool": tool_name,
+            "config": to_serializable(config),
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error fetching account configuration: {str(e)}"
+        return build_error_result(tool_name, "internal_error", "Failed to fetch account configuration.", details={"original_error": str(e)})
 
 @mcp.tool(
     annotations={
         "title": "Update Account Configuration",
+        "readOnlyHint": False,
         "destructiveHint": True,
+        "idempotentHint": False,
         "openWorldHint": True
     }
 )
@@ -307,7 +309,7 @@ async def update_account_config(
     trade_confirm_email: Optional[str] = None,
     ptp_no_exception_entry: Optional[bool] = None,
     max_options_trading_level: Optional[int] = None
-) -> str:
+) -> CallToolResult:
     """
     Updates one or more account configuration settings. Only the fields you provide
     will be changed; all others retain their current values.
@@ -324,49 +326,47 @@ async def update_account_config(
         max_options_trading_level (Optional[int]): Options level: 0=disabled, 1=Covered/CSP, 2=Long, 3=Spreads
 
     Returns:
-        str: Formatted updated account configuration
+        CallToolResult: Updated account configuration in both human-readable and structured form.
     """
     _ensure_clients()
+    tool_name = "update_account_config"
     provided = [v for v in [
         fractional_trading, no_shorting, suspend_trade, max_margin_multiplier,
         dtbp_check, pdt_check, trade_confirm_email, ptp_no_exception_entry,
         max_options_trading_level
     ] if v is not None]
     if not provided:
-        return "Error: at least one configuration field must be provided to update."
+        return build_error_result(tool_name, "no_fields", "At least one configuration field must be provided to update.")
 
     try:
-        # Validate enum inputs before fetching current config
         dtbp_check_enum = None
         if dtbp_check is not None:
             try:
                 dtbp_check_enum = DTBPCheck(dtbp_check.lower())
             except ValueError:
-                return f"Invalid dtbp_check '{dtbp_check}'. Must be one of: both, entry, exit."
+                return build_error_result(tool_name, "invalid_dtbp_check", f"Must be one of: both, entry, exit.", field="dtbp_check", details={"provided": dtbp_check})
 
         pdt_check_enum = None
         if pdt_check is not None:
             try:
                 pdt_check_enum = PDTCheck(pdt_check.lower())
             except ValueError:
-                return f"Invalid pdt_check '{pdt_check}'. Must be one of: both, entry, exit."
+                return build_error_result(tool_name, "invalid_pdt_check", f"Must be one of: both, entry, exit.", field="pdt_check", details={"provided": pdt_check})
 
         trade_confirm_enum = None
         if trade_confirm_email is not None:
             try:
                 trade_confirm_enum = TradeConfirmationEmail(trade_confirm_email.lower())
             except ValueError:
-                return f"Invalid trade_confirm_email '{trade_confirm_email}'. Must be one of: all, none."
+                return build_error_result(tool_name, "invalid_trade_confirm_email", "Must be one of: all, none.", field="trade_confirm_email", details={"provided": trade_confirm_email})
 
         if max_options_trading_level is not None and max_options_trading_level not in range(4):
-            return f"Invalid max_options_trading_level '{max_options_trading_level}'. Must be 0, 1, 2, or 3."
+            return build_error_result(tool_name, "invalid_max_options_trading_level", "Must be 0, 1, 2, or 3.", field="max_options_trading_level", details={"provided": max_options_trading_level})
 
         if max_margin_multiplier is not None and max_margin_multiplier not in {"1", "2", "3", "4"}:
-            return f"Invalid max_margin_multiplier '{max_margin_multiplier}'. Must be '1', '2', '3', or '4'."
+            return build_error_result(tool_name, "invalid_max_margin_multiplier", "Must be '1', '2', '3', or '4'.", field="max_margin_multiplier", details={"provided": max_margin_multiplier})
 
-        # Fetch current config and apply only the provided fields (read-modify-write)
         current = trade_client.get_account_configurations()
-
         updated = AccountConfiguration(
             dtbp_check=dtbp_check_enum if dtbp_check_enum is not None else current.dtbp_check,
             fractional_trading=fractional_trading if fractional_trading is not None else current.fractional_trading,
@@ -378,23 +378,30 @@ async def update_account_config(
             ptp_no_exception_entry=ptp_no_exception_entry if ptp_no_exception_entry is not None else current.ptp_no_exception_entry,
             max_options_trading_level=max_options_trading_level if max_options_trading_level is not None else current.max_options_trading_level,
         )
-
         result = trade_client.set_account_configurations(updated)
-
-        return f"""Account Configuration Updated:
-------------------------------
-Fractional Trading:       {result.fractional_trading}
-No Shorting (Long-only):  {result.no_shorting}
-Suspend Trading:          {result.suspend_trade}
-Max Margin Multiplier:    {result.max_margin_multiplier}x
-DTBP Check:               {result.dtbp_check}
-PDT Check:                {result.pdt_check}
-Trade Confirm Email:      {result.trade_confirm_email}
-PTP No Exception Entry:   {result.ptp_no_exception_entry}
-Max Options Trading Level: {result.max_options_trading_level if result.max_options_trading_level is not None else 'Not set'}"""
-
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "fractional_trading": fractional_trading,
+                "no_shorting": no_shorting,
+                "suspend_trade": suspend_trade,
+                "max_margin_multiplier": max_margin_multiplier,
+                "dtbp_check": dtbp_check,
+                "pdt_check": pdt_check,
+                "trade_confirm_email": trade_confirm_email,
+                "ptp_no_exception_entry": ptp_no_exception_entry,
+                "max_options_trading_level": max_options_trading_level,
+            },
+            "config": to_serializable(result),
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error updating account configuration: {str(e)}"
+        return build_error_result(tool_name, "internal_error", "Failed to update account configuration.", details={"original_error": str(e)})
 
 @mcp.tool(
     annotations={
@@ -1710,6 +1717,8 @@ async def get_stock_snapshot(
     annotations={
         "title": "Get Stock Screener",
         "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -1718,7 +1727,7 @@ async def get_stock_screener(
     by: Optional[str] = None,
     market_type: Optional[str] = None,
     top: Optional[int] = None
-) -> str:
+) -> CallToolResult:
     """
     Screens the market for most active stocks or biggest movers.
 
@@ -1731,51 +1740,65 @@ async def get_stock_screener(
         top (Optional[int]): Number of results to return (default determined by API)
 
     Returns:
-        str: Formatted list of screener results with symbol, price, and change data
+        CallToolResult: Screener results with symbol, price, and change data in both
+        human-readable text and structured content.
     """
     _ensure_clients()
+    tool_name = "get_stock_screener"
     try:
         if screener_type == "most_actives":
-            by_enum = MostActivesBy(by.lower()) if by else MostActivesBy.VOLUME
-            request_kwargs = {"by": by_enum}
+            try:
+                by_enum = MostActivesBy(by.lower()) if by else MostActivesBy.VOLUME
+            except ValueError:
+                return build_error_result(tool_name, "invalid_by", "Must be 'volume' or 'trades'.", field="by", details={"provided": by})
+            request_kwargs: dict = {"by": by_enum}
             if top is not None:
                 request_kwargs["top"] = top
             response = screener_client.get_most_actives(MostActivesRequest(**request_kwargs))
-
-            results = [f"Most Actives (by {by_enum.value}):", "-" * 40]
-            for stock in response.most_actives:
-                results.append(f"  Symbol:  {stock.symbol}")
-                results.append(f"  Volume:  {stock.volume:,}")
-                results.append(f"  Trades:  {stock.trade_count:,}")
-                results.append(f"  Price:   ${float(stock.price):.2f}")
-                results.append(f"  Change:  {float(stock.change):.2f} ({float(stock.change_percent):.2f}%)")
-                results.append("")
-            return "\n".join(results).strip()
+            items = [to_serializable(s) for s in response.most_actives]
+            payload = {
+                "tool": tool_name,
+                "request": {"screener_type": screener_type, "by": by_enum.value, "top": top},
+                "counts": {"records": len(items)},
+                "most_actives": items,
+            }
+            return build_success_result(
+                tool_name,
+                payload,
+                summary=f"{tool_name}: ok screener_type=most_actives records={len(items)}",
+                content_text=compact_json(payload),
+            )
 
         elif screener_type == "market_movers":
-            mt_enum = MarketType(market_type.lower()) if market_type else MarketType.STOCKS
+            try:
+                mt_enum = MarketType(market_type.lower()) if market_type else MarketType.STOCKS
+            except ValueError:
+                return build_error_result(tool_name, "invalid_market_type", "Must be 'stocks' or 'crypto'.", field="market_type", details={"provided": market_type})
             request_kwargs = {"market_type": mt_enum}
             if top is not None:
                 request_kwargs["top"] = top
             response = screener_client.get_market_movers(MarketMoversRequest(**request_kwargs))
-
-            results = [f"Market Movers ({mt_enum.value}):", "-" * 40]
-            results.append("Gainers:")
-            for stock in response.gainers:
-                results.append(f"  {stock.symbol}: ${float(stock.price):.2f}  +{float(stock.change):.2f} (+{float(stock.change_percent):.2f}%)")
-            results.append("")
-            results.append("Losers:")
-            for stock in response.losers:
-                results.append(f"  {stock.symbol}: ${float(stock.price):.2f}  {float(stock.change):.2f} ({float(stock.change_percent):.2f}%)")
-            return "\n".join(results)
+            gainers = [to_serializable(s) for s in response.gainers]
+            losers = [to_serializable(s) for s in response.losers]
+            payload = {
+                "tool": tool_name,
+                "request": {"screener_type": screener_type, "market_type": mt_enum.value, "top": top},
+                "counts": {"gainers": len(gainers), "losers": len(losers)},
+                "gainers": gainers,
+                "losers": losers,
+            }
+            return build_success_result(
+                tool_name,
+                payload,
+                summary=f"{tool_name}: ok screener_type=market_movers gainers={len(gainers)} losers={len(losers)}",
+                content_text=compact_json(payload),
+            )
 
         else:
-            return f"Invalid screener_type '{screener_type}'. Must be 'most_actives' or 'market_movers'."
+            return build_error_result(tool_name, "invalid_screener_type", "Must be 'most_actives' or 'market_movers'.", field="screener_type", details={"provided": screener_type})
 
-    except ValueError as e:
-        return f"Invalid parameter value: {str(e)}"
     except Exception as e:
-        return f"Error running stock screener: {str(e)}"
+        return build_error_result(tool_name, "internal_error", "Failed to run stock screener.", details={"screener_type": screener_type, "original_error": str(e)})
 
 # ============================================================================
 # Crypto Market Data Tools
@@ -2643,6 +2666,8 @@ async def get_option_latest_quote(
     annotations={
         "title": "Get Option Bars",
         "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -2653,7 +2678,7 @@ async def get_option_bars(
     end: Optional[str] = None,
     limit: Optional[int] = None,
     sort: Optional[Sort] = Sort.ASC
-) -> str:
+) -> CallToolResult:
     """
     Retrieves historical bar (OHLCV) data for one or more option contracts.
 
@@ -2672,26 +2697,34 @@ async def get_option_bars(
         sort (Optional[Sort]): Chronological order of response (ASC or DESC, default: ASC)
 
     Returns:
-        str: Formatted OHLCV bar data with timestamps for each symbol
+        CallToolResult: OHLCV bar data for each symbol in both human-readable and structured form.
     """
     _ensure_clients()
+    tool_name = "get_option_bars"
+    symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
     try:
         timeframe_obj = parse_timeframe_with_enums(timeframe)
         if timeframe_obj is None:
-            return f"Error: Invalid timeframe '{timeframe}'. Supported formats: 1Min, 5Min, 15Min, 1Hour, 4Hour, 1Day, 1Week, 1Month, etc."
+            return build_error_result(
+                tool_name,
+                "invalid_timeframe",
+                "Unsupported timeframe format.",
+                field="timeframe",
+                details={"provided": timeframe},
+            )
 
         start_dt = None
         end_dt = None
         if start:
             try:
                 start_dt = _parse_iso_datetime(start)
-            except ValueError:
-                return f"Invalid 'start' timestamp format: {start}. Use ISO format like '2024-01-01' or '2024-01-01T09:30:00'"
+            except ValueError as e:
+                return build_error_result(tool_name, "invalid_start", str(e), field="start")
         if end:
             try:
                 end_dt = _parse_iso_datetime(end)
-            except ValueError:
-                return f"Invalid 'end' timestamp format: {end}. Use ISO format like '2024-01-01' or '2024-01-01T16:00:00'"
+            except ValueError as e:
+                return build_error_result(tool_name, "invalid_end", str(e), field="end")
 
         request = OptionBarsRequest(
             symbol_or_symbols=symbol_or_symbols,
@@ -2701,39 +2734,46 @@ async def get_option_bars(
             limit=limit,
             sort=sort
         )
-
         bars_data = option_historical_data_client.get_option_bars(request)
 
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        results: List[str] = []
+        bars_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+        counts: Dict[str, int] = {}
+        total_records = 0
+        for sym in symbols_list:
+            sym_bars = bars_data.get(sym) if hasattr(bars_data, "get") else []
+            sym_serialized = [to_serializable(bar) for bar in (sym_bars or [])]
+            bars_by_symbol[sym] = sym_serialized
+            counts[sym] = len(sym_serialized)
+            total_records += len(sym_serialized)
 
-        for symbol in symbols_list:
-            bars = bars_data.get(symbol)
-            if not bars:
-                results.append(f"No bar data found for {symbol}.")
-                continue
-            results.append(f"Symbol: {symbol} ({len(bars)} bars)")
-            results.append("-" * 40)
-            for bar in bars:
-                results.append(f"  Timestamp: {bar.timestamp}")
-                results.append(f"  Open:  ${float(bar.open):.4f}")
-                results.append(f"  High:  ${float(bar.high):.4f}")
-                results.append(f"  Low:   ${float(bar.low):.4f}")
-                results.append(f"  Close: ${float(bar.close):.4f}")
-                results.append(f"  Volume: {bar.volume}")
-                results.append("")
-
-        return "\n".join(results).strip()
-
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "symbols": symbols_list,
+                "timeframe": timeframe,
+                "start": start,
+                "end": end,
+                "limit": limit,
+                "sort": to_serializable(sort),
+            },
+            "counts": {"symbols": len(symbols_list), "records": total_records, "per_symbol": counts},
+            "bars": bars_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={total_records}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        requested = ", ".join(symbols_list) if symbols_list else ""
-        return f"Error fetching option bars for {requested}: {str(e)}"
+        return build_error_result(tool_name, "internal_error", "Failed to fetch option bars.", details={"symbols": symbols_list, "original_error": str(e)})
 
 @mcp.tool(
     annotations={
         "title": "Get Option Trades",
         "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
@@ -2743,7 +2783,7 @@ async def get_option_trades(
     end: Optional[str] = None,
     limit: Optional[int] = None,
     sort: Optional[Sort] = Sort.ASC
-) -> str:
+) -> CallToolResult:
     """
     Retrieves historical trade data for one or more option contracts.
 
@@ -2755,22 +2795,25 @@ async def get_option_trades(
         sort (Optional[Sort]): Chronological order of response (ASC or DESC, default: ASC)
 
     Returns:
-        str: Formatted trade data with price, size, exchange, and timestamp for each symbol
+        CallToolResult: Trade data with price, size, exchange, and timestamp for each symbol
+        in both human-readable and structured form.
     """
     _ensure_clients()
+    tool_name = "get_option_trades"
+    symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
     try:
         start_dt = None
         end_dt = None
         if start:
             try:
                 start_dt = _parse_iso_datetime(start)
-            except ValueError:
-                return f"Invalid 'start' timestamp format: {start}. Use ISO format like '2024-01-01' or '2024-01-01T09:30:00'"
+            except ValueError as e:
+                return build_error_result(tool_name, "invalid_start", str(e), field="start")
         if end:
             try:
                 end_dt = _parse_iso_datetime(end)
-            except ValueError:
-                return f"Invalid 'end' timestamp format: {end}. Use ISO format like '2024-01-01' or '2024-01-01T16:00:00'"
+            except ValueError as e:
+                return build_error_result(tool_name, "invalid_end", str(e), field="end")
 
         request = OptionTradesRequest(
             symbol_or_symbols=symbol_or_symbols,
@@ -2779,47 +2822,52 @@ async def get_option_trades(
             limit=limit,
             sort=sort
         )
-
         trades_data = option_historical_data_client.get_option_trades(request)
 
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        results: List[str] = []
+        trades_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+        counts: Dict[str, int] = {}
+        total_records = 0
+        for sym in symbols_list:
+            sym_trades = trades_data.get(sym) if hasattr(trades_data, "get") else []
+            sym_serialized = [to_serializable(t) for t in (sym_trades or [])]
+            trades_by_symbol[sym] = sym_serialized
+            counts[sym] = len(sym_serialized)
+            total_records += len(sym_serialized)
 
-        for symbol in symbols_list:
-            trades = trades_data.get(symbol)
-            if not trades:
-                results.append(f"No trade data found for {symbol}.")
-                continue
-            results.append(f"Symbol: {symbol} ({len(trades)} trades)")
-            results.append("-" * 40)
-            for trade in trades:
-                results.append(f"  Timestamp: {trade.timestamp}")
-                results.append(f"  Price: ${float(trade.price):.4f}")
-                results.append(f"  Size: {trade.size}")
-                if hasattr(trade, 'exchange') and trade.exchange:
-                    results.append(f"  Exchange: {trade.exchange}")
-                if hasattr(trade, 'conditions') and trade.conditions:
-                    results.append(f"  Conditions: {trade.conditions}")
-                results.append("")
-
-        return "\n".join(results).strip()
-
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "symbols": symbols_list,
+                "start": start,
+                "end": end,
+                "limit": limit,
+                "sort": to_serializable(sort),
+            },
+            "counts": {"symbols": len(symbols_list), "records": total_records, "per_symbol": counts},
+            "trades": trades_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={total_records}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        requested = ", ".join(symbols_list) if symbols_list else ""
-        return f"Error fetching option trades for {requested}: {str(e)}"
+        return build_error_result(tool_name, "internal_error", "Failed to fetch option trades.", details={"symbols": symbols_list, "original_error": str(e)})
 
 @mcp.tool(
     annotations={
         "title": "Get Option Latest Trade",
         "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
 async def get_option_latest_trade(
     symbol_or_symbols: Union[str, List[str]],
     feed: Optional[OptionsFeed] = None
-) -> str:
+) -> CallToolResult:
     """
     Retrieves the latest trade for one or more option contracts.
 
@@ -2829,74 +2877,80 @@ async def get_option_latest_trade(
             Default: OPRA if the user has the options subscription, INDICATIVE otherwise.
 
     Returns:
-        str: Formatted latest trade data including price, size, exchange, and timestamp for each symbol
+        CallToolResult: Latest trade data including price, size, exchange, and timestamp for each symbol
+        in both human-readable and structured form.
     """
     _ensure_clients()
+    tool_name = "get_option_latest_trade"
+    symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
     try:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-
         request = OptionLatestTradeRequest(
             symbol_or_symbols=symbol_or_symbols,
             feed=feed
         )
-
         trades = option_historical_data_client.get_option_latest_trade(request)
 
-        results: List[str] = []
-        for symbol in symbols_list:
-            trade = trades.get(symbol)
-            if not trade:
-                results.append(f"No latest trade data found for {symbol}.")
-                continue
-            results.extend([
-                f"Symbol: {symbol}",
-                f"Price: ${float(trade.price):.4f}",
-                f"Size: {trade.size}",
-                f"Timestamp: {trade.timestamp}",
-            ])
-            if hasattr(trade, 'exchange') and trade.exchange:
-                results.append(f"Exchange: {trade.exchange}")
-            if hasattr(trade, 'conditions') and trade.conditions:
-                results.append(f"Conditions: {trade.conditions}")
-            results.append("")
+        trades_by_symbol: Dict[str, Any] = {}
+        found = 0
+        for sym in symbols_list:
+            trade = trades.get(sym) if hasattr(trades, "get") else None
+            trades_by_symbol[sym] = to_serializable(trade) if trade else None
+            if trade:
+                found += 1
 
-        return "\n".join(results).strip()
-
+        payload = {
+            "tool": tool_name,
+            "request": {"symbols": symbols_list, "feed": to_serializable(feed)},
+            "counts": {"symbols": len(symbols_list), "records": found},
+            "trades": trades_by_symbol,
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok symbols={len(symbols_list)} records={found}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        symbols_list = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else list(symbol_or_symbols)
-        requested = ", ".join(symbols_list) if symbols_list else ""
-        return f"Error fetching option latest trade for {requested}: {str(e)}"
+        return build_error_result(tool_name, "internal_error", "Failed to fetch option latest trades.", details={"symbols": symbols_list, "original_error": str(e)})
 
 @mcp.tool(
     annotations={
         "title": "Get Option Exchange Codes",
         "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
-async def get_option_exchange_codes() -> str:
+async def get_option_exchange_codes() -> CallToolResult:
     """
     Retrieves the mapping of exchange codes to exchange names for option market data.
     Useful for interpreting exchange fields returned by other option data tools.
 
     Returns:
-        str: Formatted list of exchange codes and their corresponding exchange names
+        CallToolResult: Exchange code to name mapping in both human-readable and structured form.
     """
     _ensure_clients()
+    tool_name = "get_option_exchange_codes"
     try:
         exchange_codes = option_historical_data_client.get_option_exchange_codes()
 
         if not exchange_codes:
-            return "No exchange codes found."
+            return build_error_result(tool_name, "no_data", "No exchange codes found.")
 
-        results = ["Option Exchange Codes:", "-" * 30]
-        for code, name in sorted(exchange_codes.items()):
-            results.append(f"  {code}: {name}")
-
-        return "\n".join(results)
-
+        payload = {
+            "tool": tool_name,
+            "counts": {"exchanges": len(exchange_codes)},
+            "exchange_codes": dict(sorted(exchange_codes.items())),
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok exchanges={len(exchange_codes)}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error fetching option exchange codes: {str(e)}"
+        return build_error_result(tool_name, "internal_error", "Failed to fetch option exchange codes.", details={"original_error": str(e)})
 
 
 @mcp.tool(
@@ -3624,10 +3678,12 @@ async def cancel_order_by_id(order_id: str) -> str:
     annotations={
         "title": "Get Order by ID",
         "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
         "openWorldHint": True
     }
 )
-async def get_order_by_id(order_id: str) -> str:
+async def get_order_by_id(order_id: str) -> CallToolResult:
     """
     Retrieves a single order by its ID.
 
@@ -3635,60 +3691,33 @@ async def get_order_by_id(order_id: str) -> str:
         order_id (str): The UUID of the order to retrieve
 
     Returns:
-        str: Formatted order details including symbol, type, side, quantity, status, and fill info
+        CallToolResult: Order details including symbol, type, side, quantity, status, and fill info
+        in both human-readable and structured form.
     """
     _ensure_clients()
+    tool_name = "get_order_by_id"
     try:
         order = trade_client.get_order_by_id(order_id)
-
-        result = "Order Details:\n"
-        result += "--------------\n"
-        result += f"Symbol: {order.symbol}\n"
-        result += f"ID: {order.id}\n"
-        result += f"Type: {order.type}\n"
-        result += f"Side: {order.side}\n"
-        result += f"Quantity: {order.qty}\n"
-        result += f"Status: {order.status}\n"
-        result += f"Asset Class: {order.asset_class}\n"
-        result += f"Order Class: {order.order_class}\n"
-        result += f"Time In Force: {order.time_in_force}\n"
-        result += f"Extended Hours: {order.extended_hours}\n"
-        result += f"Submitted At: {order.submitted_at}\n"
-        result += f"Created At: {order.created_at}\n"
-        result += f"Updated At: {order.updated_at}\n"
-
-        if hasattr(order, 'filled_at') and order.filled_at:
-            result += f"Filled At: {order.filled_at}\n"
-        if hasattr(order, 'filled_avg_price') and order.filled_avg_price:
-            result += f"Filled Price: ${float(order.filled_avg_price):.2f}\n"
-        if hasattr(order, 'filled_qty') and order.filled_qty:
-            result += f"Filled Quantity: {order.filled_qty}\n"
-        if hasattr(order, 'limit_price') and order.limit_price:
-            result += f"Limit Price: ${float(order.limit_price):.2f}\n"
-        if hasattr(order, 'stop_price') and order.stop_price:
-            result += f"Stop Price: ${float(order.stop_price):.2f}\n"
-        if hasattr(order, 'trail_price') and order.trail_price:
-            result += f"Trail Price: ${float(order.trail_price):.2f}\n"
-        if hasattr(order, 'trail_percent') and order.trail_percent:
-            result += f"Trail Percent: {order.trail_percent}%\n"
-        if hasattr(order, 'notional') and order.notional:
-            result += f"Notional: ${float(order.notional):.2f}\n"
-        if hasattr(order, 'client_order_id') and order.client_order_id:
-            result += f"Client Order ID: {order.client_order_id}\n"
-        if hasattr(order, 'canceled_at') and order.canceled_at:
-            result += f"Canceled At: {order.canceled_at}\n"
-        if hasattr(order, 'expired_at') and order.expired_at:
-            result += f"Expired At: {order.expired_at}\n"
-
-        return result
-
+        payload = {
+            "tool": tool_name,
+            "request": {"order_id": order_id},
+            "order": to_serializable(order),
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok order_id={order_id}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error retrieving order {order_id}: {str(e)}"
+        return build_error_result(tool_name, "internal_error", "Failed to retrieve order.", details={"order_id": order_id, "original_error": str(e)})
 
 @mcp.tool(
     annotations={
         "title": "Replace Order",
+        "readOnlyHint": False,
         "destructiveHint": True,
+        "idempotentHint": False,
         "openWorldHint": True
     }
 )
@@ -3700,7 +3729,7 @@ async def replace_order_by_id(
     stop_price: Optional[float] = None,
     trail: Optional[float] = None,
     client_order_id: Optional[str] = None
-) -> str:
+) -> CallToolResult:
     """
     Replaces an existing open order with updated parameters. At least one optional
     field must be provided.
@@ -3715,11 +3744,12 @@ async def replace_order_by_id(
         client_order_id (Optional[str]): New client-assigned order identifier
 
     Returns:
-        str: Formatted details of the updated order
+        CallToolResult: Details of the replaced order in both human-readable and structured form.
     """
     _ensure_clients()
+    tool_name = "replace_order_by_id"
     if all(v is None for v in [qty, time_in_force, limit_price, stop_price, trail, client_order_id]):
-        return "Error: at least one field must be provided to replace an order (qty, time_in_force, limit_price, stop_price, trail, or client_order_id)."
+        return build_error_result(tool_name, "no_fields", "At least one field must be provided to replace an order.", details={"accepted_fields": ["qty", "time_in_force", "limit_price", "stop_price", "trail", "client_order_id"]})
     try:
         tif_enum = None
         if time_in_force:
@@ -3733,7 +3763,7 @@ async def replace_order_by_id(
             }
             tif_enum = tif_map.get(time_in_force.lower())
             if tif_enum is None:
-                return f"Invalid time_in_force '{time_in_force}'. Must be one of: day, gtc, opg, cls, ioc, fok."
+                return build_error_result(tool_name, "invalid_time_in_force", "Must be one of: day, gtc, opg, cls, ioc, fok.", field="time_in_force", details={"provided": time_in_force})
 
         replace_request = ReplaceOrderRequest(
             qty=qty,
@@ -3743,32 +3773,28 @@ async def replace_order_by_id(
             trail=trail,
             client_order_id=client_order_id
         )
-
         order = trade_client.replace_order_by_id(order_id, replace_request)
-
-        result = "Order Replaced Successfully:\n"
-        result += "----------------------------\n"
-        result += f"New Order ID: {order.id}\n"
-        result += f"Symbol: {order.symbol}\n"
-        result += f"Type: {order.type}\n"
-        result += f"Side: {order.side}\n"
-        result += f"Quantity: {order.qty}\n"
-        result += f"Status: {order.status}\n"
-        result += f"Time In Force: {order.time_in_force}\n"
-        if hasattr(order, 'limit_price') and order.limit_price:
-            result += f"Limit Price: ${float(order.limit_price):.2f}\n"
-        if hasattr(order, 'stop_price') and order.stop_price:
-            result += f"Stop Price: ${float(order.stop_price):.2f}\n"
-        if hasattr(order, 'trail_price') and order.trail_price:
-            result += f"Trail Price: ${float(order.trail_price):.2f}\n"
-        if hasattr(order, 'trail_percent') and order.trail_percent:
-            result += f"Trail Percent: {order.trail_percent}%\n"
-        result += f"Submitted At: {order.submitted_at}\n"
-
-        return result
-
+        payload = {
+            "tool": tool_name,
+            "request": {
+                "order_id": order_id,
+                "qty": qty,
+                "time_in_force": time_in_force,
+                "limit_price": limit_price,
+                "stop_price": stop_price,
+                "trail": trail,
+                "client_order_id": client_order_id,
+            },
+            "order": to_serializable(order),
+        }
+        return build_success_result(
+            tool_name,
+            payload,
+            summary=f"{tool_name}: ok order_id={order_id} new_id={order.id}",
+            content_text=compact_json(payload),
+        )
     except Exception as e:
-        return f"Error replacing order {order_id}: {str(e)}"
+        return build_error_result(tool_name, "internal_error", "Failed to replace order.", details={"order_id": order_id, "original_error": str(e)})
 
 @mcp.tool(
     annotations={
