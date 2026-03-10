@@ -2,12 +2,10 @@
 CLI entry point for the Alpaca MCP Server.
 """
 
-import sys
 from pathlib import Path
 from typing import Optional
 
 import click
-from dotenv import load_dotenv
 
 from . import __version__
 
@@ -26,20 +24,20 @@ def main():
     default="stdio",
     help="Transport method (default: stdio)",
 )
-@click.option("--host", default="127.0.0.1", envvar="HOST", help="Host to bind")
-@click.option("--port", type=int, default=8000, envvar="PORT", help="Port for HTTP transport")
+@click.option("--host", default="127.0.0.1", help="Host to bind (HTTP transport only)")
+@click.option("--port", type=int, default=8000, help="Port to bind (HTTP transport only)")
 @click.option(
     "--env-file",
-    type=click.Path(path_type=Path),
+    type=click.Path(exists=True, path_type=Path),
     default=None,
-    help="Path to .env file for credentials",
+    help="Path to .env file for credentials (optional, never reads .env implicitly)",
 )
 def serve(transport: str, host: str, port: int, env_file: Optional[Path]):
     """Start the Alpaca MCP server."""
-    if env_file and env_file.exists():
-        load_dotenv(env_file)
-    else:
-        load_dotenv(override=False)
+    if env_file is not None:
+        from dotenv import load_dotenv
+
+        load_dotenv(env_file, override=False)
 
     from .server import build_server
 
@@ -49,7 +47,3 @@ def serve(transport: str, host: str, port: int, env_file: Optional[Path]):
         server.run(transport="stdio")
     else:
         server.run(transport="streamable-http", host=host, port=port)
-
-
-if __name__ == "__main__":
-    main()
