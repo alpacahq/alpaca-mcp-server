@@ -1,24 +1,10 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/alpacahq/alpaca-mcp-server/main/assets/01-primary-alpaca-logo.png" alt="Alpaca logo" width="220">
-</p>
+> **Alpaca MCP Server v2 is here.** This version is a complete rewrite built with FastMCP and OpenAPI. If you're upgrading from v1, please read the [Upgrade Guide](#upgrading-from-v1) — tool names, parameters, and configuration have changed.
 
-<div align="center">
-
-<a href="https://x.com/alpacahq?lang=en" target="_blank"><img src="https://img.shields.io/badge/X-DCDCDC?logo=x&logoColor=000" alt="X"></a>
-<a href="https://www.reddit.com/r/alpacamarkets/" target="_blank"><img src="https://img.shields.io/badge/Reddit-DCDCDC?logo=reddit&logoColor=000" alt="Reddit"></a>
-<a href="https://alpaca.markets/slack" target="_blank"><img src="https://img.shields.io/badge/Slack-DCDCDC?logo=slack&logoColor=000" alt="Slack"></a>
-<a href="https://www.linkedin.com/company/alpacamarkets/" target="_blank"><img src="https://img.shields.io/badge/LinkedIn-DCDCDC" alt="LinkedIn"></a>
-<a href="https://forum.alpaca.markets/" target="_blank"><img src="https://img.shields.io/badge/Forum-DCDCDC?logo=discourse&logoColor=000" alt="Forum"></a>
-<a href="https://docs.alpaca.markets/docs/getting-started" target="_blank"><img src="https://img.shields.io/badge/Docs-DCDCDC" alt="Docs"></a>
-
-</div>
-
-<p align="center">
-  A Model Context Protocol (MCP) server for Alpaca's Trading API. Enable natural language trading through AI assistants like Claude, Cursor, and VS Code. Supports stocks, options, crypto, portfolio management, and real-time market data.
-</p>
+A Model Context Protocol (MCP) server for Alpaca's Trading API. Enable natural language trading through AI assistants like Claude, Cursor, and VS Code. Supports stocks, options, crypto, portfolio management, and real-time market data.
 
 ## Table of Contents
 
+- [Upgrading from V1](#upgrading-from-v1)
 - [Prerequisites](#prerequisites)
 - [Getting Your API Keys](#getting-your-api-keys)
 - [Setup](#setup)
@@ -30,6 +16,48 @@
 - [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
 - [Disclosure](#disclosure)
+
+---
+
+## Upgrading from V1
+
+V2 is a **complete rewrite** built with FastMCP and OpenAPI. **None of the V1 tools exist in V2** — tool names, parameters, and schemas have changed. You cannot use V2 as a drop-in replacement if your setup depends on specific V1 tool names or parameters.
+
+### What changes
+
+
+| Aspect             | V1                                     | V2                                                                                           |
+| ------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Tool names**     | Hand-crafted (e.g. `get_account_info`) | Spec-derived with overrides (e.g. `get_account_info` — names may overlap but schemas differ) |
+| **Parameters**     | Custom schemas                         | Aligned with Alpaca API specs                                                                |
+| **Configuration**  | `.env` + `init` command                | Env vars in MCP client config only                                                           |
+| **Tool filtering** | Not supported                          | `ALPACA_TOOLSETS` env var                                                                    |
+| **Whitelisting**   | Not supported                          | Use `ALPACA_TOOLSETS` to restrict tools                                                      |
+
+
+### How to avoid V1-style usage in V2
+
+MCP clients discover tools dynamically from the server. There is no config file where you "whitelist" tool names — the client gets whatever tools the server exposes. To avoid your client or AI assistant using V2 incorrectly:
+
+1. **Do not reuse V1 config** — Treat V2 as a new server. Update your MCP client config with the new command/args; remove any `.env` or `init`-based setup.
+2. **Clear tool caches** — Restart your MCP client (Claude Desktop, Cursor, VS Code, etc.) after switching so it fetches the new tool list instead of using a stale one.
+3. **Start a fresh chat/session** — Existing conversations may have cached references to old tool names. Start a new chat so the LLM sees the current V2 tools and their schemas.
+4. **Update custom instructions and rules** — If you have Cursor rules, Claude instructions, or other prompts that mention specific V1 tool names (e.g. "use `get_account_info`"), update them to match V2 tool names or remove those references and let the LLM discover tools from context.
+5. **Restrict tools with** `ALPACA_TOOLSETS` — If you previously limited which capabilities your assistant could use, V2 supports server-side filtering via the `ALPACA_TOOLSETS` env var. See [Configuration > Toolset Filtering](#toolset-filtering) for the list of toolsets.
+
+### Summary
+
+Assume **no backward compatibility** with V1. Reconfigure your MCP client for V2, restart it, and use a fresh session. Check the [Available Tools](#available-tools) section for the current tool list.
+
+### If you had custom V1 workflows
+
+If you documented allowed tools, wrote scripts that call tools by name, or built prompts around specific V1 tool/parameter shapes — treat them as obsolete. Recreate them using the [Available Tools](#available-tools) listed below and the current parameter schemas exposed by the server.
+
+### Staying on V1
+
+If you need to stay on V1, pin to the last V1 release (e.g. `uvx alpaca-mcp-server==1.x.x serve`) in your MCP client config. V1 remains available on PyPI for existing setups.
+
+---
 
 ## Prerequisites
 
@@ -108,26 +136,22 @@ Create `.vscode/mcp.json` in your project root. See the [official docs](https://
 }
 ```
 
-<details>
-<summary><b>PyCharm</b></summary><br>
+**PyCharm**  
 
 See the [official guide](https://www.jetbrains.com/help/ai-assistant/configure-an-mcp-server.html).
 
 1. Go to File → Settings → Tools → Model Context Protocol (MCP)
 2. Add a new server:
-   - **Type**: stdio
-   - **Command**: uvx
-   - **Arguments**: alpaca-mcp-server
+  - **Type**: stdio
+  - **Command**: uvx
+  - **Arguments**: alpaca-mcp-server
 3. Set environment variables:
-   ```
+  ```
    ALPACA_API_KEY=your_alpaca_api_key
    ALPACA_SECRET_KEY=your_alpaca_secret_key
-   ```
+  ```
 
-</details>
-
-<details>
-<summary><b>Claude Code</b></summary><br>
+**Claude Code**  
 
 ```bash
 claude mcp add alpaca --scope user --transport stdio uvx alpaca-mcp-server \
@@ -137,10 +161,7 @@ claude mcp add alpaca --scope user --transport stdio uvx alpaca-mcp-server \
 
 Verify with `/mcp` in the Claude Code CLI.
 
-</details>
-
-<details>
-<summary><b>Gemini CLI</b></summary><br>
+**Gemini CLI**  
 
 See the [Gemini CLI MCP docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md).
 
@@ -162,10 +183,7 @@ Add to your `settings.json`:
 }
 ```
 
-</details>
-
-<details>
-<summary><b>Docker</b></summary><br>
+**Docker**  
 
 ```bash
 git clone https://github.com/alpacahq/alpaca-mcp-server.git
@@ -192,18 +210,18 @@ Add to your MCP client config:
 }
 ```
 
-</details>
-
 ## Configuration
 
 All configuration is through environment variables set in your MCP client config. No files are written to disk.
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `ALPACA_API_KEY` | Yes | — | Your Alpaca API key |
-| `ALPACA_SECRET_KEY` | Yes | — | Your Alpaca secret key |
-| `ALPACA_PAPER_TRADE` | No | `true` | Set to `false` for live trading |
-| `ALPACA_TOOLSETS` | No | all | Comma-separated list of toolsets to enable |
+
+| Variable             | Required | Default | Description                                |
+| -------------------- | -------- | ------- | ------------------------------------------ |
+| `ALPACA_API_KEY`     | Yes      | —       | Your Alpaca API key                        |
+| `ALPACA_SECRET_KEY`  | Yes      | —       | Your Alpaca secret key                     |
+| `ALPACA_PAPER_TRADE` | No       | `true`  | Set to `false` for live trading            |
+| `ALPACA_TOOLSETS`    | No       | all     | Comma-separated list of toolsets to enable |
+
 
 ### Switching to Live Trading
 
@@ -235,16 +253,18 @@ By default, all tools are enabled. To limit the server to specific toolsets, set
 
 Available toolsets:
 
-| Toolset | Description |
-|---|---|
-| `account` | Account info, config, portfolio history, activities |
-| `trading` | Orders, positions, exercise options |
-| `watchlists` | Watchlist CRUD operations |
-| `assets` | Asset lookup, option contracts, calendar, clock |
-| `stock-data` | Stock bars, quotes, trades, snapshots, screeners |
-| `crypto-data` | Crypto bars, quotes, trades, snapshots, orderbooks |
-| `options-data` | Option bars, quotes, trades, snapshots, chain, exchange codes |
-| `corporate-actions` | Corporate action announcements |
+
+| Toolset             | Description                                                   |
+| ------------------- | ------------------------------------------------------------- |
+| `account`           | Account info, config, portfolio history, activities           |
+| `trading`           | Orders, positions, exercise options                           |
+| `watchlists`        | Watchlist CRUD operations                                     |
+| `assets`            | Asset lookup, option contracts, calendar, clock               |
+| `stock-data`        | Stock bars, quotes, trades, snapshots, screeners              |
+| `crypto-data`       | Crypto bars, quotes, trades, snapshots, orderbooks            |
+| `options-data`      | Option bars, quotes, trades, snapshots, chain, exchange codes |
+| `corporate-actions` | Corporate action announcements                                |
+
 
 ## Features
 
@@ -260,8 +280,7 @@ Available toolsets:
 
 ## Example Prompts
 
-<details open>
-<summary><b>Basic Trading</b></summary>
+**Basic Trading**
 
 1. What's my current account balance and buying power on Alpaca?
 2. Show me my current positions in my Alpaca account.
@@ -274,216 +293,165 @@ Available toolsets:
 9. Place a limit order to buy 100 shares of MSFT at $450.
 10. Place a market order to sell 25 shares of META.
 
-</details>
+**Crypto Trading**
 
-<details>
-<summary><b>Crypto Trading</b></summary>
+1. Place a market order to buy 0.01 ETH/USD.
+2. Place a limit order to sell 0.01 BTC/USD at $110,000.
 
-11. Place a market order to buy 0.01 ETH/USD.
-12. Place a limit order to sell 0.01 BTC/USD at $110,000.
+**Option Trading**
 
-</details>
+1. Show me available option contracts for AAPL expiring next month.
+2. Get the latest quote for the AAPL250613C00200000 option.
+3. Retrieve the option snapshot for the SPY250627P00400000 option.
+4. Liquidate my position in 2 contracts of QQQ calls expiring next week.
+5. Place a market order to buy 1 call option on AAPL expiring next Friday.
+6. What are the option Greeks for the TSLA250620P00500000 option?
+7. Find TSLA option contracts with strike prices within 5% of the current market price.
+8. Get SPY call options expiring the week of June 16th, 2025, within 10% of market price.
+9. Place a bull call spread using AAPL June 6th options: one with a 190.00 strike and the other with a 200.00 strike.
+10. Exercise my NVDA call option contract NVDA250919C001680.
 
-<details>
-<summary><b>Option Trading</b></summary>
-
-13. Show me available option contracts for AAPL expiring next month.
-14. Get the latest quote for the AAPL250613C00200000 option.
-15. Retrieve the option snapshot for the SPY250627P00400000 option.
-16. Liquidate my position in 2 contracts of QQQ calls expiring next week.
-17. Place a market order to buy 1 call option on AAPL expiring next Friday.
-18. What are the option Greeks for the TSLA250620P00500000 option?
-19. Find TSLA option contracts with strike prices within 5% of the current market price.
-20. Get SPY call options expiring the week of June 16th, 2025, within 10% of market price.
-21. Place a bull call spread using AAPL June 6th options: one with a 190.00 strike and the other with a 200.00 strike.
-22. Exercise my NVDA call option contract NVDA250919C001680.
-
-</details>
-
-<details>
-<summary><b>Market Information</b></summary>
+**Market Information**
 
 > To access the latest 15-minute data, you need to subscribe to the [Algo Trader Plus Plan](https://alpaca.markets/data).
-23. What are the market open and close times today?
-24. Show me the market calendar for next week.
-25. Show me recent cash dividends and stock splits for AAPL, MSFT, and GOOGL in the last 3 months.
-26. Get all corporate actions for SPY including dividends, splits, and any mergers in the past year.
-27. What are the upcoming corporate actions scheduled for SPY in the next 6 months?
+>
+> 1. What are the market open and close times today?
+> 2. Show me the market calendar for next week.
+> 3. Show me recent cash dividends and stock splits for AAPL, MSFT, and GOOGL in the last 3 months.
+> 4. Get all corporate actions for SPY including dividends, splits, and any mergers in the past year.
+> 5. What are the upcoming corporate actions scheduled for SPY in the next 6 months?
 
-</details>
+**Historical & Real-time Data**
 
-<details>
-<summary><b>Historical & Real-time Data</b></summary>
+1. Show me AAPL's daily price history for the last 5 trading days.
+2. What was the closing price of TSLA yesterday?
+3. Get the latest bar for GOOGL.
+4. What was the latest trade price for NVDA?
+5. Show me the most recent quote for MSFT.
+6. Retrieve the last 100 trades for AMD.
+7. Show me 1-minute bars for AMZN from the last 2 hours.
+8. Get 5-minute intraday bars for TSLA from last Tuesday through last Friday.
+9. Get a comprehensive stock snapshot for AAPL showing latest quote, trade, minute bar, daily bar, and previous daily bar all in one view.
+10. Compare market snapshots for TSLA, NVDA, and MSFT to analyze their current bid/ask spreads, latest trade prices, and daily performance.
 
-28. Show me AAPL's daily price history for the last 5 trading days.
-29. What was the closing price of TSLA yesterday?
-30. Get the latest bar for GOOGL.
-31. What was the latest trade price for NVDA?
-32. Show me the most recent quote for MSFT.
-33. Retrieve the last 100 trades for AMD.
-34. Show me 1-minute bars for AMZN from the last 2 hours.
-35. Get 5-minute intraday bars for TSLA from last Tuesday through last Friday.
-36. Get a comprehensive stock snapshot for AAPL showing latest quote, trade, minute bar, daily bar, and previous daily bar all in one view.
-37. Compare market snapshots for TSLA, NVDA, and MSFT to analyze their current bid/ask spreads, latest trade prices, and daily performance.
+**Orders**
 
-</details>
+1. Show me all my open and filled orders from this week.
+2. What orders do I have for AAPL?
+3. List all limit orders I placed in the past 3 days.
+4. Filter all orders by status: filled.
+5. Get me the order history for yesterday.
 
-<details>
-<summary><b>Orders</b></summary>
-
-38. Show me all my open and filled orders from this week.
-39. What orders do I have for AAPL?
-40. List all limit orders I placed in the past 3 days.
-41. Filter all orders by status: filled.
-42. Get me the order history for yesterday.
-
-</details>
-
-<details>
-<summary><b>Watchlists</b></summary>
+**Watchlists**
 
 > At this moment, you can only view and update trading watchlists created via Alpaca's Trading API through the API itself
-43. Create a new watchlist called "Tech Stocks" with AAPL, MSFT, and NVDA.
-44. Update my "Tech Stocks" watchlist to include TSLA and AMZN.
-45. What stocks are in my "Dividend Picks" watchlist?
-46. Remove META from my "Growth Portfolio" watchlist.
-47. List all my existing watchlists.
+>
+> 1. Create a new watchlist called "Tech Stocks" with AAPL, MSFT, and NVDA.
+> 2. Update my "Tech Stocks" watchlist to include TSLA and AMZN.
+> 3. What stocks are in my "Dividend Picks" watchlist?
+> 4. Remove META from my "Growth Portfolio" watchlist.
+> 5. List all my existing watchlists.
 
-</details>
+**Asset Information**
 
-<details>
-<summary><b>Asset Information</b></summary>
+1. Search for details about the asset 'AAPL'.
+2. Show me the top 5 tradable crypto assets by trading volume.
+3. Get all NASDAQ active US equity assets and filter the results to show only tradable securities
 
-48. Search for details about the asset 'AAPL'.
-49. Show me the top 5 tradable crypto assets by trading volume.
-50. Get all NASDAQ active US equity assets and filter the results to show only tradable securities
+**Combined Scenarios**
 
-</details>
-
-<details>
-<summary><b>Combined Scenarios</b></summary>
-
-51. Get today's market clock and show me my buying power before placing a limit buy order for TSLA at $340.
-52. Place a bull call spread with SPY July 3rd options: sell one 5% above and buy one 3% below the current SPY price.
-
-</details>
+1. Get today's market clock and show me my buying power before placing a limit buy order for TSLA at $340.
+2. Place a bull call spread with SPY July 3rd options: sell one 5% above and buy one 3% below the current SPY price.
 
 ## Available Tools
 
-<details open>
-<summary><b>Account & Portfolio</b></summary>
+**Account & Portfolio**
 
-* `get_account_info` — Balance, margin, and account status
-* `get_account_config` — Trading restrictions, margin settings, PDT checks
-* `update_account_config` — Update account configuration settings
-* `get_portfolio_history` — Equity and P/L over time
-* `get_account_activities` — Fills, dividends, transfers
-* `get_account_activities_by_type` — Activities filtered by type
+- `get_account_info` — Balance, margin, and account status
+- `get_account_config` — Trading restrictions, margin settings, PDT checks
+- `update_account_config` — Update account configuration settings
+- `get_portfolio_history` — Equity and P/L over time
+- `get_account_activities` — Fills, dividends, transfers
+- `get_account_activities_by_type` — Activities filtered by type
 
-</details>
+**Trading (Orders)**
 
-<details>
-<summary><b>Trading (Orders)</b></summary>
+- `get_orders` — Retrieve orders with filters
+- `get_order_by_id` — Single order by ID
+- `get_order_by_client_id` — Single order by client order ID
+- `replace_order_by_id` — Replace an existing open order
+- `cancel_order_by_id` — Cancel a specific order
+- `cancel_all_orders` — Cancel all open orders
+- `place_stock_order` — Stocks/ETFs (market, limit, stop, stop-limit, trailing-stop, brackets)
+- `place_crypto_order` — Crypto (market, limit, stop-limit)
+- `place_option_order` — Options (single-leg or multi-leg)
 
-* `get_orders` — Retrieve orders with filters
-* `get_order_by_id` — Single order by ID
-* `get_order_by_client_id` — Single order by client order ID
-* `replace_order_by_id` — Replace an existing open order
-* `cancel_order_by_id` — Cancel a specific order
-* `cancel_all_orders` — Cancel all open orders
-* `place_stock_order` — Stocks/ETFs (market, limit, stop, stop-limit, trailing-stop, brackets)
-* `place_crypto_order` — Crypto (market, limit, stop-limit)
-* `place_option_order` — Options (single-leg or multi-leg)
+**Positions**
 
-</details>
+- `get_all_positions` — All current positions
+- `get_open_position` — Details for a specific position
+- `close_position` — Close a specific position
+- `close_all_positions` — Liquidate entire portfolio
+- `exercise_options_position` — Exercise a held option contract
+- `do_not_exercise_options_position` — Do-not-exercise instruction
 
-<details>
-<summary><b>Positions</b></summary>
+**Watchlists**
 
-* `get_all_positions` — All current positions
-* `get_open_position` — Details for a specific position
-* `close_position` — Close a specific position
-* `close_all_positions` — Liquidate entire portfolio
-* `exercise_options_position` — Exercise a held option contract
-* `do_not_exercise_options_position` — Do-not-exercise instruction
+- `create_watchlist` — Create a new watchlist
+- `get_watchlists` — List all watchlists
+- `get_watchlist_by_id` — Get a specific watchlist
+- `update_watchlist_by_id` — Update a watchlist
+- `delete_watchlist_by_id` — Delete a watchlist
+- `add_asset_to_watchlist_by_id` — Add an asset to a watchlist
+- `remove_asset_from_watchlist_by_id` — Remove an asset from a watchlist
 
-</details>
+**Assets & Market Info**
 
-<details>
-<summary><b>Watchlists</b></summary>
+- `get_all_assets` — List assets with optional filtering
+- `get_asset` — Detailed info for a specific asset
+- `get_option_contracts` — Option contracts for underlying symbol(s)
+- `get_option_contract` — Single option contract by symbol or ID
+- `get_calendar` — Market calendar for a date range
+- `get_clock` — Current market status and next open/close
+- `get_corporate_action_announcements` — Corporate action announcements
+- `get_corporate_action_announcement` — Single announcement by ID
 
-* `create_watchlist` — Create a new watchlist
-* `get_watchlists` — List all watchlists
-* `get_watchlist_by_id` — Get a specific watchlist
-* `update_watchlist_by_id` — Update a watchlist
-* `delete_watchlist_by_id` — Delete a watchlist
-* `add_asset_to_watchlist_by_id` — Add an asset to a watchlist
-* `remove_asset_from_watchlist_by_id` — Remove an asset from a watchlist
+**Stock Data**
 
-</details>
+- `get_stock_bars` — Historical OHLCV bars
+- `get_stock_quotes` — Historical bid/ask quotes
+- `get_stock_trades` — Historical trades
+- `get_stock_latest_bar` — Latest minute bar
+- `get_stock_latest_quote` — Latest quote
+- `get_stock_latest_trade` — Latest trade
+- `get_stock_snapshot` — Comprehensive snapshot
+- `get_most_active_stocks` — Most active by volume/trade count
+- `get_market_movers` — Top gainers and losers
 
-<details>
-<summary><b>Assets & Market Info</b></summary>
+**Crypto Data**
 
-* `get_all_assets` — List assets with optional filtering
-* `get_asset` — Detailed info for a specific asset
-* `get_option_contracts` — Option contracts for underlying symbol(s)
-* `get_option_contract` — Single option contract by symbol or ID
-* `get_calendar` — Market calendar for a date range
-* `get_clock` — Current market status and next open/close
-* `get_corporate_action_announcements` — Corporate action announcements
-* `get_corporate_action_announcement` — Single announcement by ID
+- `get_crypto_bars` — Historical OHLCV bars
+- `get_crypto_quotes` — Historical quotes
+- `get_crypto_trades` — Historical trades
+- `get_crypto_latest_bar` — Latest minute bar
+- `get_crypto_latest_quote` — Latest quote
+- `get_crypto_latest_trade` — Latest trade
+- `get_crypto_snapshot` — Comprehensive snapshot
+- `get_crypto_latest_orderbook` — Latest orderbook
 
-</details>
+**Options Data**
 
-<details>
-<summary><b>Stock Data</b></summary>
+- `get_option_bars` — Historical OHLCV bars
+- `get_option_trades` — Historical trades
+- `get_option_latest_trade` — Latest trade
+- `get_option_latest_quote` — Latest quote with bid/ask and exchange info
+- `get_option_snapshot` — Snapshot with Greeks and IV
+- `get_option_chain` — Full option chain for an underlying
+- `get_option_exchange_codes` — Exchange code to name mapping
 
-* `get_stock_bars` — Historical OHLCV bars
-* `get_stock_quotes` — Historical bid/ask quotes
-* `get_stock_trades` — Historical trades
-* `get_stock_latest_bar` — Latest minute bar
-* `get_stock_latest_quote` — Latest quote
-* `get_stock_latest_trade` — Latest trade
-* `get_stock_snapshot` — Comprehensive snapshot
-* `get_most_active_stocks` — Most active by volume/trade count
-* `get_market_movers` — Top gainers and losers
+**Corporate Actions**
 
-</details>
-
-<details>
-<summary><b>Crypto Data</b></summary>
-
-* `get_crypto_bars` — Historical OHLCV bars
-* `get_crypto_quotes` — Historical quotes
-* `get_crypto_trades` — Historical trades
-* `get_crypto_latest_bar` — Latest minute bar
-* `get_crypto_latest_quote` — Latest quote
-* `get_crypto_latest_trade` — Latest trade
-* `get_crypto_snapshot` — Comprehensive snapshot
-* `get_crypto_latest_orderbook` — Latest orderbook
-
-</details>
-
-<details>
-<summary><b>Options Data</b></summary>
-
-* `get_option_bars` — Historical OHLCV bars
-* `get_option_trades` — Historical trades
-* `get_option_latest_trade` — Latest trade
-* `get_option_latest_quote` — Latest quote with bid/ask and exchange info
-* `get_option_snapshot` — Snapshot with Greeks and IV
-* `get_option_chain` — Full option chain for an underlying
-* `get_option_exchange_codes` — Exchange code to name mapping
-
-</details>
-
-<details>
-<summary><b>Corporate Actions</b></summary>
-
-* `get_corporate_actions` — Corporate action announcements from market data
-
-</details>
+- `get_corporate_actions` — Corporate action announcements from market data
 
 ## Testing
 
@@ -536,13 +504,13 @@ alpaca-mcp-server/
 
 ## Troubleshooting
 
-- **uv/uvx not found**: Install uv from the official guide (https://docs.astral.sh/uv/getting-started/installation/) and then restart your terminal so `uv`/`uvx` are on PATH.
+- **uv/uvx not found**: Install uv from the official guide ([https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/)) and then restart your terminal so `uv`/`uvx` are on PATH.
 - **Credentials missing**: Set `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` in the client's `env` block. Paper mode default is `ALPACA_PAPER_TRADE = True`.
 - **Client didn't pick up new config**: Restart the client (Cursor, Claude Desktop, VS Code) after changes.
 - **HTTP port conflicts**: If using `--transport streamable-http`, change `--port` to a free port.
 
-
 ## Disclosure
+
 Insights generated by our MCP server and connected AI agents are for educational and informational purposes only and should not be taken as investment advice. Alpaca does not recommend any specific securities or investment strategies.Please conduct your own due diligence before making any decisions. All firms mentioned operate independently and are not liable for one another.
 
 Options trading is not suitable for all investors due to its inherent high risk, which can potentially result in significant losses. Please read Characteristics and Risks of Standardized Options ([Options Disclosure Document](https://www.theocc.com/company-information/documents-and-archives/options-disclosure-document?ref=alpaca.markets)) before investing in options.
@@ -564,11 +532,14 @@ Cryptocurrency services are provided by Alpaca Crypto LLC ("Alpaca Crypto"), a F
 This is not an offer, solicitation of an offer, or advice to buy or sell securities or cryptocurrencies or open a brokerage account or cryptocurrency account in any jurisdiction where Alpaca Securities or Alpaca Crypto, respectively, are not registered or licensed, as applicable.
 
 ## Privacy Policy
+
 For information about how Alpaca handles your data, please review:
+
 - [Privacy Policy](https://s3.amazonaws.com/files.alpaca.markets/disclosures/PrivacyPolicy.pdf)
 - [Disclosure Library](https://alpaca.markets/disclosures)
 
 ### Data Collection
+
 - **What is collected**: User agent string ('ALPACA-MCP-SERVER') for API calls
 - **How it's used**: To identify MCP server usage and improve user experience
 - **Third-party sharing**: Not shared with third parties
@@ -582,10 +553,12 @@ This server can place real trades and access your portfolio. Treat your API keys
 **HTTP Transport Security**: When using HTTP transport, the server defaults to localhost (127.0.0.1:8000) for security. For remote access, you can bind to all interfaces with `--host 0.0.0.0`, use SSH tunneling (`ssh -L 8000:localhost:8000 user@server`), or set up a reverse proxy with authentication for secure access.
 
 ## Support
-For issues or questions, please contact us at support@alpaca.markets.
 
-GitHub Issues: https://github.com/alpacahq/alpaca-mcp-server/issues
-GitHub Pull requests: https://github.com/alpacahq/alpaca-mcp-server/pulls
+For issues or questions, please contact us at [support@alpaca.markets](mailto:support@alpaca.markets).
+
+GitHub Issues: [https://github.com/alpacahq/alpaca-mcp-server/issues](https://github.com/alpacahq/alpaca-mcp-server/issues)
+GitHub Pull requests: [https://github.com/alpacahq/alpaca-mcp-server/pulls](https://github.com/alpacahq/alpaca-mcp-server/pulls)
 
 ### MCP Registry Metadata
+
 mcp-name: io.github.alpacahq/alpaca-mcp-server
