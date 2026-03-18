@@ -140,6 +140,17 @@ from mcp.types import CallToolResult
 # Configure Python path for local imports (UserAgentMixin)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = Path(current_dir).parent.parent
+
+# OpenAI Apps domain verification: challenge token for GET /.well-known/openai-apps-challenge
+# Override via env OPENAI_APPS_CHALLENGE_TOKEN; otherwise read from repo .well-known or default.
+def _get_openai_apps_challenge_token() -> str:
+    token = os.environ.get("OPENAI_APPS_CHALLENGE_TOKEN", "").strip()
+    if token:
+        return token
+    challenge_file = project_root / ".well-known" / "openai-apps-challenge"
+    if challenge_file.exists():
+        return challenge_file.read_text().strip()
+    return ""
 github_core_path = project_root / '.github' / 'core'
 if github_core_path.exists() and str(github_core_path) not in sys.path:
     sys.path.insert(0, str(github_core_path))
@@ -2276,8 +2287,42 @@ class AlpacaMCPServer:
             else:
                 print("DNS protection: localhost only", file=sys.stderr)
             
-            # Start the server with streamable HTTP transport
-            mcp.run(transport="streamable-http")
+            # Serve OpenAI Apps domain verification at /.well-known/openai-apps-challenge
+            # and mount the MCP streamable-http app so both work on the same host (e.g. mcp.alpaca.markets).
+            challenge_token = _get_openai_apps_challenge_token()
+            streamable_app_factory = getattr(mcp, "streamable_http_app", None)
+            # streamable_http_app() must be called before session_manager is available (lazy init).
+            mcp_http_app = (
+                streamable_app_factory() if streamable_app_factory is not None else None
+            )
+            session_manager_run = (
+                getattr(mcp.session_manager, "run", None) if mcp_http_app is not None else None
+            )
+            if mcp_http_app is not None and session_manager_run is not None:
+                from starlette.applications import Starlette
+                from starlette.responses import PlainTextResponse
+                from starlette.routing import Mount, Route
+
+                def openai_apps_challenge(_request: Any) -> Any:
+                    return PlainTextResponse(challenge_token, media_type="text/plain")
+
+                app = Starlette(
+                    debug=DEBUG.lower() == "true",
+                    routes=[
+                        Route(
+                            "/.well-known/openai-apps-challenge",
+                            openai_apps_challenge,
+                            methods=["GET"],
+                        ),
+                        Mount("/", app=mcp_http_app),
+                    ],
+                    lifespan=lambda _: session_manager_run(),
+                )
+                import uvicorn
+                uvicorn.run(app, host=host, port=port)
+            else:
+                # SDK does not expose streamable_http_app; use built-in run (proxy must serve .well-known)
+                mcp.run(transport="streamable-http")
             
         else:
             # Use stdio transport (default)
