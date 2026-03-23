@@ -81,6 +81,8 @@ def register_order_tools(
         extended_hours: bool = False,
         client_order_id: Optional[str] = None,
         order_class: Optional[str] = None,
+        take_profit_price: Optional[str] = None,
+        stop_loss_price: Optional[str] = None,
         take_profit_limit_price: Optional[str] = None,
         stop_loss_stop_price: Optional[str] = None,
         stop_loss_limit_price: Optional[str] = None,
@@ -108,18 +110,35 @@ def register_order_tools(
             order_class: "simple", "bracket", "oco", or "oto". Automatically
                          set to "bracket" when take_profit or stop_loss params
                          are provided.
-            take_profit_limit_price: Limit price for bracket take-profit leg.
-            stop_loss_stop_price: Stop price for bracket stop-loss leg.
-            stop_loss_limit_price: Limit price for bracket stop-loss leg.
+            take_profit_price: Limit price for the take-profit child leg.
+                               Used for bracket, oto, and oco orders. The API
+                               nests this as take_profit.limit_price.
+            stop_loss_price: Stop trigger price for the stop-loss child leg.
+                             Used for bracket, oto, and oco orders. The API
+                             nests this as stop_loss.stop_price.
+            take_profit_limit_price: Alias for take_profit_price. If both are
+                                     provided, take_profit_price takes priority.
+            stop_loss_stop_price: Alias for stop_loss_price. If both are
+                                  provided, stop_loss_price takes priority.
+            stop_loss_limit_price: Optional limit price for the stop-loss leg.
+                                   When set alongside stop_loss_price, the child
+                                   order becomes a stop_limit instead of a stop.
         """
-        if stop_loss_limit_price is not None and stop_loss_stop_price is None:
+        # Resolve aliases: take_profit_price / stop_loss_price are the
+        # preferred names; fall back to the longer aliases for backwards
+        # compatibility.
+        _tp_limit = take_profit_price or take_profit_limit_price
+        _sl_stop = stop_loss_price or stop_loss_stop_price
+
+        if stop_loss_limit_price is not None and _sl_stop is None:
             return _error(
-                "stop_loss_limit_price requires stop_loss_stop_price"
+                "stop_loss_limit_price requires stop_loss_price "
+                "(or stop_loss_stop_price)"
             )
 
         has_bracket_params = (
-            take_profit_limit_price is not None
-            or stop_loss_stop_price is not None
+            _tp_limit is not None
+            or _sl_stop is not None
         )
         if has_bracket_params and order_class is None:
             order_class = "bracket"
@@ -148,12 +167,12 @@ def register_order_tools(
             body["client_order_id"] = client_order_id
         if order_class is not None:
             body["order_class"] = order_class
-        if take_profit_limit_price is not None:
-            body["take_profit"] = {"limit_price": take_profit_limit_price}
-        if stop_loss_stop_price is not None:
-            sl: dict = {"stop_price": stop_loss_stop_price}
+        if _tp_limit is not None:
+            body["take_profit"] = {"limit_price": str(_tp_limit)}
+        if _sl_stop is not None:
+            sl: dict = {"stop_price": str(_sl_stop)}
             if stop_loss_limit_price is not None:
-                sl["limit_price"] = stop_loss_limit_price
+                sl["limit_price"] = str(stop_loss_limit_price)
             body["stop_loss"] = sl
 
         return await _post_order(client, body)
