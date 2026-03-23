@@ -1,0 +1,64 @@
+name: CI
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Job 1: Core tests (no secrets, no network) ────────────────────────
+  # Runs integrity checks and server construction tests on every PR.
+  test-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run core tests
+        run: pytest tests/test_integrity.py tests/test_server_construction.py
+
+  # ── Job 2: Integration tests (paper API, secrets required) ────────────
+  # Runs only on pushes to main and PRs from the same repo (not forks).
+  # Fork PRs cannot access secrets, so this job is skipped for them.
+  #
+  # Required GitHub Secrets (Settings > Secrets and variables > Actions):
+  #   ALPACA_API_KEY    — paper trading account API key
+  #   ALPACA_SECRET_KEY — paper trading account secret key
+  test-integration:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run integration tests
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_PAPER_TRADE: "true"
+        run: pytest tests/ -m integration
