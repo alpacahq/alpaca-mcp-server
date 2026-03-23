@@ -27,6 +27,8 @@ build/
 *.swp
 *.swo
 
+.scratch/
+
 # OS
 .DS_Store
 Thumbs.db
