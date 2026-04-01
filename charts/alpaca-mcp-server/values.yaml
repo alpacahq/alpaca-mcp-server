@@ -134,4 +134,3 @@ env:
   secrets: 
     ALPACA_API_KEY: "<alpaca-api-key>"
     ALPACA_SECRET_KEY: "<alpaca-secret-key>"
-    ALPACA_BASE_URL: "<alpaca-base-url>"

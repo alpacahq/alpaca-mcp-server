@@ -4,12 +4,10 @@
 # Location: /server.yaml
 # Purpose: Metadata for Docker MCP Registry submission and container deployment
 
-# Basic server identification
 name: alpaca-mcp-server
 image: alpaca/mcp-server
 type: server
 
-# Categorization and metadata
 meta:
   category: finance
   tags:
@@ -24,85 +22,41 @@ meta:
     - ai
     - llm
 
-# About section for Docker registry display
 about:
   title: Alpaca MCP Server
   description: |
-    Comprehensive Alpaca Trading API integration for Model Context Protocol.
+    Alpaca Trading API integration for Model Context Protocol.
 
-    This MCP server enables natural language trading operations through AI assistants
-    like Claude Desktop and Cursor. It provides access to Alpaca's trading
-    infrastructure with 43 specialized tools covering all aspects of trading.
+    V2 generates 60+ MCP tools directly from Alpaca's published OpenAPI specs
+    using FastMCP's from_openapi(). Covers account management, order placement,
+    position tracking, market data (stocks, options, crypto), watchlists,
+    corporate actions, and more.
 
-    Account & Positions (3 tools):
-    - Account information with balances, buying power, and account status
-    - All current positions with market value and P&L
-    - Detailed information for a specific open position
+    Key capabilities:
+    - Account & portfolio — balances, buying power, positions, portfolio history, activity log
+    - Order management — place, replace, cancel orders for stocks, options, and crypto
+    - Stock market data — historical bars, quotes, trades, snapshots, screener
+    - Options data — contract search, quotes with Greeks, snapshots
+    - Crypto data — bars, quotes, trades, orderbook, snapshots
+    - Watchlists — create, update, delete, add/remove symbols
+    - Corporate actions — dividends, splits, earnings
+    - Market calendar & clock
 
-    Assets (2 tools):
-    - Detailed asset information and attributes
-    - Browse all available assets with filtering by status, class, and exchange
+    Toolset filtering lets you control exactly which capabilities the model can access
+    via the ALPACA_TOOLSETS environment variable.
 
-    Corporate Actions (1 tool):
-    - Earnings announcements, dividends, and stock splits
-
-    Portfolio (1 tool):
-    - Equity and P/L over a requested time window
-
-    Watchlists (7 tools):
-    - Create, retrieve (all and by ID), update, and delete watchlists
-    - Add or remove symbols from specific watchlists
-
-    Market Calendar & Clock (2 tools):
-    - Market calendar showing trading days and holidays for a date range
-    - Current market status and next open/close times
-
-    Stock Market Data (7 tools):
-    - Historical price bars (OHLCV), quotes, and trade data
-    - Latest quote, trade, and minute bar
-    - Comprehensive market snapshot
-
-    Crypto Market Data (8 tools):
-    - Historical bars, quotes, and trades
-    - Latest quote, trade, minute bar, and orderbook
-    - Snapshots including minute, daily, and previous daily bars
-
-    Options Market Data (3 tools):
-    - Search option contracts with flexible filtering
-    - Latest option quote with bid/ask and Greeks
-    - Option snapshots with implied volatility and Greeks
-
-    Trading — Orders (4 tools):
-    - Retrieve order history with filtering
-    - Place stock, crypto, and option orders (market, limit, stop, stop-limit, trailing)
-    - Cancel all orders or a specific order by ID
-
-    Trading — Position Management (5 tools):
-    - Close a specific position (partial or complete)
-    - Close all positions
-    - Exercise an options position
-    - Cancel all orders or specific orders
-
-    Perfect for developers building AI-powered trading applications or traders
-    who want to interact with their Alpaca accounts using natural language.
-
-# Source code and documentation links
 source:
   project: https://github.com/alpacahq/alpaca-mcp-server
   documentation: https://github.com/alpacahq/alpaca-mcp-server#readme
   issues: https://github.com/alpacahq/alpaca-mcp-server/issues
 
-# Configuration requirements for Docker deployment
 config:
   description: |
     Configure your Alpaca API credentials to connect to your trading account.
 
-    You can get free API keys for paper trading at:
+    Get free API keys for paper trading at:
     https://app.alpaca.markets/dashboard/overview
 
-    For live trading, upgrade to a funded account and use live API keys.
-
-  # Required secrets (sensitive environment variables)
   secrets:
     - name: ALPACA_API_KEY
       description: Your Alpaca API key for account access
@@ -112,14 +66,9 @@ config:
       description: Your Alpaca secret key for account access
       required: true
 
-  # Optional environment variables with defaults
   env:
-    - name: ALPACA_PAPER_TRADE
-      description: Use paper trading mode (true) or live trading (false)
-      default: "true"
-
-    - name: TRADE_API_URL
-      description: Custom Alpaca Trading API URL (leave empty for default)
+    - name: ALPACA_TOOLSETS
+      description: Comma-separated list of toolsets to enable (e.g. account,trading,stock-data). All enabled by default.
       default: ""
 
     - name: DATA_API_URL
@@ -130,57 +79,45 @@ config:
       description: Enable debug logging (true/false)
       default: "false"
 
-# Additional metadata for Docker registry
 metadata:
   license: MIT
   maintainer: Alpaca <https://alpaca.markets/contact>
-  version: "1.0.12" # should match pyproject.toml version
+  version: "2.0.0"
 
-  # Docker-specific configuration
   docker:
     transport: stdio
     working_dir: /app
     user: alpaca
 
-    # Health check configuration
     healthcheck:
       test: ["CMD", "python", "-c", "import alpaca_mcp_server"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Supported platforms
   platforms:
     - linux/amd64
     - linux/arm64
 
-  # Usage examples for documentation
   examples:
     basic_usage: |
-      # Start with Docker
       docker run -e ALPACA_API_KEY -e ALPACA_SECRET_KEY alpaca/mcp-server
-      # Provide credentials via environment variables set outside of the command
 
     claude_desktop: |
-      # Claude Desktop configuration
       {
         "mcpServers": {
           "alpaca": {
             "command": "docker",
             "args": ["run", "-i", "--rm", "-e", "ALPACA_API_KEY", "-e", "ALPACA_SECRET_KEY", "alpaca/mcp-server"],
-              "ALPACA_API_KEY": "${ALPACA_API_KEY}",
-              "ALPACA_SECRET_KEY": "${ALPACA_SECRET_KEY}"
-            }
+            "env": {
+              "ALPACA_API_KEY": "your_api_key",
+              "ALPACA_SECRET_KEY": "your_secret_key"
             }
           }
         }
       }
 
-    development: |
-      # Development with custom environment
-      docker run -it --rm \
-        -e ALPACA_API_KEY=your_key \
-        -e ALPACA_SECRET_KEY=your_secret \
-        -e ALPACA_PAPER_TRADE=true \
-        -e DEBUG=true \
+    filtered_toolsets: |
+      docker run -e ALPACA_API_KEY -e ALPACA_SECRET_KEY \
+        -e ALPACA_TOOLSETS=account,stock-data,crypto-data \
         alpaca/mcp-server
