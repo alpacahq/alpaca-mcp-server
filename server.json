@@ -2,17 +2,17 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "io.github.alpacahq/alpaca-mcp-server",
   "title": "Alpaca's MCP Server",
-  "description": "Alpaca Trading API integration for Model Context Protocol (MCP)",
+  "description": "Alpaca Trading API integration for Model Context Protocol (MCP). V2 generates 60+ tools directly from Alpaca's OpenAPI specs using FastMCP.",
   "repository": {
     "url": "https://github.com/alpacahq/alpaca-mcp-server",
     "source": "github"
   },
-  "version": "1.0.12",
+  "version": "2.0.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "alpaca-mcp-server",
-      "version": "1.0.12",
+      "version": "2.0.0",
       "transport": {
         "type": "stdio"
       },
@@ -29,6 +29,13 @@
           "description": "Alpaca Trading API secret key",
           "isRequired": true,
           "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "ALPACA_TOOLSETS",
+          "description": "Comma-separated list of toolsets to enable (e.g. account,trading,stock-data). All enabled by default.",
+          "isRequired": false,
+          "isSecret": false,
           "format": "string"
         }
       ]
