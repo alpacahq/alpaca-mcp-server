@@ -106,16 +106,21 @@ TOOLS: dict[str, ToolOverride] = {
     "deleteOpenPosition": ToolOverride(
         name="close_position",
         description=(
-            "Closes a specific position for a single symbol by placing a sell order. "
-            "If the market is closed, the sell order will remain queued and execute "
-            "at the next market open."
+            "Closes (liquidates) a position for a single symbol. Works for both "
+            "long and short positions — automatically generates the correct "
+            "order side and intent. Accepts an optional qty or percentage "
+            "parameter for partial closes. ALWAYS prefer this over "
+            "place_stock_order when the goal is to reduce or flatten an "
+            "existing position, because place_stock_order does not carry "
+            "position intent and can accidentally flip a short to a long "
+            "(or vice versa)."
         ),
     ),
     "deleteAllOpenPositions": ToolOverride(
         name="close_all_positions",
         description=(
-            "Closes all open positions by placing sell orders for each. "
-            "If the market is closed, the sell orders will remain queued and execute "
+            "Closes (liquidates) all open long and short positions. "
+            "If the market is closed, the orders will remain queued and execute "
             "at the next market open."
         ),
     ),

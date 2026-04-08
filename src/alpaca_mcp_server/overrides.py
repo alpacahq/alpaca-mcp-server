@@ -89,6 +89,12 @@ def register_order_tools(
     ) -> dict:
         """Place a stock or ETF order.
 
+        IMPORTANT: To close or reduce an existing position (long or short),
+        use the close_position tool instead. This tool does not carry
+        position intent, so a "buy" on a symbol you are short will ADD
+        a new long on top of the short rather than covering it — doubling
+        your exposure instead of flattening it.
+
         Args:
             symbol: Stock ticker (e.g., "AAPL", "SPY").
             side: "buy" or "sell".
