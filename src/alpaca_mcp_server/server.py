@@ -32,7 +32,7 @@ MARKET_DATA_BASE_URL = "https://data.alpaca.markets"
 
 def _load_spec(name: str) -> dict[str, Any]:
     path = SPECS_DIR / f"{name}.json"
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _make_filter(allowed_ops: set[str]):
