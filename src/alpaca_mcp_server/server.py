@@ -22,6 +22,7 @@ from .names import TOOL_DESCRIPTIONS, TOOL_NAMES
 from .toolsets import OVERRIDE_OPERATION_IDS, TOOLSETS, get_active_operations
 
 SPECS_DIR = Path(__file__).parent / "specs"
+_USER_AGENT_FILE = Path(__file__).resolve().parents[2] / ".github" / "core" / "user_agent.py"
 
 TRADING_API_BASE_URLS = {
     "paper": "https://paper-api.alpaca.markets",
@@ -32,7 +33,7 @@ MARKET_DATA_BASE_URL = "https://data.alpaca.markets"
 
 def _load_spec(name: str) -> dict[str, Any]:
     path = SPECS_DIR / f"{name}.json"
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _make_filter(allowed_ops: set[str]):
@@ -52,13 +53,26 @@ def _make_customizer(descriptions: dict[str, str]):
     return customizer
 
 
+def _load_user_agent() -> str | None:
+    """Load USER_AGENT from .github/core/user_agent.py if it exists."""
+    if not _USER_AGENT_FILE.is_file():
+        return None
+    ns: dict[str, Any] = {}
+    exec(_USER_AGENT_FILE.read_text(encoding="utf-8"), ns)
+    return ns.get("USER_AGENT")
+
+
 def _build_auth_headers() -> dict[str, str]:
     key = os.environ.get("ALPACA_API_KEY", "")
     secret = os.environ.get("ALPACA_SECRET_KEY", "")
-    return {
+    headers = {
         "APCA-API-KEY-ID": key,
         "APCA-API-SECRET-KEY": secret,
     }
+    user_agent = _load_user_agent()
+    if user_agent:
+        headers["User-Agent"] = user_agent
+    return headers
 
 
 def _get_trading_base_url() -> str:

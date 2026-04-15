@@ -562,7 +562,7 @@ For information about how Alpaca handles your data, please review:
 - **How it's used**: To identify MCP server usage and improve user experience
 - **Third-party sharing**: Not shared with third parties
 - **Retention**: Retained per Alpaca's standard data retention policy
-- **Opt-out**: Modify the 'USER_AGENT' constant in '.github/core/user_agent_mixin.py' or remove 'UserAgentMixin' from client class definitions
+- **Opt-out**: Modify or remove the `USER_AGENT` constant in `.github/core/user_agent.py`
 
 ## Security Notice
 
