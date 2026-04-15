@@ -22,7 +22,7 @@ from .names import TOOL_DESCRIPTIONS, TOOL_NAMES
 from .toolsets import OVERRIDE_OPERATION_IDS, TOOLSETS, get_active_operations
 
 SPECS_DIR = Path(__file__).parent / "specs"
-_USER_AGENT_FILE = Path(__file__).resolve().parents[3] / ".github" / "core" / "user_agent.py"
+_USER_AGENT_FILE = Path(__file__).resolve().parents[2] / ".github" / "core" / "user_agent.py"
 
 TRADING_API_BASE_URLS = {
     "paper": "https://paper-api.alpaca.markets",
