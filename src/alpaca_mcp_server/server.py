@@ -58,6 +58,7 @@ def _build_auth_headers() -> dict[str, str]:
     return {
         "APCA-API-KEY-ID": key,
         "APCA-API-SECRET-KEY": secret,
+        "User-Agent": "ALPACA-MCP-SERVER",
     }
 
 
