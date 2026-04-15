@@ -562,7 +562,7 @@ For information about how Alpaca handles your data, please review:
 - **How it's used**: To identify MCP server usage and improve user experience
 - **Third-party sharing**: Not shared with third parties
 - **Retention**: Retained per Alpaca's standard data retention policy
-- **Opt-out**: Remove the `User-Agent` header from `_build_auth_headers()` in `server.py`
+- **Opt-out**: Modify or remove the `USER_AGENT` constant in `.github/core/user_agent.py`
 
 ## Security Notice
 
