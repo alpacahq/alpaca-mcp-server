@@ -16,7 +16,7 @@ image:
 # This sets the command to run in the container more information can be found here: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/
 command: ["alpaca-mcp-server"]
 # This sets the arguments to pass to the command more information can be found here: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/
-args: ["serve", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+args: ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
