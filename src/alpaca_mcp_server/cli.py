@@ -11,6 +11,15 @@ import click
 
 from . import __version__
 
+# Older Docker/Helm configs invoked `alpaca-mcp-server serve ...`; the CLI has no subcommands.
+if len(sys.argv) > 1 and sys.argv[1] == "serve":
+    sys.argv.pop(1)
+
+
+def _default_port() -> int:
+    """HTTP bind port; honors Render/Fly-style ``PORT`` when ``--port`` is omitted."""
+    return int(os.environ.get("PORT", "8000"))
+
 
 @click.command()
 @click.version_option(version=__version__, prog_name="alpaca-mcp-server")
@@ -21,7 +30,12 @@ from . import __version__
     help="Transport protocol (default: stdio)",
 )
 @click.option("--host", default="127.0.0.1", help="Host to bind (HTTP transport only)")
-@click.option("--port", type=int, default=8000, help="Port to bind (HTTP transport only)")
+@click.option(
+    "--port",
+    type=int,
+    default=_default_port,
+    help="Port to bind (HTTP transport only; defaults to $PORT or 8000)",
+)
 @click.option(
     "--env-file",
     type=click.Path(exists=True, path_type=Path),
