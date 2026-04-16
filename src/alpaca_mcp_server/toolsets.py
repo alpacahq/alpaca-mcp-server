@@ -107,6 +107,12 @@ TOOLSETS: dict[str, dict] = {
             "CorporateActions",
         },
     },
+    "news": {
+        "spec": "market-data",
+        "operations": {
+            "News",
+        },
+    },
 }
 
 OVERRIDE_OPERATION_IDS = {

@@ -282,6 +282,7 @@ Available toolsets:
 | `crypto-data`       | Crypto bars, quotes, trades, snapshots, orderbooks            |
 | `options-data`      | Option bars, quotes, trades, snapshots, chain, exchange codes |
 | `corporate-actions` | Corporate action announcements                                |
+| `news`              | News articles for stocks and crypto                           |
 
 
 ## Features
@@ -292,6 +293,7 @@ Available toolsets:
 - **Options Trading** — Search contracts by expiration/strike/type. Place single-leg or multi-leg strategies. Get latest quotes, Greeks, and IV.
 - **Crypto Trading** — Market, limit, and stop-limit orders with GTC/IOC. Quantity or notional-based.
 - **Position Management** — View, close, or liquidate positions. Exercise option contracts.
+- **News** — News articles filterable by ticker and date range.
 - **Market Status** — Market open/close times, calendar, corporate actions.
 - **Watchlists** — Create, update, and manage watchlists.
 - **Asset Search** — Query details for stocks, ETFs, crypto, and options with filtering.
@@ -471,6 +473,10 @@ Available toolsets:
 
 - `get_corporate_actions` — Corporate action announcements from market data
 
+**News**
+
+- `get_news` — News articles for stocks and crypto
+
 ## Testing
 
 The project includes a multi-layered test suite that runs in CI on every pull request:
@@ -562,7 +568,7 @@ For information about how Alpaca handles your data, please review:
 - **How it's used**: To identify MCP server usage and improve user experience
 - **Third-party sharing**: Not shared with third parties
 - **Retention**: Retained per Alpaca's standard data retention policy
-- **Opt-out**: Modify the 'USER_AGENT' constant in '.github/core/user_agent_mixin.py' or remove 'UserAgentMixin' from client class definitions
+- **Opt-out**: Modify or remove the `USER_AGENT` constant in `.github/core/user_agent.py`
 
 ## Security Notice
 

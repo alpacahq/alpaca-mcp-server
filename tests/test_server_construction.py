@@ -90,6 +90,8 @@ EXPECTED_TOOLS = {
     "get_option_exchange_codes",
     # Corporate Actions (Market Data)
     "get_corporate_actions",
+    # News
+    "get_news",
     # Order Overrides
     "place_stock_order",
     "place_crypto_order",
@@ -107,9 +109,9 @@ async def _list_tools(env: dict | None = None) -> list:
 
 
 async def test_tool_count():
-    """Server must expose exactly 61 tools."""
+    """Server must expose exactly 62 tools."""
     tools = await _list_tools()
-    assert len(tools) == 61, f"Expected 61 tools, got {len(tools)}"
+    assert len(tools) == 62, f"Expected 62 tools, got {len(tools)}"
 
 
 async def test_tool_names_match():

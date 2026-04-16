@@ -358,6 +358,16 @@ TOOLS: dict[str, ToolOverride] = {
         name="get_corporate_actions",
         description="Retrieves and formats corporate action announcements.",
     ),
+
+    # --- News ---
+    "News": ToolOverride(
+        name="get_news",
+        description=(
+            "Retrieves news articles for stocks and crypto. "
+            "Filter by symbols, date range, and sort order. "
+            "Returns headlines, summaries, URLs, and associated ticker symbols."
+        ),
+    ),
 }
 
 # Derived lookups used by server.py

@@ -12,7 +12,7 @@ Key Features:
 - Corporate actions and market calendar
 """
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 __author__ = "Alpaca"
 __license__ = "MIT"
 __description__ = "Alpaca Trading API integration for Model Context Protocol (MCP)"
