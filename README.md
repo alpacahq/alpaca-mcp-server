@@ -293,7 +293,7 @@ Available toolsets:
 - **Options Trading** — Search contracts by expiration/strike/type. Place single-leg or multi-leg strategies. Get latest quotes, Greeks, and IV.
 - **Crypto Trading** — Market, limit, and stop-limit orders with GTC/IOC. Quantity or notional-based.
 - **Position Management** — View, close, or liquidate positions. Exercise option contracts.
-- **News** — Benzinga-sourced news articles filterable by ticker and date range.
+- **News** — News articles filterable by ticker and date range.
 - **Market Status** — Market open/close times, calendar, corporate actions.
 - **Watchlists** — Create, update, and manage watchlists.
 - **Asset Search** — Query details for stocks, ETFs, crypto, and options with filtering.
@@ -475,7 +475,7 @@ Available toolsets:
 
 **News**
 
-- `get_news` — News articles for stocks and crypto, sourced from Benzinga
+- `get_news` — News articles for stocks and crypto
 
 ## Testing
 

@@ -363,7 +363,7 @@ TOOLS: dict[str, ToolOverride] = {
     "News": ToolOverride(
         name="get_news",
         description=(
-            "Retrieves news articles for stocks and crypto, sourced from Benzinga. "
+            "Retrieves news articles for stocks and crypto. "
             "Filter by symbols, date range, and sort order. "
             "Returns headlines, summaries, URLs, and associated ticker symbols."
         ),
