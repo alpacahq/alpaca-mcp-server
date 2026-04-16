@@ -6,7 +6,7 @@ This MCP server auto-generates tools from bundled OpenAPI specs (`src/alpaca_mcp
 
 The test suite has three layers:
 - `tests/test_integrity.py` — Spec ↔ toolset ↔ names consistency (no network)
-- `tests/test_server_construction.py` — Server builds correctly, exposes 61 tools (no network)
+- `tests/test_server_construction.py` — Server builds correctly, exposes 62 tools (no network)
 - `tests/test_paper_integration.py` — Real API calls against Alpaca paper (needs credentials)
 
 CI is defined in `.github/workflows/ci.yml` with two jobs: `test-core` (runs on every PR) and `test-integration` (runs when `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` secrets are available).

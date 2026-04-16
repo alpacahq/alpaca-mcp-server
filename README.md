@@ -282,6 +282,7 @@ Available toolsets:
 | `crypto-data`       | Crypto bars, quotes, trades, snapshots, orderbooks            |
 | `options-data`      | Option bars, quotes, trades, snapshots, chain, exchange codes |
 | `corporate-actions` | Corporate action announcements                                |
+| `news`              | News articles for stocks and crypto                           |
 
 
 ## Features
@@ -292,6 +293,7 @@ Available toolsets:
 - **Options Trading** — Search contracts by expiration/strike/type. Place single-leg or multi-leg strategies. Get latest quotes, Greeks, and IV.
 - **Crypto Trading** — Market, limit, and stop-limit orders with GTC/IOC. Quantity or notional-based.
 - **Position Management** — View, close, or liquidate positions. Exercise option contracts.
+- **News** — News articles filterable by ticker and date range.
 - **Market Status** — Market open/close times, calendar, corporate actions.
 - **Watchlists** — Create, update, and manage watchlists.
 - **Asset Search** — Query details for stocks, ETFs, crypto, and options with filtering.
@@ -470,6 +472,10 @@ Available toolsets:
 **Corporate Actions**
 
 - `get_corporate_actions` — Corporate action announcements from market data
+
+**News**
+
+- `get_news` — News articles for stocks and crypto
 
 ## Testing
 
