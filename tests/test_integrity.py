@@ -18,7 +18,7 @@ SPECS_DIR = Path(__file__).resolve().parent.parent / "src" / "alpaca_mcp_server"
 
 def _load_operation_ids(spec_name: str) -> set[str]:
     """Extract all operationIds from a bundled OpenAPI spec."""
-    spec = json.loads((SPECS_DIR / f"{spec_name}.json").read_text())
+    spec = json.loads((SPECS_DIR / f"{spec_name}.json").read_text(encoding="utf-8"))
     ids: set[str] = set()
     for methods in spec["paths"].values():
         for details in methods.values():
