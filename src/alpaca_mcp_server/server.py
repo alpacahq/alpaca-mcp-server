@@ -31,9 +31,19 @@ TRADING_API_BASE_URLS = {
 MARKET_DATA_BASE_URL = "https://data.alpaca.markets"
 
 
+def _strip_vendor_extensions(obj: Any) -> Any:
+    """Recursively remove any key starting with 'x-' from a dict/list structure."""
+    if isinstance(obj, dict):
+        return {k: _strip_vendor_extensions(v) for k, v in obj.items() if not k.startswith("x-")}
+    elif isinstance(obj, list):
+        return [_strip_vendor_extensions(item) for item in obj]
+    return obj
+
+
 def _load_spec(name: str) -> dict[str, Any]:
     path = SPECS_DIR / f"{name}.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    spec = json.loads(path.read_text(encoding="utf-8"))
+    return _strip_vendor_extensions(spec)
 
 
 def _make_filter(allowed_ops: set[str]):
