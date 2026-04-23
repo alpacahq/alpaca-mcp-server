@@ -201,6 +201,27 @@ Add to your `settings.json`:
 }
 ```
 
+**Kiro**  
+
+[![Add to Kiro](https://kiro.dev/images/add-to-kiro.svg)](https://kiro.dev/launch/mcp/add?name=alpaca&config=%7B%22command%22%3A%20%22uvx%22%2C%20%22args%22%3A%20%5B%22alpaca-mcp-server%22%5D%2C%20%22env%22%3A%20%7B%22ALPACA_API_KEY%22%3A%20%22your_alpaca_api_key%22%2C%20%22ALPACA_SECRET_KEY%22%3A%20%22your_alpaca_secret_key%22%7D%7D)
+
+Or add the following to your Kiro MCP config file (`~/.kiro/settings/mcp.json` for global, or `.kiro/settings/mcp.json` for project-scoped). See the [Kiro MCP documentation](https://kiro.dev/docs/mcp/) for more details.
+
+```json
+{
+  "mcpServers": {
+    "alpaca": {
+      "command": "uvx",
+      "args": ["alpaca-mcp-server"],
+      "env": {
+        "ALPACA_API_KEY": "your_alpaca_api_key",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
+      }
+    }
+  }
+}
+```
+
 **Docker**  
 
 ```bash
