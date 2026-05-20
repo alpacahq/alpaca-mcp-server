@@ -38,7 +38,15 @@ Classify every change into one of three categories:
 ### A. Modified existing endpoints
 
 Parameter or schema changes to endpoints already in the allowlist (`toolsets.py`).
-**Action:** No code changes needed — the spec update is sufficient.
+**Action for auto-generated tools:** No code changes needed — the spec update is sufficient.
+**Action for overrides:** If the modified endpoint has its operationId in `OVERRIDE_OPERATION_IDS` (e.g., `postOrder`), the auto-generator is bypassed and the hand-written override in `overrides.py` or `market_data_overrides.py` is used instead. Spec changes do NOT flow through to overrides automatically. For every override whose underlying spec changed, you must:
+
+1. Extract the full parameter/property list from the spec's request schema (query params, path params, and request body properties).
+2. Diff that list against the override function's Python parameter list. For each difference:
+   - **New spec parameter not in the override:** Evaluate whether to add it. If it's useful for LLM interactions, add it as an optional parameter, wire it into the request body/query, and document it in the docstring.
+   - **Removed spec parameter still in the override:** Flag it — the override is passing a field the API no longer accepts.
+   - **Changed description/type/enum on an existing parameter:** Update the override's docstring to match the new spec description.
+3. Apply the same diff to any other overrides that hit the same underlying API resource (e.g., if `postOrder` and `patchOrderByOrderId` both touch `/v2/orders`, a field added to one likely applies to the other).
 
 ### B. New endpoints
 
