@@ -368,6 +368,7 @@ TOOLS: dict[str, ToolOverride] = {
             "Returns headlines, summaries, URLs, and associated ticker symbols."
         ),
     ),
+
 }
 
 # Derived lookups used by server.py

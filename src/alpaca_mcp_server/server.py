@@ -80,6 +80,13 @@ def _get_trading_base_url() -> str:
     return TRADING_API_BASE_URLS["paper" if paper else "live"]
 
 
+def _ensure_scheme(url: str) -> str:
+    """Prepend ``https://`` when the URL has no scheme (common .env misconfiguration)."""
+    if url and "://" not in url:
+        return f"https://{url}"
+    return url
+
+
 def _parse_toolsets() -> set[str] | None:
     raw = os.environ.get("ALPACA_TOOLSETS", "").strip()
     if not raw:
@@ -94,7 +101,7 @@ def build_server() -> FastMCP:
 
     auth_headers = _build_auth_headers()
     trading_base = _get_trading_base_url()
-    data_base = os.environ.get("DATA_API_URL", MARKET_DATA_BASE_URL).rstrip("/")
+    data_base = _ensure_scheme(os.environ.get("DATA_API_URL", MARKET_DATA_BASE_URL)).rstrip("/")
 
     clients: list[httpx.AsyncClient] = []
 
