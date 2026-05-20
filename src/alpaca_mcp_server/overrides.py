@@ -135,12 +135,11 @@ def register_order_tools(
                      "end_time":   "<RFC3339, optional>",
                      "max_percentage": "<0<x<1, optional>"}
                     Does NOT participate in open/close auctions.
-                See https://docs.alpaca.markets/docs/alpaca-elite-smart-router
-                for the canonical reference. NOTE: PATCH /v2/orders/{id}
-                already documents `advanced_instructions` in the OpenAPI
-                spec (PatchOrderRequest), and `replace_order_by_id` exposes
-                it through auto-generation — this patch only addresses the
-                POST-side asymmetry.
+                NOTE: PATCH /v2/orders/{id} already documents
+                `advanced_instructions` in the OpenAPI spec
+                (PatchOrderRequest), and `replace_order_by_id` exposes
+                it through auto-generation — this patch only addresses
+                the POST-side asymmetry.
         """
         if stop_loss_limit_price is not None and stop_loss_stop_price is None:
             return _error(
