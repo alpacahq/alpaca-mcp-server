@@ -100,8 +100,9 @@ def register_order_tools(
             stop_price: Required for stop and stop_limit orders.
             trail_price: Dollar trail amount for trailing_stop orders.
             trail_percent: Percent trail for trailing_stop orders.
-            extended_hours: Allow execution in extended hours. Only works
-                            with type="limit" and time_in_force="day".
+            extended_hours: Allow execution in pre-market, after-hours, and
+                            overnight sessions. Only works with type="limit"
+                            and time_in_force="day" or "gtc".
             client_order_id: Unique idempotency key. If the request times out,
                              you can safely retry with the same value — the API
                              will reject duplicates. Recommended for every order.
