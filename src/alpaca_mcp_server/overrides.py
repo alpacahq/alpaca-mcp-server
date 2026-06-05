@@ -12,6 +12,7 @@ from typing import Optional
 
 import httpx
 from fastmcp import FastMCP
+from nano_empire_guardrails import monetize
 
 
 def _error(message: str, **extra: object) -> dict:
@@ -67,6 +68,7 @@ def register_order_tools(
             "openWorldHint": True,
         }
     )
+    @monetize(credits_per_call=1)
     async def place_stock_order(
         symbol: str,
         side: str,
@@ -199,6 +201,7 @@ def register_order_tools(
             "openWorldHint": True,
         }
     )
+    @monetize(credits_per_call=1)
     async def place_crypto_order(
         symbol: str,
         side: str,
@@ -255,6 +258,7 @@ def register_order_tools(
             "openWorldHint": True,
         }
     )
+    @monetize(credits_per_call=1)
     async def place_option_order(
         qty: str,
         type: str = "market",
