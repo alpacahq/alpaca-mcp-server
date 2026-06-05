@@ -60,6 +60,57 @@ def _parse(result) -> dict | list | str:
     return str(result)
 
 
+def _skip_if_market_data_unavailable(tool_name: str, result: dict | list | str) -> None:
+    """Skip beta market-data tools when CI credentials lack the data entitlement."""
+    if not isinstance(result, dict):
+        return
+
+    text = json.dumps(result).lower()
+    error = result.get("error")
+    status = result.get("http_status") or result.get("status")
+    if isinstance(error, dict):
+        status = status or error.get("http_status") or error.get("status")
+
+    if status in {403, 429} or any(
+        marker in text
+        for marker in (
+            "forbidden",
+            "entitlement",
+            "subscription",
+            "permission",
+            "rate limit",
+            "too many requests",
+        )
+    ):
+        pytest.skip(f"{tool_name} unavailable for these API credentials")
+
+
+async def _call_beta_market_data(tool_name: str, args: dict | None = None) -> dict | list | str:
+    """Call beta market-data tools, tolerating entitlement gaps in CI."""
+    try:
+        result = await _call(tool_name, args)
+    except Exception as exc:
+        text = str(exc).lower()
+        if any(
+            marker in text
+            for marker in (
+                "403",
+                "429",
+                "forbidden",
+                "entitlement",
+                "subscription",
+                "permission",
+                "rate limit",
+                "too many requests",
+            )
+        ):
+            pytest.skip(f"{tool_name} unavailable for these API credentials")
+        raise
+
+    _skip_if_market_data_unavailable(tool_name, result)
+    return result
+
+
 async def _call(tool_name: str, args: dict | None = None) -> dict | list | str:
     """Build server, call a tool, return parsed result.
 
@@ -325,6 +376,35 @@ async def test_get_corporate_actions():
         "date_to": "2025-01-31",
     })
     assert isinstance(result, dict)
+
+
+# ── Market Data: Fixed Income ────────────────────────────────────────────
+
+
+async def test_get_fixed_income_latest_quotes():
+    result = await _call_beta_market_data("get_fixed_income_latest_quotes", {
+        "isins": "US912797SX61",
+    })
+    assert isinstance(result, dict)
+    assert "quotes" in result
+
+
+# ── Market Data: Indices ─────────────────────────────────────────────────
+
+
+async def test_get_index_latest_values():
+    result = await _call_beta_market_data("get_index_latest_values", {"symbols": "SPX,VIX"})
+    assert isinstance(result, dict)
+    assert "values" in result
+
+
+async def test_get_index_values():
+    result = await _call_beta_market_data("get_index_values", {
+        "symbols": "SPX",
+        "limit": 5,
+    })
+    assert isinstance(result, dict)
+    assert "values" in result
 
 
 # ── Assets & Market Info ────────────────────────────────────────────────

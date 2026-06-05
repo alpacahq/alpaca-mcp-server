@@ -369,6 +369,33 @@ TOOLS: dict[str, ToolOverride] = {
         ),
     ),
 
+    # --- Fixed Income Data ---
+    "FixedIncomeLatestQuotes": ToolOverride(
+        name="get_fixed_income_latest_quotes",
+        description=(
+            "Returns the latest quotes for fixed income securities (bonds, treasuries). "
+            "Provide a comma-separated list of ISINs (e.g. 'US912797SX61,US912810SK51'). "
+            "Returns bid/ask prices, sizes, and yield-to-maturity for each security."
+        ),
+    ),
+
+    # --- Index Data ---
+    "IndexLatestValues": ToolOverride(
+        name="get_index_latest_values",
+        description=(
+            "Returns the latest values for market indices "
+            "(e.g. SPX, VIX, DJI). Provide a comma-separated list of index symbols."
+        ),
+    ),
+    "IndexValues": ToolOverride(
+        name="get_index_values",
+        description=(
+            "Returns historical values for market indices over a time interval. "
+            "Supports pagination, sorting, and date range filtering. "
+            "Provide a comma-separated list of index symbols."
+        ),
+    ),
+
 }
 
 # Derived lookups used by server.py

@@ -283,6 +283,8 @@ Available toolsets:
 | `options-data`      | Option bars, quotes, trades, snapshots, chain, exchange codes |
 | `corporate-actions` | Corporate action announcements                                |
 | `news`              | News articles for stocks and crypto                           |
+| `fixed-income-data` | Fixed income (bond/treasury) quotes                           |
+| `index-data`        | Market index values (SPX, VIX, etc.)                          |
 
 
 ## Features
@@ -476,6 +478,15 @@ Available toolsets:
 **News**
 
 - `get_news` — News articles for stocks and crypto
+
+**Fixed Income Data**
+
+- `get_fixed_income_latest_quotes` — Latest quotes for fixed income securities by ISIN
+
+**Index Data**
+
+- `get_index_latest_values` — Latest values for market indices
+- `get_index_values` — Historical values for market indices
 
 ## Testing
 
