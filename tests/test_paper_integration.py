@@ -327,6 +327,35 @@ async def test_get_corporate_actions():
     assert isinstance(result, dict)
 
 
+# ── Market Data: Fixed Income ────────────────────────────────────────────
+
+
+async def test_get_fixed_income_latest_quotes():
+    result = await _call("get_fixed_income_latest_quotes", {
+        "isins": "US912797SX61",
+    })
+    assert isinstance(result, dict)
+    assert "quotes" in result
+
+
+# ── Market Data: Indices ─────────────────────────────────────────────────
+
+
+async def test_get_index_latest_values():
+    result = await _call("get_index_latest_values", {"symbols": "SPX,VIX"})
+    assert isinstance(result, dict)
+    assert "values" in result
+
+
+async def test_get_index_values():
+    result = await _call("get_index_values", {
+        "symbols": "SPX",
+        "limit": 5,
+    })
+    assert isinstance(result, dict)
+    assert "values" in result
+
+
 # ── Assets & Market Info ────────────────────────────────────────────────
 
 
