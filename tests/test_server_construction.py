@@ -8,6 +8,7 @@ parsing failures, and toolset/names misconfiguration.
 
 from __future__ import annotations
 
+import json
 import os
 from unittest.mock import patch
 
@@ -156,3 +157,72 @@ async def test_toolset_filtering():
     assert "get_account_info" in names
     assert "place_stock_order" not in names
     assert "get_stock_bars" not in names
+
+
+_TEST_LEGS = [
+    {
+        "symbol": "SPY260717P00700000",
+        "ratio_qty": "1",
+        "side": "sell",
+        "position_intent": "sell_to_open",
+    },
+    {
+        "symbol": "SPY260717P00690000",
+        "ratio_qty": "1",
+        "side": "buy",
+        "position_intent": "buy_to_open",
+    },
+]
+
+
+@pytest.mark.parametrize("legs_arg", [_TEST_LEGS, json.dumps(_TEST_LEGS)])
+async def test_place_option_order_accepts_list_and_stringified_legs(legs_arg):
+    """Regression: multi-leg orders must work whether `legs` arrives as a
+    list or as a JSON-encoded string.
+
+    The generated JSON schema for ``Optional[list[dict]]`` carries no
+    explicit ``"type": "array"``, so some MCP clients (Claude Desktop
+    among them) serialise the legs array as a string. Validation then
+    rejected the call before the handler ran, making multi-leg orders
+    unplaceable from those clients.
+    """
+    captured: dict = {}
+
+    async def _fake_post_order(client, body):
+        captured.update(body)
+        return {"status": "accepted"}
+
+    with patch.dict(os.environ, DUMMY_ENV, clear=False):
+        server = build_server()
+
+    with patch(
+        "alpaca_mcp_server.overrides._post_order", new=_fake_post_order
+    ):
+        async with Client(transport=server) as c:
+            await c.call_tool(
+                "place_option_order",
+                {
+                    "qty": "1",
+                    "type": "limit",
+                    "limit_price": "-2.50",
+                    "legs": legs_arg,
+                },
+            )
+
+    assert captured.get("order_class") == "mleg"
+    assert captured.get("legs") == _TEST_LEGS
+
+
+async def test_place_option_order_rejects_malformed_legs_string():
+    """A legs string that is not valid JSON must return a structured
+    error rather than reach the API."""
+    with patch.dict(os.environ, DUMMY_ENV, clear=False):
+        server = build_server()
+
+    async with Client(transport=server) as c:
+        result = await c.call_tool(
+            "place_option_order",
+            {"qty": "1", "legs": "not-json"},
+        )
+
+    assert "legs must be a JSON array" in str(result)

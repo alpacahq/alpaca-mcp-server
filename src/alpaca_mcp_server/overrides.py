@@ -8,7 +8,8 @@ tools with curated parameters per asset class.
 
 from __future__ import annotations
 
-from typing import Optional
+import json
+from typing import Optional, Union
 
 import httpx
 from fastmcp import FastMCP
@@ -265,7 +266,7 @@ def register_order_tools(
         limit_price: Optional[str] = None,
         client_order_id: Optional[str] = None,
         order_class: Optional[str] = None,
-        legs: Optional[list[dict]] = None,
+        legs: Optional[Union[list[dict], str]] = None,
     ) -> dict:
         """Place an options order (single-leg or multi-leg).
 
@@ -301,8 +302,25 @@ def register_order_tools(
             legs: List of leg dicts for multi-leg orders (max 4). Each leg
                   requires "symbol" and "ratio_qty" (string). Optional
                   per-leg fields: "side" ("buy" or "sell") and
-                  "position_intent".
+                  "position_intent". A JSON-encoded string of the same
+                  array is also accepted (some MCP clients serialise
+                  array parameters as strings).
         """
+        # Some MCP clients serialise the legs array as a JSON string
+        # (schema for Optional[list[dict]] carries no "type": "array").
+        # Accept both and normalise to a list before validation below.
+        if isinstance(legs, str):
+            try:
+                legs = json.loads(legs)
+            except json.JSONDecodeError:
+                return _error(
+                    "legs must be a JSON array of leg objects, e.g. "
+                    '[{"symbol": "...", "ratio_qty": "1", "side": "sell", '
+                    '"position_intent": "sell_to_open"}]'
+                )
+            if not isinstance(legs, list):
+                return _error("legs must be a JSON array of leg objects")
+
         is_multi_leg = legs is not None or order_class == "mleg"
 
         if is_multi_leg and legs is None:
