@@ -18,7 +18,8 @@ import httpx
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi.routing import MCPType
 
-from .names import TOOL_DESCRIPTIONS, TOOL_NAMES
+from .security import TrustBoundaryMiddleware
+from .tool_registry import TOOL_DESCRIPTIONS, TOOL_NAMES
 from .toolsets import OVERRIDE_OPERATION_IDS, TOOLSETS, get_active_operations
 
 SPECS_DIR = Path(__file__).parent / "specs"
@@ -132,6 +133,7 @@ def build_server() -> FastMCP:
                 await c.aclose()
 
     main = FastMCP("Alpaca MCP Server", lifespan=lifespan)
+    main.add_middleware(TrustBoundaryMiddleware())
 
     if trading_client is not None:
         allowed = spec_ops["trading"]
