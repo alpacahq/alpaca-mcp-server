@@ -48,16 +48,29 @@ def _to_dict(obj) -> dict | list | str:
 
 
 def _parse(result) -> dict | list | str:
-    """Extract usable data from a CallToolResult."""
+    """Extract usable data from a CallToolResult.
+
+    Automatically unwraps the trust-boundary envelope so tests can
+    assert on the original API payload directly.
+    """
     if hasattr(result, "data") and result.data is not None:
-        return _to_dict(result.data)
-    for block in result.content:
-        if hasattr(block, "text"):
-            try:
-                return json.loads(block.text)
-            except (json.JSONDecodeError, TypeError):
-                return block.text
-    return str(result)
+        parsed = _to_dict(result.data)
+    else:
+        parsed = None
+        for block in result.content:
+            if hasattr(block, "text"):
+                try:
+                    parsed = json.loads(block.text)
+                    break
+                except (json.JSONDecodeError, TypeError):
+                    parsed = block.text
+                    break
+        if parsed is None:
+            return str(result)
+
+    if isinstance(parsed, dict) and "_alpaca_mcp_security" in parsed and "data" in parsed:
+        return parsed["data"]
+    return parsed
 
 
 def _skip_if_market_data_unavailable(tool_name: str, result: dict | list | str) -> None:
