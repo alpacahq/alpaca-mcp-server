@@ -515,7 +515,7 @@ alpaca-mcp-server/
 │       ├── __init__.py
 │       ├── cli.py            ← CLI entry point
 │       ├── server.py         ← FastMCP server built from OpenAPI specs
-│       ├── names.py          ← Tool name and description overrides
+│       ├── tool_registry.py  ← Tool names, descriptions, and output risk classifications
 │       ├── toolsets.py       ← Toolset → operationId allowlists
 │       ├── overrides.py      ← Hand-crafted tools for complex trading endpoints
 │       ├── market_data_overrides.py ← Hand-crafted tools for historical data
