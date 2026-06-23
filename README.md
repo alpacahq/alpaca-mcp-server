@@ -581,6 +581,9 @@ For information about how Alpaca handles your data, please review:
 - **Retention**: Retained per Alpaca's standard data retention policy
 - **Opt-out**: Modify or remove the `USER_AGENT` constant in `.github/core/user_agent.py`
 
+## Multi-Agent Deployments
+
+For agent identity verification and per-tool authorization patterns when running multiple agents, see [docs/AGENT-IDENTITY.md](docs/AGENT-IDENTITY.md).
 ## Security Notice
 
 This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
