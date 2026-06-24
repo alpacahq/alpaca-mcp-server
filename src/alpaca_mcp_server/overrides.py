@@ -263,6 +263,7 @@ def register_order_tools(
         side: Optional[str] = None,
         position_intent: Optional[str] = None,
         limit_price: Optional[str] = None,
+        stop_price: Optional[str] = None,
         client_order_id: Optional[str] = None,
         order_class: Optional[str] = None,
         legs: Optional[list[dict]] = None,
@@ -280,7 +281,7 @@ def register_order_tools(
                  multiplier — each leg's ratio_qty is scaled by this
                  value (e.g., qty="10" with ratio_qty="2" = 20
                  contracts for that leg).
-            type: "market" or "limit".
+            type: "market", "limit", "stop", or "stop_limit".
             time_in_force: "day" only. Options do not support other
                            values.
             symbol: OCC option symbol (e.g., "AAPL250321C00150000").
@@ -290,9 +291,11 @@ def register_order_tools(
                              or "sell_to_close". Clarifies whether the trade
                              opens or closes a position. Optional but
                              recommended.
-            limit_price: Required for limit orders. For multi-leg, this is
-                         the net debit/credit (positive = debit/cost,
-                         negative = credit/proceeds).
+            limit_price: Required for limit and stop_limit orders. For
+                         multi-leg, this is the net debit/credit
+                         (positive = debit/cost, negative =
+                         credit/proceeds).
+            stop_price: Required for stop and stop_limit orders.
             client_order_id: Unique idempotency key. If the request times out,
                              you can safely retry with the same value — the API
                              will reject duplicates. Recommended for every order.
@@ -315,6 +318,23 @@ def register_order_tools(
                 "Single-leg orders require symbol and side"
             )
 
+        if type == "limit" and limit_price is None:
+            return _error(
+                "limit orders require limit_price"
+            )
+
+        if type == "stop" and stop_price is None:
+            return _error(
+                "stop orders require stop_price"
+            )
+
+        if type == "stop_limit" and (
+            stop_price is None or limit_price is None
+        ):
+            return _error(
+                "stop_limit orders require stop_price and limit_price"
+            )
+
         if legs is not None and order_class is None:
             order_class = "mleg"
 
@@ -331,6 +351,8 @@ def register_order_tools(
             body["position_intent"] = position_intent
         if limit_price is not None:
             body["limit_price"] = limit_price
+        if stop_price is not None:
+            body["stop_price"] = stop_price
         if client_order_id is not None:
             body["client_order_id"] = client_order_id
         if order_class is not None:
