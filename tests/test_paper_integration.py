@@ -771,3 +771,34 @@ async def test_update_account_config():
             await mcp.call_tool("update_account_config", {
                 "trade_confirm_email": orig_value,
             })
+
+
+# ── Locates (Short Selling) ─────────────────────────────────────────────
+
+
+async def test_get_locates():
+    """List locates — returns a list (may be empty).
+
+    Locates may not be available on all paper accounts (404).
+    """
+    try:
+        result = await _call("get_locates")
+    except Exception as exc:
+        if "404" in str(exc) or "not found" in str(exc).lower():
+            pytest.skip("Locates endpoint not available on this paper account")
+        raise
+    assert isinstance(result, (dict, list))
+
+
+async def test_get_locate_quotes():
+    """Get locate quotes for a symbol.
+
+    Locates may not be available on all paper accounts (404).
+    """
+    try:
+        result = await _call("get_locate_quotes", {"symbols": "AAPL"})
+    except Exception as exc:
+        if "404" in str(exc) or "not found" in str(exc).lower():
+            pytest.skip("Locates endpoint not available on this paper account")
+        raise
+    assert isinstance(result, (dict, list))
