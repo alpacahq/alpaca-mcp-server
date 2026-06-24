@@ -115,22 +115,15 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac) or 
 
 ### Claude Mobile
 
-Alpaca does not provide a hosted remote MCP server. To use the MCP server on the Claude mobile app, host it remotely (for example with Docker and a cloud provider), then add it as a custom connector in Claude. The connector syncs to the mobile app once connected on the web.
+Alpaca does not provide a hosted remote MCP server. To use the MCP server on the Claude mobile app, host it remotely on a cloud provider, then add it as a custom connector in Claude. The connector syncs to the mobile app once connected on the web.
 
-1. Build and deploy the server with HTTP transport (see [Docker](#docker) below).
-2. In Claude, open **Search and tools** → **Manage connectors** → **Add custom connector**.
-3. Enter your deployed MCP URL (for example `https://your-domain.com/mcp`).
-
-For a step-by-step walkthrough, see [How to Deploy Alpaca's MCP Server Remotely on Claude Mobile App](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app).
+For hosting, deployment, and connector setup, see [How to Deploy Alpaca's MCP Server Remotely on Claude Mobile App](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app).
 
 ### ChatGPT
 
-Alpaca does not provide a hosted remote MCP server. To use the MCP server in ChatGPT, host it remotely, then add it as a connector in ChatGPT.
+Alpaca does not provide a hosted remote MCP server. To use the MCP server in ChatGPT, host it remotely on a cloud provider, then add it as a connector.
 
-1. Build and deploy the server with HTTP transport (see [Docker](#docker) below).
-2. In ChatGPT, add a custom connector pointing at your deployed MCP URL.
-
-See [Connectors in ChatGPT](https://help.openai.com/en/articles/11487775-connectors-in-chatgpt) and the [Claude Mobile deployment guide](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app) for the same remote-hosting flow.
+See [Connectors in ChatGPT](https://help.openai.com/en/articles/11487775-connectors-in-chatgpt) and the [Claude Mobile deployment guide](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app) for hosting and setup steps.
 
 ### Cursor
 
@@ -227,7 +220,7 @@ cd alpaca-mcp-server
 docker build -t mcp/alpaca:latest .
 ```
 
-**Local stdio clients** — add to your MCP client config:
+Add to your MCP client config:
 
 ```json
 {
@@ -244,15 +237,6 @@ docker build -t mcp/alpaca:latest .
     }
   }
 }
-```
-
-**Remote connectors** (Claude Mobile, ChatGPT) — the image defaults to streamable HTTP on port 8000:
-
-```bash
-docker run --rm -p 8000:8000 \
-  -e ALPACA_API_KEY=your_alpaca_api_key \
-  -e ALPACA_SECRET_KEY=your_alpaca_secret_key \
-  mcp/alpaca:latest
 ```
 
 ## Configuration
