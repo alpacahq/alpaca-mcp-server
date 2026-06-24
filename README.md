@@ -113,6 +113,18 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac) or 
 }
 ```
 
+### Claude Mobile
+
+Alpaca does not provide a hosted remote MCP server. To use the MCP server on the Claude mobile app, host it remotely on a cloud provider, then add it as a custom connector in Claude. The connector syncs to the mobile app once connected on the web.
+
+For hosting, deployment, and connector setup, see [How to Deploy Alpaca's MCP Server Remotely on Claude Mobile App](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app).
+
+### ChatGPT
+
+Alpaca does not provide a hosted remote MCP server. To use the MCP server in ChatGPT, host it remotely on a cloud provider, then add it as a connector.
+
+See [Connectors in ChatGPT](https://help.openai.com/en/articles/11487775-connectors-in-chatgpt) and the [Claude Mobile deployment guide](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app) for hosting and setup steps.
+
 ### Cursor
 
 Install from the [Cursor Directory](https://cursor.directory/mcp/alpaca) in a few clicks, or add to `~/.cursor/mcp.json`:
@@ -154,7 +166,7 @@ Create `.vscode/mcp.json` in your project root. See the [official docs](https://
 }
 ```
 
-**PyCharm**  
+### PyCharm
 
 See the [official guide](https://www.jetbrains.com/help/ai-assistant/configure-an-mcp-server.html).
 
@@ -169,7 +181,7 @@ See the [official guide](https://www.jetbrains.com/help/ai-assistant/configure-a
    ALPACA_SECRET_KEY=your_alpaca_secret_key
   ```
 
-**Claude Code**  
+### Claude Code
 
 ```bash
 claude mcp add alpaca --scope user --transport stdio uvx alpaca-mcp-server \
@@ -179,17 +191,16 @@ claude mcp add alpaca --scope user --transport stdio uvx alpaca-mcp-server \
 
 Verify with `/mcp` in the Claude Code CLI.
 
-**Gemini CLI**  
+### Antigravity CLI
 
-See the [Gemini CLI MCP docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md).
+See the [Antigravity MCP docs](https://antigravity.google/docs/mcp).
 
-Add to your `settings.json`:
+Add to `~/.gemini/antigravity-cli/mcp_config.json` (global) or `.agents/mcp_config.json` (workspace):
 
 ```json
 {
   "mcpServers": {
     "alpaca": {
-      "type": "stdio",
       "command": "uvx",
       "args": ["alpaca-mcp-server"],
       "env": {
@@ -201,7 +212,7 @@ Add to your `settings.json`:
 }
 ```
 
-**Docker**  
+### Docker
 
 ```bash
 git clone https://github.com/alpacahq/alpaca-mcp-server.git
