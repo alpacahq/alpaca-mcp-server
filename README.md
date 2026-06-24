@@ -113,6 +113,25 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac) or 
 }
 ```
 
+### Claude Mobile
+
+Alpaca does not provide a hosted remote MCP server. To use the MCP server on the Claude mobile app, host it remotely (for example with Docker and a cloud provider), then add it as a custom connector in Claude. The connector syncs to the mobile app once connected on the web.
+
+1. Build and deploy the server with HTTP transport (see [Docker](#docker) below).
+2. In Claude, open **Search and tools** → **Manage connectors** → **Add custom connector**.
+3. Enter your deployed MCP URL (for example `https://your-domain.com/mcp`).
+
+For a step-by-step walkthrough, see [How to Deploy Alpaca's MCP Server Remotely on Claude Mobile App](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app).
+
+### ChatGPT
+
+Alpaca does not provide a hosted remote MCP server. To use the MCP server in ChatGPT, host it remotely, then add it as a connector in ChatGPT.
+
+1. Build and deploy the server with HTTP transport (see [Docker](#docker) below).
+2. In ChatGPT, add a custom connector pointing at your deployed MCP URL.
+
+See [Connectors in ChatGPT](https://help.openai.com/en/articles/11487775-connectors-in-chatgpt) and the [Claude Mobile deployment guide](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app) for the same remote-hosting flow.
+
 ### Cursor
 
 Install from the [Cursor Directory](https://cursor.directory/mcp/alpaca) in a few clicks, or add to `~/.cursor/mcp.json`:
@@ -154,7 +173,7 @@ Create `.vscode/mcp.json` in your project root. See the [official docs](https://
 }
 ```
 
-**PyCharm**  
+### PyCharm
 
 See the [official guide](https://www.jetbrains.com/help/ai-assistant/configure-an-mcp-server.html).
 
@@ -169,7 +188,7 @@ See the [official guide](https://www.jetbrains.com/help/ai-assistant/configure-a
    ALPACA_SECRET_KEY=your_alpaca_secret_key
   ```
 
-**Claude Code**  
+### Claude Code
 
 ```bash
 claude mcp add alpaca --scope user --transport stdio uvx alpaca-mcp-server \
@@ -179,17 +198,16 @@ claude mcp add alpaca --scope user --transport stdio uvx alpaca-mcp-server \
 
 Verify with `/mcp` in the Claude Code CLI.
 
-**Gemini CLI**  
+### Antigravity CLI
 
-See the [Gemini CLI MCP docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md).
+See the [Antigravity MCP docs](https://antigravity.google/docs/mcp).
 
-Add to your `settings.json`:
+Add to `~/.gemini/antigravity-cli/mcp_config.json` (global) or `.agents/mcp_config.json` (workspace):
 
 ```json
 {
   "mcpServers": {
     "alpaca": {
-      "type": "stdio",
       "command": "uvx",
       "args": ["alpaca-mcp-server"],
       "env": {
@@ -201,7 +219,7 @@ Add to your `settings.json`:
 }
 ```
 
-**Docker**  
+### Docker
 
 ```bash
 git clone https://github.com/alpacahq/alpaca-mcp-server.git
@@ -209,7 +227,7 @@ cd alpaca-mcp-server
 docker build -t mcp/alpaca:latest .
 ```
 
-Add to your MCP client config:
+**Local stdio clients** — add to your MCP client config:
 
 ```json
 {
@@ -226,6 +244,15 @@ Add to your MCP client config:
     }
   }
 }
+```
+
+**Remote connectors** (Claude Mobile, ChatGPT) — the image defaults to streamable HTTP on port 8000:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e ALPACA_API_KEY=your_alpaca_api_key \
+  -e ALPACA_SECRET_KEY=your_alpaca_secret_key \
+  mcp/alpaca:latest
 ```
 
 ## Configuration
