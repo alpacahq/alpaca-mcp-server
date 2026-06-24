@@ -771,3 +771,19 @@ async def test_update_account_config():
             await mcp.call_tool("update_account_config", {
                 "trade_confirm_email": orig_value,
             })
+
+
+# ── Locates (Short Selling) ─────────────────────────────────────────────
+
+
+async def test_get_locates():
+    """List locates — returns a list (may be empty)."""
+    result = await _call("get_locates")
+    assert isinstance(result, (dict, list))
+
+
+async def test_get_locate_quotes():
+    """Get locate quotes for a symbol."""
+    result = await _call("get_locate_quotes", {"symbols": "AAPL"})
+    _skip_if_market_data_unavailable("get_locate_quotes", result)
+    assert isinstance(result, (dict, list))

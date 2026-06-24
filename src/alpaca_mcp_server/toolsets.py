@@ -126,6 +126,15 @@ TOOLSETS: dict[str, dict] = {
             "IndexValues",
         },
     },
+    "locates": {
+        "spec": "trading",
+        "operations": {
+            "listLocates",
+            "createLocates",
+            "getLocate",
+            "listLocateQuotes",
+        },
+    },
 }
 
 OVERRIDE_OPERATION_IDS = {

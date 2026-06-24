@@ -488,6 +488,13 @@ Available toolsets:
 - `get_index_latest_values` — Latest values for market indices
 - `get_index_values` — Historical values for market indices
 
+**Locates (Short Selling)**
+
+- `get_locates` — List locate requests filtered by status, symbol, or date range
+- `create_locate` — Create a locate request for a short sale
+- `get_locate` — Get a single locate request by ID
+- `get_locate_quotes` — Get locate availability and pricing for symbols
+
 ## Testing
 
 The project includes a multi-layered test suite that runs in CI on every pull request:
