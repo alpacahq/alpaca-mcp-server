@@ -15,6 +15,8 @@ Each key is the operationId from the OpenAPI spec. Values contain:
 from dataclasses import dataclass
 from typing import Literal
 
+from .readme_docs import README_DOC_TOOL_NAMES
+
 OutputRisk = Literal["api_structured", "external_text"]
 
 
@@ -411,3 +413,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {op_id: t.description for op_id, t in TOOLS.
 TOOL_OUTPUT_RISK_BY_NAME: dict[str, OutputRisk] = {
     t.name: t.output_risk for t in TOOLS.values()
 }
+_EXTERNAL_TEXT: OutputRisk = "external_text"
+TOOL_OUTPUT_RISK_BY_NAME.update(
+    {name: _EXTERNAL_TEXT for name in README_DOC_TOOL_NAMES}
+)

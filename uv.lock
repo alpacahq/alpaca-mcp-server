@@ -21,7 +21,7 @@ wheels = [
 
 [[package]]
 name = "alpaca-mcp-server"
-version = "2.0.2"
+version = "2.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -41,7 +41,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "fastmcp", specifier = ">=2.0.0" },
+    { name = "fastmcp", specifier = ">=3.1.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
