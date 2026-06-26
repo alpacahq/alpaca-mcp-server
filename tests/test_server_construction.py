@@ -107,6 +107,11 @@ EXPECTED_TOOLS = {
     # Index Data
     "get_index_latest_values",
     "get_index_values",
+    # Locates (Short Selling)
+    "get_locates",
+    "create_locate",
+    "get_locate",
+    "get_locate_quotes",
     # Order Overrides
     "place_stock_order",
     "place_crypto_order",
@@ -270,9 +275,9 @@ async def _call_tool(
 
 
 async def test_tool_count():
-    """Server must expose exactly 70 tools."""
+    """Server must expose exactly 74 tools."""
     tools = await _list_tools()
-    assert len(tools) == 70, f"Expected 70 tools, got {len(tools)}"
+    assert len(tools) == 74, f"Expected 74 tools, got {len(tools)}"
 
 
 async def test_tool_names_match():

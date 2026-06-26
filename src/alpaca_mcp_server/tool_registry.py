@@ -405,6 +405,33 @@ TOOLS: dict[str, ToolDefinition] = {
         ),
     ),
 
+    # --- Locates (Short Selling) ---
+    "listLocates": ToolDefinition(
+        name="get_locates",
+        description=(
+            "Returns locate requests for the account, filtered by status, symbol, "
+            "or date range. Results are sorted by creation date descending."
+        ),
+    ),
+    "createLocates": ToolDefinition(
+        name="create_locate",
+        description=(
+            "Creates a locate request for a short sale. Requires a symbol and "
+            "quantity. Optionally set a limit price and all-or-none flag."
+        ),
+    ),
+    "getLocate": ToolDefinition(
+        name="get_locate",
+        description="Returns a single locate request by its ID.",
+    ),
+    "listLocateQuotes": ToolDefinition(
+        name="get_locate_quotes",
+        description=(
+            "Returns locate availability and pricing for one or more symbols. "
+            "Provide a comma-separated list of symbols."
+        ),
+    ),
+
 }
 
 # Derived lookups used by server.py and security.py

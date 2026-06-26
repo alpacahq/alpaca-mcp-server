@@ -82,7 +82,7 @@ config:
 metadata:
   license: MIT
   maintainer: Alpaca <https://alpaca.markets/contact>
-  version: "2.1.0"
+  version: "2.1.1"
 
   docker:
     transport: stdio
