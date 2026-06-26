@@ -287,6 +287,12 @@ Available toolsets:
 | `index-data`        | Market index values (SPX, VIX, etc.)                          |
 
 
+### ReadMe Docs MCP
+
+Docs are scoped to the Trading API, Market Data API, and Authentication API specs; Broker API endpoint docs are intentionally excluded from this server.
+
+If the ReadMe MCP lookup fails, tool responses include fallback links to Alpaca's public docs plus `llms.txt` and `llms-full.txt`.
+
 ## Features
 
 - **Market Data** — Real-time quotes, trades, and price bars for stocks, crypto, and options. Historical data with flexible timeframes. Option Greeks and implied volatility.
@@ -495,6 +501,14 @@ Available toolsets:
 - `get_locate` — Get a single locate request by ID
 - `get_locate_quotes` — Get locate availability and pricing for symbols
 
+**Documentation**
+
+- `search_alpaca_docs` — Search Alpaca documentation pages and guides
+- `fetch_alpaca_doc` — Fetch one Alpaca ReadMe documentation page by page ID
+- `search_alpaca_api_specs` — Search Alpaca API reference endpoints by topic, path, parameter, or schema term
+- `list_alpaca_api_endpoints` — List endpoints for one allowed Alpaca OpenAPI spec
+- `get_alpaca_endpoint_docs` — Fetch reference docs for one exact Alpaca API endpoint by method and path
+
 ## Testing
 
 The project includes a multi-layered test suite that runs in CI on every pull request:
@@ -502,6 +516,7 @@ The project includes a multi-layered test suite that runs in CI on every pull re
 - **Integrity tests** — Validate consistency between OpenAPI specs, toolset definitions, and tool name/description overrides. No network or credentials required.
 - **Server construction tests** — Build the server with mocked credentials and verify the correct number of tools are exposed. No network required.
 - **Paper API integration tests** — Execute real calls against the Alpaca paper trading API, covering account info, market data, order lifecycle, watchlists, positions, and more. Requires `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`.
+- **ReadMe integration tests** — Execute live documentation lookup calls against Alpaca's ReadMe MCP. Requires `ALPACA_RUN_README_INTEGRATION=true` when run locally.
 
 Run the full suite locally:
 
@@ -511,6 +526,9 @@ pytest tests/test_integrity.py tests/test_server_construction.py -v
 
 # Integration tests (requires paper API keys)
 ALPACA_API_KEY=... ALPACA_SECRET_KEY=... pytest tests/ -m integration -v
+
+# ReadMe docs integration tests (requires network, no Alpaca credentials)
+ALPACA_RUN_README_INTEGRATION=true pytest tests/test_readme_integration.py -v
 ```
 
 ## Project Structure
@@ -526,6 +544,7 @@ alpaca-mcp-server/
 │       ├── toolsets.py       ← Toolset → operationId allowlists
 │       ├── overrides.py      ← Hand-crafted tools for complex trading endpoints
 │       ├── market_data_overrides.py ← Hand-crafted tools for historical data
+│       ├── readme_docs.py    ← Read-only proxy tools for Alpaca ReadMe docs
 │       └── specs/
 │           ├── trading-api.json
 │           └── market-data-api.json
@@ -533,6 +552,7 @@ alpaca-mcp-server/
 │   ├── conftest.py           ← Shared fixtures and paper-account cleanup
 │   ├── test_integrity.py     ← Spec ↔ toolset ↔ names consistency checks
 │   ├── test_server_construction.py ← Server build verification
+│   ├── test_readme_integration.py ← Live ReadMe docs MCP integration tests
 │   └── test_paper_integration.py   ← Paper API integration tests
 ├── scripts/
 │   └── sync-specs.sh        ← Download latest OpenAPI specs
