@@ -18,6 +18,7 @@ import httpx
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi.routing import MCPType
 
+from .readme_docs import ReadMeClientFactory, register_readme_docs_tools
 from .security import TrustBoundaryMiddleware
 from .tool_registry import TOOL_DESCRIPTIONS, TOOL_NAMES
 from .toolsets import OVERRIDE_OPERATION_IDS, TOOLSETS, get_active_operations
@@ -95,7 +96,9 @@ def _parse_toolsets() -> set[str] | None:
     return {t.strip() for t in raw.split(",") if t.strip()}
 
 
-def build_server() -> FastMCP:
+def build_server(
+    readme_client_factory: ReadMeClientFactory | None = None,
+) -> FastMCP:
     """Construct the Alpaca MCP server from OpenAPI specs."""
     active_toolsets = _parse_toolsets()
     spec_ops = get_active_operations(active_toolsets)
@@ -170,6 +173,8 @@ def build_server() -> FastMCP:
 
     if data_client is not None and active_ts & {"stock-data", "crypto-data"}:
         _register_market_data_overrides(main, data_client)
+
+    register_readme_docs_tools(main, client_factory=readme_client_factory)
 
     return main
 
