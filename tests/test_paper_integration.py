@@ -146,7 +146,8 @@ async def _cancel_order_after_replace(mcp: Client, order_id: str) -> None:
             await mcp.call_tool("cancel_order_by_id", {"order_id": cancel_id})
             return
         except Exception as exc:
-            if "pending replacement" not in str(exc).lower():
+            text = str(exc).lower()
+            if "pending replacement" not in text and '"replaced" state' not in text:
                 raise
             last_error = exc
 
