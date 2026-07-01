@@ -562,12 +562,18 @@ async def test_replace_order():
         order_id = order["id"]
 
         try:
-            # Wait for the order to leave pending_new (API rejects replace on pending_new)
+            # Wait for a replaceable status; the API rejects replace on pending_new
+            # and accepted, and day orders sit in accepted while the market is closed
+            status = None
             for _ in range(10):
                 current = _parse(await mcp.call_tool("get_order_by_id", {"order_id": order_id}))
-                if current.get("status") != "pending_new":
+                status = current.get("status")
+                if status not in ("pending_new", "accepted"):
                     break
                 await asyncio.sleep(0.5)
+
+            if status in ("pending_new", "accepted"):
+                pytest.skip(f"order stuck in {status} (market closed); replace unavailable")
 
             replaced = _parse(await mcp.call_tool("replace_order_by_id", {
                 "order_id": order_id,
