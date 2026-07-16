@@ -119,9 +119,25 @@ Alpaca does not provide a hosted remote MCP server. To use the MCP server on the
 
 For hosting, deployment, and connector setup, see [How to Deploy Alpaca's MCP Server Remotely on Claude Mobile App](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app).
 
-### ChatGPT
+### ChatGPT Desktop
 
-Alpaca does not provide a hosted remote MCP server. To use the MCP server in ChatGPT, host it remotely on a cloud provider, then add it as a connector.
+The ChatGPT desktop app can run this server locally when you select **Codex** from the ChatGPT dropdown. Add the following to `~/.codex/config.toml` (`%USERPROFILE%\.codex\config.toml` on Windows):
+
+```toml
+[mcp_servers.alpaca]
+command = "uvx"
+args = ["alpaca-mcp-server"]
+
+[mcp_servers.alpaca.env]
+ALPACA_API_KEY = "your_alpaca_api_key"
+ALPACA_SECRET_KEY = "your_alpaca_secret_key"
+```
+
+Restart ChatGPT, start a task in Codex mode, and enter `/mcp` in the composer to verify that the Alpaca server is connected. ChatGPT desktop, Codex CLI, and the Codex IDE extension share this configuration. See the [Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp) for additional configuration options.
+
+### ChatGPT Web and Mobile
+
+Alpaca does not provide a hosted remote MCP server. To use the MCP server in ChatGPT on the web or mobile, host it remotely on a cloud provider, then add it as a connector.
 
 See [Connectors in ChatGPT](https://help.openai.com/en/articles/11487775-connectors-in-chatgpt) and the [Claude Mobile deployment guide](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app) for hosting and setup steps.
 
