@@ -367,7 +367,7 @@ async def test_readme_tool_errors_include_public_docs_fallback():
     assert error["fallback"]["urls"] == [
         "https://docs.alpaca.markets/us/reference/api-references",
         "https://docs.alpaca.markets/llms.txt",
-        "https://docs.alpaca.markets/llms-full.txt",
+        "https://alpaca.markets/llms-full.txt",
     ]
 
 
