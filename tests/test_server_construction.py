@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-import pytest
 from fastmcp.client import Client
 
 from alpaca_mcp_server.server import build_server

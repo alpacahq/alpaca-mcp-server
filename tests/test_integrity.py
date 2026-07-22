@@ -44,7 +44,7 @@ def test_all_toolset_operation_ids_exist_in_specs():
         for op_id in ts_config["operations"]:
             if op_id not in spec_ops:
                 missing.append(f"{ts_name}/{op_id} not in {ts_config['spec']} spec")
-    assert not missing, f"Stale operationIds:\n" + "\n".join(missing)
+    assert not missing, "Stale operationIds:\n" + "\n".join(missing)
 
 
 def test_override_operation_ids_exist_in_spec():
@@ -63,7 +63,7 @@ def test_all_non_override_operations_have_tool_overrides():
     need_override = all_ops - OVERRIDE_OPERATION_IDS
     missing = need_override - set(TOOLS.keys())
     assert not missing, (
-        f"operationIds in toolsets.py without ToolDefinition in tool_registry.py:\n"
+        "operationIds in toolsets.py without ToolDefinition in tool_registry.py:\n"
         + "\n".join(sorted(missing))
     )
 
@@ -77,7 +77,7 @@ def test_no_orphan_tool_overrides():
 
     orphans = set(TOOLS.keys()) - all_ops
     assert not orphans, (
-        f"ToolDefinition entries in tool_registry.py not referenced by any toolset:\n"
+        "ToolDefinition entries in tool_registry.py not referenced by any toolset:\n"
         + "\n".join(sorted(orphans))
     )
 
@@ -90,7 +90,7 @@ def test_tool_names_are_unique():
         if override.name in seen:
             dupes.append(f"{override.name!r} used by both {seen[override.name]} and {op_id}")
         seen[override.name] = op_id
-    assert not dupes, f"Duplicate tool names:\n" + "\n".join(dupes)
+    assert not dupes, "Duplicate tool names:\n" + "\n".join(dupes)
 
 
 def test_all_descriptions_non_empty():
