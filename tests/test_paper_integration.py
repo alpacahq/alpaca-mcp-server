@@ -136,6 +136,34 @@ async def _call(tool_name: str, args: dict | None = None) -> dict | list | str:
     return _parse(raw)
 
 
+async def _cancel_order_after_replace(mcp: Client, order_id: str) -> None:
+    """Cancel an order that may still be transitioning through replacement."""
+    last_error: Exception | None = None
+    cancel_id = order_id
+
+    for _ in range(12):
+        try:
+            await mcp.call_tool("cancel_order_by_id", {"order_id": cancel_id})
+            return
+        except Exception as exc:
+            text = str(exc).lower()
+            if "pending replacement" not in text and '"replaced" state' not in text:
+                raise
+            last_error = exc
+
+        await asyncio.sleep(0.5)
+        current = _parse(await mcp.call_tool("get_order_by_id", {"order_id": order_id}))
+        if isinstance(current, dict):
+            cancel_id = current.get("replaced_by") or cancel_id
+
+    try:
+        await mcp.call_tool("cancel_all_orders", {})
+    except Exception:
+        if last_error is not None:
+            raise last_error
+        raise
+
+
 # ── Account ─────────────────────────────────────────────────────────────
 
 
@@ -532,15 +560,20 @@ async def test_replace_order():
         }))
         assert "error" not in order, f"Order failed: {order}"
         order_id = order["id"]
-        cancel_id = order_id
 
         try:
-            # Wait for the order to leave pending_new (API rejects replace on pending_new)
+            # Wait for a replaceable status; the API rejects replace on pending_new
+            # and accepted, and day orders sit in accepted while the market is closed
+            status = None
             for _ in range(10):
                 current = _parse(await mcp.call_tool("get_order_by_id", {"order_id": order_id}))
-                if current.get("status") != "pending_new":
+                status = current.get("status")
+                if status not in ("pending_new", "accepted"):
                     break
                 await asyncio.sleep(0.5)
+
+            if status in ("pending_new", "accepted"):
+                pytest.skip(f"order stuck in {status} (market closed); replace unavailable")
 
             replaced = _parse(await mcp.call_tool("replace_order_by_id", {
                 "order_id": order_id,
@@ -548,9 +581,8 @@ async def test_replace_order():
                 "limit_price": "1.50",
             }))
             assert isinstance(replaced, dict)
-            cancel_id = replaced.get("id", order_id)
         finally:
-            await mcp.call_tool("cancel_order_by_id", {"order_id": cancel_id})
+            await _cancel_order_after_replace(mcp, order_id)
 
 
 async def test_get_orders():

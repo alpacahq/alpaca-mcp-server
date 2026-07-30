@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 from fastmcp.client import Client
 
+from alpaca_mcp_server.readme_docs import README_DOC_TOOL_NAMES
 from alpaca_mcp_server.security import DATA_KEY, INSTRUCTIONS, SECURITY_KEY
 from alpaca_mcp_server.server import build_server
 
@@ -144,7 +145,7 @@ async def test_injected_news_is_inside_envelope():
 
 
 async def test_envelope_tool_count_with_news_toolset():
-    """The news toolset should expose exactly get_news, wrapped by the middleware."""
+    """The news toolset should expose get_news plus the always-on docs tools."""
     with _MockNewsServer() as data_api_url:
         env = {
             "ALPACA_API_KEY": "test-key",
@@ -159,4 +160,4 @@ async def test_envelope_tool_count_with_news_toolset():
             tools = await client.list_tools()
 
     names = {t.name for t in tools}
-    assert names == {"get_news"}
+    assert names == {"get_news", *README_DOC_TOOL_NAMES}

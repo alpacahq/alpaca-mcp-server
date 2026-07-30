@@ -170,7 +170,7 @@ async def test_real_server_tool_count_unchanged():
     async with Client(transport=server) as client:
         tools = await client.list_tools()
 
-    assert len(tools) == 69, f"Expected 69 tools, got {len(tools)}"
+    assert len(tools) == 74, f"Expected 74 tools, got {len(tools)}"
 
 
 async def test_risk_level_used_in_envelope():
