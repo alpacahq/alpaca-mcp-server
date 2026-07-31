@@ -16,13 +16,24 @@ Design mirrors the same discipline as invinoveritas's other integrations
   - FAIL-OPEN on any /review-side problem (network error, timeout, malformed
     response, missing key) -- the order proceeds as if ungated rather than
     silently hanging or blocking the gateway on our service having a bad
-    moment. `_alpaca_mcp_security` metadata on the tool result carries an
-    `invinoveritas_review: "unavailable"` marker so this is visible, not
-    silent.
+    moment. Every destructive call's result carries an `invinoveritas_review`
+    marker in `meta` regardless of outcome ("unavailable" on fail-open,
+    "approve"/"approve_with_concerns" on a passed review) -- so a client or
+    audit consumer can always tell an unreviewed destructive call apart from
+    a reviewed one, not just infer it from the absence of an error.
   - GATES on a real `reject` verdict by default (block_on_reject=True in the
     constructor). Pass block_on_reject=False for an advisory/observe-only
-    rollout that never blocks, only annotates.
+    rollout that never blocks, only annotates (the marker on `meta` still
+    reports "reject" in that mode, it just doesn't raise).
   - Never overrides an approve/approve_with_concerns verdict.
+
+Data sent externally: on every destructive call, the full tool argument
+dictionary (e.g. for place_stock_order -- symbol, side, qty/notional, type,
+time_in_force, limit/stop/trail prices, client_order_id, order_class, and any
+bracket/multi-leg fields present) is sent to the invinoveritas /review
+endpoint as part of the review artifact, over HTTPS with your IVV_API_KEY as
+bearer auth. No account credentials, API keys, or account/portfolio state are
+sent -- only the arguments of the specific call being reviewed.
 
 Usage (opt-in, disabled unless explicitly wired -- see README):
 
@@ -85,6 +96,7 @@ class InvinoveritasReviewMiddleware(Middleware):
             return await call_next(context)
 
         verdict = await self._review(tool_name, context.message.arguments)
+        marker = verdict.get("verdict") if verdict is not None else "unavailable"
 
         if verdict is not None and verdict.get("verdict") == "reject" and self._block_on_reject:
             logger.warning(
@@ -99,7 +111,13 @@ class InvinoveritasReviewMiddleware(Middleware):
                 f"POST {self._base_url}/verify-proof"
             )
 
-        return await call_next(context)
+        result = await call_next(context)
+        return ToolResult(
+            content=result.content,
+            structured_content=result.structured_content,
+            meta={**(result.meta or {}), "invinoveritas_review": marker},
+            is_error=result.is_error,
+        )
 
     # ---- internals ----
 

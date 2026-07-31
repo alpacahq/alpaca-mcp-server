@@ -69,6 +69,7 @@ async def test_readonly_tool_never_reviewed(monkeypatch):
     async with Client(server) as client:
         result = await client.call_tool("get_account", {})
         assert result.data["cash"] == "1000.00"
+        assert result.meta is None or "invinoveritas_review" not in result.meta
     assert called["n"] == 0
 
 
@@ -83,6 +84,7 @@ async def test_approve_passes_through(monkeypatch):
     async with Client(server) as client:
         result = await client.call_tool("place_stock_order", {"symbol": "SPY", "side": "buy", "qty": "1"})
         assert result.data["status"] == "filled"
+        assert result.meta["invinoveritas_review"] == "approve"
 
 
 @pytest.mark.asyncio
@@ -96,6 +98,7 @@ async def test_advisory_mode_never_blocks(monkeypatch):
     async with Client(server) as client:
         result = await client.call_tool("place_stock_order", {"symbol": "TSLA", "side": "sell", "qty": "5"})
         assert result.data["status"] == "filled"
+        assert result.meta["invinoveritas_review"] == "reject"
 
 
 @pytest.mark.asyncio
@@ -109,6 +112,7 @@ async def test_fails_open_on_network_error(monkeypatch):
     async with Client(server) as client:
         result = await client.call_tool("place_stock_order", {"symbol": "MSFT", "side": "buy", "qty": "1"})
         assert result.data["status"] == "filled"
+        assert result.meta["invinoveritas_review"] == "unavailable"
 
 
 @pytest.mark.asyncio
@@ -126,4 +130,5 @@ async def test_no_api_key_skips_review_entirely(monkeypatch):
     async with Client(server) as client:
         result = await client.call_tool("place_stock_order", {"symbol": "GME", "side": "buy", "qty": "1"})
         assert result.data["status"] == "filled"
+        assert result.meta["invinoveritas_review"] == "unavailable"
     assert called["n"] == 0

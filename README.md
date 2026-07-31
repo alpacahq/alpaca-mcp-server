@@ -628,10 +628,21 @@ close positions) on an independent, signed pre-trade verdict from
 [invinoveritas](https://api.babyblueviper.com) before it executes -- an automated second opinion
 for the "review all actions proposed by the LLM carefully" guidance above, not a replacement for it.
 
-Not a rule engine: a judgment call on the specific order (symbol, side, size, type), issued by a
-party structurally separate from the agent placing it. Every verdict is independently
-recomputable via `/verify-proof` (free, no auth) -- nothing to trust on our word. Fails open on
-any network/timeout/malformed-response issue, so a `/review`-side problem never blocks trading.
+Not a rule engine: a judgment call on the specific order, issued by a party structurally
+separate from the agent placing it. Every verdict is independently recomputable via
+`/verify-proof` (free, no auth) -- nothing to trust on our word. Fails open on any
+network/timeout/malformed-response issue, so a `/review`-side problem never blocks trading; every
+destructive call's result carries an `invinoveritas_review` marker in `meta` either way
+(`"unavailable"` on fail-open, or the actual verdict), so it's always visible which calls were
+reviewed and which weren't -- never silent either way.
+
+**What's sent externally:** the complete argument dictionary of the destructive call being
+reviewed -- for `place_stock_order` that's `symbol`, `side`, `qty`/`notional`, `type`,
+`time_in_force`, any limit/stop/trail prices, `client_order_id`, `order_class`, and bracket/
+multi-leg fields if present; other destructive tools send their own full argument set the same
+way. Sent over HTTPS to `api.babyblueviper.com/review` with your `IVV_API_KEY` as bearer auth.
+No account credentials, Alpaca API keys, or account/portfolio state are ever sent -- only the
+arguments of the specific call under review.
 
 ```python
 from alpaca_mcp_server.invinoveritas_review import InvinoveritasReviewMiddleware
