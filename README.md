@@ -620,6 +620,28 @@ This server can place real trades and access your portfolio. Treat your API keys
 
 **HTTP Transport Security**: When using HTTP transport, the server defaults to localhost (127.0.0.1:8000) for security. For remote access, you can bind to all interfaces with `--host 0.0.0.0`, use SSH tunneling (`ssh -L 8000:localhost:8000 user@server`), or set up a reverse proxy with authentication for secure access.
 
+## Optional: Independent Pre-Trade Review
+
+`InvinoveritasReviewMiddleware` (`src/alpaca_mcp_server/invinoveritas_review.py`) is an opt-in
+middleware that gates any tool call marked `destructiveHint: true` (place/cancel/replace orders,
+close positions) on an independent, signed pre-trade verdict from
+[invinoveritas](https://api.babyblueviper.com) before it executes -- an automated second opinion
+for the "review all actions proposed by the LLM carefully" guidance above, not a replacement for it.
+
+Not a rule engine: a judgment call on the specific order (symbol, side, size, type), issued by a
+party structurally separate from the agent placing it. Every verdict is independently
+recomputable via `/verify-proof` (free, no auth) -- nothing to trust on our word. Fails open on
+any network/timeout/malformed-response issue, so a `/review`-side problem never blocks trading.
+
+```python
+from alpaca_mcp_server.invinoveritas_review import InvinoveritasReviewMiddleware
+
+main.add_middleware(InvinoveritasReviewMiddleware(block_on_reject=True))  # or False for advisory-only
+```
+
+Requires `IVV_API_KEY` (free registration: `POST https://api.babyblueviper.com/register`).
+Tests: `pytest tests/test_invinoveritas_review.py -v` (no live API key needed, real HTTP mocking).
+
 ## Support
 
 For issues or questions, please contact us at [support@alpaca.markets](mailto:support@alpaca.markets).
