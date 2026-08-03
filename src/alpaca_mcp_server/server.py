@@ -11,6 +11,7 @@ import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -24,13 +25,16 @@ from .tool_registry import TOOL_DESCRIPTIONS, TOOL_NAMES
 from .toolsets import OVERRIDE_OPERATION_IDS, TOOLSETS, get_active_operations
 
 SPECS_DIR = Path(__file__).parent / "specs"
-_USER_AGENT_FILE = Path(__file__).resolve().parents[2] / ".github" / "core" / "user_agent.py"
 
 TRADING_API_BASE_URLS = {
     "paper": "https://paper-api.alpaca.markets",
     "live": "https://api.alpaca.markets",
 }
 MARKET_DATA_BASE_URL = "https://data.alpaca.markets"
+
+
+def get_mcp_user_agent() -> str:
+    return f"APCA-MCP-TRADING/{version('alpaca-mcp-server')}"
 
 
 def _load_spec(name: str) -> dict[str, Any]:
@@ -40,28 +44,23 @@ def _load_spec(name: str) -> dict[str, Any]:
 
 def _make_filter(allowed_ops: set[str]):
     """Create a route_map_fn that includes only allowlisted operationIds."""
-    def filter_fn(route, default_type):
+
+    def filter_fn(route, _default_type):
         if route.operation_id in allowed_ops and route.operation_id not in OVERRIDE_OPERATION_IDS:
             return MCPType.TOOL
         return MCPType.EXCLUDE
+
     return filter_fn
 
 
 def _make_customizer(descriptions: dict[str, str]):
     """Create an mcp_component_fn that overrides descriptions where provided."""
+
     def customizer(route, component):
         if route.operation_id in descriptions:
             component.description = descriptions[route.operation_id]
+
     return customizer
-
-
-def _load_user_agent() -> str | None:
-    """Load USER_AGENT from .github/core/user_agent.py if it exists."""
-    if not _USER_AGENT_FILE.is_file():
-        return None
-    ns: dict[str, Any] = {}
-    exec(_USER_AGENT_FILE.read_text(encoding="utf-8"), ns)
-    return ns.get("USER_AGENT")
 
 
 def _build_auth_headers() -> dict[str, str]:
@@ -71,9 +70,11 @@ def _build_auth_headers() -> dict[str, str]:
         "APCA-API-KEY-ID": key,
         "APCA-API-SECRET-KEY": secret,
     }
-    user_agent = _load_user_agent()
-    if user_agent:
-        headers["User-Agent"] = user_agent
+    user_agent = os.environ.get("ALPACA_MCP_USER_AGENT")
+    if user_agent is None:
+        user_agent = get_mcp_user_agent()
+    if user_agent.strip():
+        headers["User-Agent"] = user_agent.strip()
     return headers
 
 
@@ -182,10 +183,12 @@ def build_server(
 def _register_trading_overrides(server: FastMCP, trading_client: httpx.AsyncClient) -> None:
     """Register hand-crafted override tools for complex trading endpoints."""
     from .overrides import register_order_tools
+
     register_order_tools(server, trading_client)
 
 
 def _register_market_data_overrides(server: FastMCP, data_client: httpx.AsyncClient) -> None:
     """Register hand-crafted override tools for historical market data."""
     from .market_data_overrides import register_market_data_tools
+
     register_market_data_tools(server, data_client)
