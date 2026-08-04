@@ -617,7 +617,7 @@ For information about how Alpaca handles your data, please review:
 - **How it's used**: To identify MCP server usage and improve user experience
 - **Third-party sharing**: Not shared with third parties
 - **Retention**: Retained per Alpaca's standard data retention policy
-- **Opt-out**: Set the `ALPACA_MCP_USER_AGENT` environment variable to an empty string
+- **Opt-out**: Set the `ALPACA_MCP_USER_AGENT` environment variable to an empty string; no User-Agent header will be sent
 
 ## Security Notice
 

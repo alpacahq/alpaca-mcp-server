@@ -97,6 +97,13 @@ def _parse_toolsets() -> set[str] | None:
     return {t.strip() for t in raw.split(",") if t.strip()}
 
 
+def _make_api_client(base_url: str, headers: dict[str, str]) -> httpx.AsyncClient:
+    client = httpx.AsyncClient(base_url=base_url, headers=headers, timeout=30.0)
+    if "User-Agent" not in headers:
+        client.headers.pop("User-Agent", None)
+    return client
+
+
 def build_server(
     readme_client_factory: ReadMeClientFactory | None = None,
 ) -> FastMCP:
@@ -112,20 +119,12 @@ def build_server(
 
     trading_client: httpx.AsyncClient | None = None
     if "trading" in spec_ops:
-        trading_client = httpx.AsyncClient(
-            base_url=trading_base,
-            headers=auth_headers,
-            timeout=30.0,
-        )
+        trading_client = _make_api_client(trading_base, auth_headers)
         clients.append(trading_client)
 
     data_client: httpx.AsyncClient | None = None
     if "market-data" in spec_ops:
-        data_client = httpx.AsyncClient(
-            base_url=data_base,
-            headers=auth_headers,
-            timeout=30.0,
-        )
+        data_client = _make_api_client(data_base, auth_headers)
         clients.append(data_client)
 
     @asynccontextmanager

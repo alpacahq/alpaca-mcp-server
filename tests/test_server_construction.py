@@ -24,7 +24,12 @@ from alpaca_mcp_server.readme_docs import (
     ReadMeClientFactory,
 )
 from alpaca_mcp_server.security import DATA_KEY, SECURITY_KEY
-from alpaca_mcp_server.server import _build_auth_headers, build_server, get_mcp_user_agent
+from alpaca_mcp_server.server import (
+    _build_auth_headers,
+    _make_api_client,
+    build_server,
+    get_mcp_user_agent,
+)
 
 DUMMY_ENV = {
     "ALPACA_API_KEY": "test-key",
@@ -274,21 +279,27 @@ async def _call_tool(
         )
 
 
-def test_default_user_agent():
+async def test_default_user_agent():
     with patch.dict(os.environ, DUMMY_ENV, clear=True):
-        assert _build_auth_headers()["User-Agent"] == get_mcp_user_agent()
+        async with _make_api_client("https://example.com", _build_auth_headers()) as client:
+            request = client.build_request("GET", "/")
+    assert request.headers["User-Agent"] == get_mcp_user_agent()
 
 
-def test_custom_user_agent():
+async def test_custom_user_agent():
     env = {**DUMMY_ENV, "ALPACA_MCP_USER_AGENT": "custom-client/1.0"}
     with patch.dict(os.environ, env, clear=True):
-        assert _build_auth_headers()["User-Agent"] == "custom-client/1.0"
+        async with _make_api_client("https://example.com", _build_auth_headers()) as client:
+            request = client.build_request("GET", "/")
+    assert request.headers["User-Agent"] == "custom-client/1.0"
 
 
-def test_empty_user_agent_opts_out():
+async def test_empty_user_agent_opts_out():
     env = {**DUMMY_ENV, "ALPACA_MCP_USER_AGENT": ""}
     with patch.dict(os.environ, env, clear=True):
-        assert "User-Agent" not in _build_auth_headers()
+        async with _make_api_client("https://example.com", _build_auth_headers()) as client:
+            request = client.build_request("GET", "/")
+    assert "User-Agent" not in request.headers
 
 
 async def test_tool_count():
@@ -598,9 +609,7 @@ async def test_order_tools_have_destructive_hint():
     for t in order_tools:
         annotations = t.annotations
         assert annotations is not None, f"{t.name} missing annotations"
-        assert annotations.destructiveHint is True, (
-            f"{t.name} should have destructiveHint=True"
-        )
+        assert annotations.destructiveHint is True, f"{t.name} should have destructiveHint=True"
 
 
 async def test_toolset_filtering():
