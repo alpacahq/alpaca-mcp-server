@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Falpacahq%2Falpaca-mcp-server.svg)](https://mcptoplist.com/server/glama%2Falpacahq%2Falpaca-mcp-server)
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/alpacahq/alpaca-mcp-server/main/assets/01-primary-alpaca-logo.png" alt="Alpaca logo" width="220">
 </p>
