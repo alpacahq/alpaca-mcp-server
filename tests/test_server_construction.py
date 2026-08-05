@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from fastmcp.client import Client
 
 from alpaca_mcp_server.readme_docs import (
@@ -29,6 +30,7 @@ from alpaca_mcp_server.server import (
     _make_api_client,
     build_server,
     get_mcp_user_agent,
+    strip_v_from_version,
 )
 
 DUMMY_ENV = {
@@ -300,6 +302,21 @@ async def test_empty_user_agent_opts_out():
         async with _make_api_client("https://example.com", _build_auth_headers()) as client:
             request = client.build_request("GET", "/")
     assert "User-Agent" not in request.headers
+
+
+@pytest.mark.parametrize(
+    ("release_version", "expected"),
+    [
+        ("v1.2.3", "1.2.3"),
+        ("1.2.3", "1.2.3"),
+        ("dev", "dev"),
+        ("pr-42-0f1e2d3", "pr-42-0f1e2d3"),
+        ("v", "v"),
+        ("", ""),
+    ],
+)
+def test_strip_v_from_version(release_version: str, expected: str) -> None:
+    assert strip_v_from_version(release_version) == expected
 
 
 async def test_tool_count():

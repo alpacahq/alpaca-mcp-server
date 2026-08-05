@@ -33,8 +33,16 @@ TRADING_API_BASE_URLS = {
 MARKET_DATA_BASE_URL = "https://data.alpaca.markets"
 
 
+def strip_v_from_version(release_version: str) -> str:
+    if release_version[:1] == "v" and release_version[1:2].isdigit():
+        return release_version[1:]
+
+    return release_version
+
+
 def get_mcp_user_agent() -> str:
-    return f"APCA-MCP-TRADING/{version('alpaca-mcp-server')}"
+    release_version = version("alpaca-mcp-server")
+    return f"APCA-MCP-TRADING/{strip_v_from_version(release_version)}"
 
 
 def _load_spec(name: str) -> dict[str, Any]:
