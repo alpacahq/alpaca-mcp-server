@@ -8,6 +8,7 @@ tools with curated parameters per asset class.
 
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 import httpx
@@ -19,6 +20,22 @@ def _error(message: str, **extra: object) -> dict:
     err: dict = {"message": message}
     err.update(extra)
     return {"error": err}
+
+
+def _coerce_option_legs(legs: list[dict] | str | None) -> list[dict] | None | dict:
+    """Accept JSON-encoded legs from MCP clients that stringify arrays."""
+    if legs is None or isinstance(legs, list):
+        return legs
+
+    try:
+        parsed = json.loads(legs)
+    except json.JSONDecodeError as exc:
+        return _error("legs must be a JSON array or list of leg objects", detail=str(exc))
+
+    if not isinstance(parsed, list):
+        return _error("legs must decode to a JSON array")
+
+    return parsed
 
 
 async def _post_order(client: httpx.AsyncClient, body: dict) -> dict:
@@ -265,7 +282,7 @@ def register_order_tools(
         limit_price: Optional[str] = None,
         client_order_id: Optional[str] = None,
         order_class: Optional[str] = None,
-        legs: Optional[list[dict]] = None,
+        legs: list[dict] | str | None = None,
     ) -> dict:
         """Place an options order (single-leg or multi-leg).
 
@@ -281,8 +298,8 @@ def register_order_tools(
                  value (e.g., qty="10" with ratio_qty="2" = 20
                  contracts for that leg).
             type: "market" or "limit".
-            time_in_force: "day" only. Options do not support other
-                           values.
+            time_in_force: "day" (default) or another value accepted by
+                           Alpaca for the requested option order type.
             symbol: OCC option symbol (e.g., "AAPL250321C00150000").
                     Required for single-leg.
             side: "buy" or "sell". Required for single-leg.
@@ -298,11 +315,17 @@ def register_order_tools(
                              will reject duplicates. Recommended for every order.
             order_class: Set to "mleg" for multi-leg orders. Automatically
                          inferred when legs are provided.
-            legs: List of leg dicts for multi-leg orders (max 4). Each leg
-                  requires "symbol" and "ratio_qty" (string). Optional
-                  per-leg fields: "side" ("buy" or "sell") and
-                  "position_intent".
+            legs: List of leg dicts for multi-leg orders (max 4), or a
+                  JSON-encoded array when an MCP client stringifies complex
+                  arguments. Each leg requires "symbol" and "ratio_qty"
+                  (string). Optional per-leg fields: "side" ("buy" or
+                  "sell") and "position_intent".
         """
+        coerced_legs = _coerce_option_legs(legs)
+        if isinstance(coerced_legs, dict):
+            return coerced_legs
+        legs = coerced_legs
+
         is_multi_leg = legs is not None or order_class == "mleg"
 
         if is_multi_leg and legs is None:

@@ -629,6 +629,68 @@ async def test_order_tools_have_destructive_hint():
         assert annotations.destructiveHint is True, f"{t.name} should have destructiveHint=True"
 
 
+async def test_place_option_order_accepts_json_string_legs():
+    """MCP clients may stringify complex array arguments before validation."""
+    captured: dict[str, Any] = {}
+
+    async def fake_post(self: Any, path: str, json: dict[str, Any]) -> Any:
+        captured["path"] = path
+        captured["json"] = json
+        return SimpleNamespace(is_error=False, json=lambda: {"id": "test-order"})
+
+    legs = [
+        {
+            "symbol": "SPY260731P00395000",
+            "ratio_qty": "1",
+            "side": "sell",
+            "position_intent": "sell_to_open",
+        },
+        {
+            "symbol": "SPY260731P00380000",
+            "ratio_qty": "1",
+            "side": "buy",
+            "position_intent": "buy_to_open",
+        },
+    ]
+
+    with patch("httpx.AsyncClient.post", fake_post):
+        result = await _call_tool(
+            "place_option_order",
+            {
+                "qty": "1",
+                "order_class": "mleg",
+                "type": "limit",
+                "limit_price": "-0.01",
+                "time_in_force": "gtc",
+                "legs": json.dumps(legs),
+            },
+        )
+
+    assert result[DATA_KEY] == {"id": "test-order"}
+    assert captured["path"] == "/v2/orders"
+    assert captured["json"]["legs"] == legs
+    assert captured["json"]["order_class"] == "mleg"
+    assert captured["json"]["time_in_force"] == "gtc"
+
+
+async def test_place_option_order_rejects_invalid_json_string_legs():
+    result = await _call_tool(
+        "place_option_order",
+        {
+            "qty": "1",
+            "order_class": "mleg",
+            "type": "limit",
+            "limit_price": "-0.01",
+            "legs": "not-json",
+        },
+        raise_on_error=False,
+    )
+
+    assert result[DATA_KEY]["error"]["message"] == (
+        "legs must be a JSON array or list of leg objects"
+    )
+
+
 async def test_toolset_filtering():
     """ALPACA_TOOLSETS should limit which tools are exposed."""
     tools = await _list_tools({**DUMMY_ENV, "ALPACA_TOOLSETS": "account"})
