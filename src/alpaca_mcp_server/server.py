@@ -45,9 +45,23 @@ def get_mcp_user_agent() -> str:
     return f"APCA-MCP-TRADING/{strip_v_from_version(release_version)}"
 
 
+def _strip_openapi_vendor_extensions(value: Any) -> Any:
+    """Recursively remove OpenAPI vendor extensions before tool generation."""
+    if isinstance(value, dict):
+        return {
+            key: _strip_openapi_vendor_extensions(item)
+            for key, item in value.items()
+            if not key.startswith("x-")
+        }
+    if isinstance(value, list):
+        return [_strip_openapi_vendor_extensions(item) for item in value]
+    return value
+
+
 def _load_spec(name: str) -> dict[str, Any]:
     path = SPECS_DIR / f"{name}.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    spec = json.loads(path.read_text(encoding="utf-8"))
+    return _strip_openapi_vendor_extensions(spec)
 
 
 def _make_filter(allowed_ops: set[str]):
