@@ -45,14 +45,27 @@ def get_mcp_user_agent() -> str:
     return f"APCA-MCP-TRADING/{strip_v_from_version(release_version)}"
 
 
+_OPENAPI_LITERAL_FIELDS = frozenset({"default", "example", "examples"})
+_OPENAPI_NAMED_MAP_FIELDS = frozenset({"properties", "schemas"})
+
+
 def _strip_openapi_vendor_extensions(value: Any) -> Any:
-    """Recursively remove OpenAPI vendor extensions before tool generation."""
+    """Remove extensions without dropping x-prefixed schema data."""
     if isinstance(value, dict):
-        return {
-            key: _strip_openapi_vendor_extensions(item)
-            for key, item in value.items()
-            if not key.startswith("x-")
-        }
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            if key.startswith("x-"):
+                continue
+            if key in _OPENAPI_LITERAL_FIELDS:
+                cleaned[key] = item
+            elif key in _OPENAPI_NAMED_MAP_FIELDS and isinstance(item, dict):
+                cleaned[key] = {
+                    name: _strip_openapi_vendor_extensions(entry)
+                    for name, entry in item.items()
+                }
+            else:
+                cleaned[key] = _strip_openapi_vendor_extensions(item)
+        return cleaned
     if isinstance(value, list):
         return [_strip_openapi_vendor_extensions(item) for item in value]
     return value
