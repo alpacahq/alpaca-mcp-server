@@ -673,7 +673,15 @@ async def test_place_option_order_accepts_json_string_legs():
     assert captured["json"]["time_in_force"] == "gtc"
 
 
-async def test_place_option_order_rejects_invalid_json_string_legs():
+@pytest.mark.parametrize(
+    "legs",
+    [
+        "not-json",
+        json.dumps({"symbol": "SPY260731P00395000"}),
+        json.dumps(["not-an-object"]),
+    ],
+)
+async def test_place_option_order_rejects_invalid_json_string_legs(legs: str):
     result = await _call_tool(
         "place_option_order",
         {
@@ -681,13 +689,13 @@ async def test_place_option_order_rejects_invalid_json_string_legs():
             "order_class": "mleg",
             "type": "limit",
             "limit_price": "-0.01",
-            "legs": "not-json",
+            "legs": legs,
         },
         raise_on_error=False,
     )
 
     assert result[DATA_KEY]["error"]["message"] == (
-        "legs must be a JSON array or list of leg objects"
+        "legs must be a JSON array of leg objects"
     )
 
 
