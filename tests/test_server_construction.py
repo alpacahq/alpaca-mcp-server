@@ -322,32 +322,39 @@ def test_strip_v_from_version(release_version: str, expected: str) -> None:
 
 def test_strip_openapi_vendor_extensions_recursively():
     spec = {
-        "type": "object",
         "x-stoplight": {"id": "schema"},
         "properties": {
-            "start": {
-                "type": "string",
-                "x-go-type": "legacyTime",
-                "examples": ["2026-01-01"],
+            "x-symbol": {
+                "type": "object",
+                "x-go-type": "legacySymbol",
+                "default": {"x-source": "user"},
+                "example": {"x-value": 1},
             },
-            "nested": [
-                {"x-go-name": "Foo", "description": "kept"},
-                "value",
-            ],
+        },
+        "components": {
+            "schemas": {
+                "x-Order": {
+                    "type": "string",
+                    "x-go-type": "legacyOrder",
+                },
+            },
         },
     }
 
     assert _strip_openapi_vendor_extensions(spec) == {
-        "type": "object",
         "properties": {
-            "start": {
-                "type": "string",
-                "examples": ["2026-01-01"],
+            "x-symbol": {
+                "type": "object",
+                "default": {"x-source": "user"},
+                "example": {"x-value": 1},
             },
-            "nested": [
-                {"description": "kept"},
-                "value",
-            ],
+        },
+        "components": {
+            "schemas": {
+                "x-Order": {
+                    "type": "string",
+                },
+            },
         },
     }
 
