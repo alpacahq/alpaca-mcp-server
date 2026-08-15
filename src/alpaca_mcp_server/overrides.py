@@ -24,16 +24,24 @@ def _error(message: str, **extra: object) -> dict:
 
 def _coerce_option_legs(legs: list[dict] | str | None) -> list[dict] | None | dict:
     """Accept JSON-encoded legs from MCP clients that stringify arrays."""
-    if legs is None or isinstance(legs, list):
-        return legs
+    if legs is None:
+        return None
 
-    try:
-        parsed = json.loads(legs)
-    except json.JSONDecodeError as exc:
-        return _error("legs must be a JSON array or list of leg objects", detail=str(exc))
+    if isinstance(legs, str):
+        try:
+            parsed = json.loads(legs)
+        except json.JSONDecodeError as exc:
+            return _error(
+                "legs must be a JSON array of leg objects",
+                detail=str(exc),
+            )
+    else:
+        parsed = legs
 
-    if not isinstance(parsed, list):
-        return _error("legs must decode to a JSON array")
+    if not isinstance(parsed, list) or not all(
+        isinstance(leg, dict) for leg in parsed
+    ):
+        return _error("legs must be a JSON array of leg objects")
 
     return parsed
 
