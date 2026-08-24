@@ -295,7 +295,7 @@ Available toolsets:
 | `corporate-actions` | Corporate action announcements                                |
 | `news`              | News articles for stocks and crypto                           |
 | `fixed-income-data` | Fixed income (bond/treasury) quotes                           |
-| `index-data`        | Market index values (SPX, VIX, etc.)                          |
+| `locates`           | Short-sale locate requests and quotes                         |
 
 
 ### ReadMe Docs MCP
@@ -499,11 +499,6 @@ If the ReadMe MCP lookup fails, tool responses include fallback links to Alpaca'
 **Fixed Income Data**
 
 - `get_fixed_income_latest_quotes` — Latest quotes for fixed income securities by ISIN
-
-**Index Data**
-
-- `get_index_latest_values` — Latest values for market indices
-- `get_index_values` — Historical values for market indices
 
 **Locates (Short Selling)**
 

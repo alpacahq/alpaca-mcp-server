@@ -201,6 +201,16 @@ async def test_get_account_activities_by_type():
     assert isinstance(result, (dict, list))
 
 
+async def test_get_account_activities_filtered_by_order_id():
+    # A nil order id matches nothing, so an empty result confirms the filter
+    # is accepted and applied rather than ignored.
+    result = await _call("get_account_activities", {
+        "order_id": "00000000-0000-0000-0000-000000000000",
+    })
+    activities = result.get("result", result) if isinstance(result, dict) else result
+    assert activities == []
+
+
 # ── Market Data: Stocks ─────────────────────────────────────────────────
 
 
@@ -428,24 +438,6 @@ async def test_get_fixed_income_latest_quotes():
     })
     assert isinstance(result, dict)
     assert "quotes" in result
-
-
-# ── Market Data: Indices ─────────────────────────────────────────────────
-
-
-async def test_get_index_latest_values():
-    result = await _call_beta_market_data("get_index_latest_values", {"symbols": "SPX,VIX"})
-    assert isinstance(result, dict)
-    assert "values" in result
-
-
-async def test_get_index_values():
-    result = await _call_beta_market_data("get_index_values", {
-        "symbols": "SPX",
-        "limit": 5,
-    })
-    assert isinstance(result, dict)
-    assert "values" in result
 
 
 # ── Assets & Market Info ────────────────────────────────────────────────

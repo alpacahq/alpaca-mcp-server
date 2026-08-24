@@ -388,23 +388,6 @@ TOOLS: dict[str, ToolDefinition] = {
         ),
     ),
 
-    # --- Index Data ---
-    "IndexLatestValues": ToolDefinition(
-        name="get_index_latest_values",
-        description=(
-            "Returns the latest values for market indices "
-            "(e.g. SPX, VIX, DJI). Provide a comma-separated list of index symbols."
-        ),
-    ),
-    "IndexValues": ToolDefinition(
-        name="get_index_values",
-        description=(
-            "Returns historical values for market indices over a time interval. "
-            "Supports pagination, sorting, and date range filtering. "
-            "Provide a comma-separated list of index symbols."
-        ),
-    ),
-
     # --- Locates (Short Selling) ---
     "listLocates": ToolDefinition(
         name="get_locates",

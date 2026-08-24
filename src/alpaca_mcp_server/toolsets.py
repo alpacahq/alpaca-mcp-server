@@ -119,13 +119,6 @@ TOOLSETS: dict[str, dict] = {
             "FixedIncomeLatestQuotes",
         },
     },
-    "index-data": {
-        "spec": "market-data",
-        "operations": {
-            "IndexLatestValues",
-            "IndexValues",
-        },
-    },
     "locates": {
         "spec": "trading",
         "operations": {

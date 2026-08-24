@@ -25,6 +25,13 @@ Run the sync script:
 ./scripts/sync-specs.sh
 ```
 
+The script downloads both specs and then runs `scripts/normalize_spec_version.py`,
+which rewrites the declared OpenAPI version from 3.1.2 to 3.1.1. FastMCP parses
+specs with openapi-pydantic, which only accepts 3.1.0 and 3.1.1 and rejects
+anything newer, so without this the server fails to build. Expect a one-character
+difference from the published spec. Remove the script once openapi-pydantic
+supports 3.1.2.
+
 ## Step 2: Diff the specs
 
 Check what changed:

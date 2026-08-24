@@ -111,9 +111,6 @@ EXPECTED_TOOLS = {
     "get_news",
     # Fixed Income Data
     "get_fixed_income_latest_quotes",
-    # Index Data
-    "get_index_latest_values",
-    "get_index_values",
     # Locates (Short Selling)
     "get_locates",
     "create_locate",
@@ -320,9 +317,9 @@ def test_strip_v_from_version(release_version: str, expected: str) -> None:
 
 
 async def test_tool_count():
-    """Server must expose exactly 74 tools."""
+    """Server must expose exactly 72 tools."""
     tools = await _list_tools()
-    assert len(tools) == 74, f"Expected 74 tools, got {len(tools)}"
+    assert len(tools) == 72, f"Expected 72 tools, got {len(tools)}"
 
 
 async def test_tool_names_match():
