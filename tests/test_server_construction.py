@@ -24,6 +24,7 @@ from alpaca_mcp_server.readme_docs import (
     README_DOC_TOOL_NAMES,
     ReadMeClientFactory,
 )
+from alpaca_mcp_server.overrides import _parse_legs
 from alpaca_mcp_server.security import DATA_KEY, SECURITY_KEY
 from alpaca_mcp_server.server import (
     _build_auth_headers,
@@ -674,3 +675,71 @@ async def test_toolset_filtering():
     assert "place_stock_order" not in names
     assert "get_stock_bars" not in names
     assert README_DOC_TOOL_NAMES <= names
+
+
+# --- multi-leg legs coercion (issue #97) ----------------------------------
+
+MLEG_LEGS = [
+    {"symbol": "SPY260731P00395000", "ratio_qty": "1", "side": "sell",
+     "position_intent": "sell_to_open"},
+    {"symbol": "SPY260731P00380000", "ratio_qty": "1", "side": "buy",
+     "position_intent": "buy_to_open"},
+]
+
+
+async def _place_option_order(args: dict) -> dict:
+    """Call place_option_order with the network stubbed, returning the request
+    body the override built."""
+    captured: dict = {}
+
+    async def fake_post_order(client: Any, body: dict) -> dict:
+        captured.update(body)
+        return {"id": "stub", "status": "accepted"}
+
+    with patch.dict(os.environ, DUMMY_ENV, clear=False):
+        server = build_server()
+    with patch("alpaca_mcp_server.overrides._post_order", fake_post_order):
+        async with Client(transport=server) as c:
+            await c.call_tool("place_option_order", args)
+    return captured
+
+
+def test_parse_legs_accepts_a_json_string():
+    """Several MCP clients serialise nested arrays before the call reaches the
+    server, so a well-formed multi-leg request arrives as a string."""
+    assert _parse_legs(json.dumps(MLEG_LEGS)) == MLEG_LEGS
+
+
+def test_parse_legs_passes_arrays_through_untouched():
+    assert _parse_legs(MLEG_LEGS) == MLEG_LEGS
+    assert _parse_legs(None) is None
+
+
+def test_parse_legs_leaves_unparseable_strings_for_pydantic():
+    """Returning the string unchanged keeps pydantic's own error message
+    instead of inventing a different one."""
+    assert _parse_legs("not json") == "not json"
+
+
+async def test_multi_leg_order_accepts_legs_as_array_or_string():
+    """Issue #97: legs arriving as a JSON string was rejected with "Input
+    should be a valid list" before the override ran, making every spread and
+    condor unplaceable while single-leg orders on the same tool worked."""
+    base = {"qty": "1", "order_class": "mleg", "type": "limit",
+            "limit_price": "-0.01", "time_in_force": "day"}
+    as_array = await _place_option_order({**base, "legs": MLEG_LEGS})
+    as_string = await _place_option_order({**base, "legs": json.dumps(MLEG_LEGS)})
+
+    assert as_array["legs"] == MLEG_LEGS
+    assert as_string == as_array, "both input forms must build the same order"
+
+
+async def test_multi_leg_legs_schema_is_still_advertised_as_an_array():
+    """The coercion runs as a BeforeValidator specifically so the advertised
+    schema does not change. If legs ever becomes a string/array union, clients
+    and models start being told a string is acceptable."""
+    tools = await _list_tools()
+    legs = next(t for t in tools
+                if t.name == "place_option_order").inputSchema["properties"]["legs"]
+    types = {branch.get("type") for branch in legs["anyOf"]}
+    assert types == {"array", "null"}, f"legs schema widened to {types}"

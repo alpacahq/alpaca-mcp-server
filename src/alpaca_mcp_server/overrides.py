@@ -8,10 +8,12 @@ tools with curated parameters per asset class.
 
 from __future__ import annotations
 
-from typing import Optional
+import json
+from typing import Annotated, Optional
 
 import httpx
 from fastmcp import FastMCP
+from pydantic import BeforeValidator
 
 
 def _error(message: str, **extra: object) -> dict:
@@ -19,6 +21,33 @@ def _error(message: str, **extra: object) -> dict:
     err: dict = {"message": message}
     err.update(extra)
     return {"error": err}
+
+
+def _parse_legs(value: object) -> object:
+    """Accept `legs` as an array, or as the JSON string some clients send.
+
+    Several MCP clients serialise nested array arguments to a string before
+    the call reaches the server, so a well-formed multi-leg request arrives
+    as ``'[{"symbol": ...}]'``. Pydantic then rejects it with "Input should
+    be a valid list" before ``place_option_order`` runs, which makes every
+    spread, straddle and condor unplaceable through this tool while
+    single-leg orders on the same tool work fine.
+
+    Running as a BeforeValidator keeps the advertised JSON schema an array,
+    so clients that already send one are completely unaffected.
+
+    A string that is not valid JSON is returned untouched, so pydantic still
+    produces its own error rather than one invented here.
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
+Legs = Annotated[Optional[list[dict]], BeforeValidator(_parse_legs)]
 
 
 async def _post_order(client: httpx.AsyncClient, body: dict) -> dict:
@@ -265,7 +294,7 @@ def register_order_tools(
         limit_price: Optional[str] = None,
         client_order_id: Optional[str] = None,
         order_class: Optional[str] = None,
-        legs: Optional[list[dict]] = None,
+        legs: Legs = None,
     ) -> dict:
         """Place an options order (single-leg or multi-leg).
 
