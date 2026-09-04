@@ -30,6 +30,7 @@
 - [Features](#features)
 - [Example Prompts](#example-prompts)
 - [Available Tools](#available-tools)
+- [Contribution Policy](#contribution-policy)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
@@ -512,6 +513,12 @@ If the ReadMe MCP lookup fails, tool responses include fallback links to Alpaca'
 - `search_alpaca_api_specs` — Search Alpaca API reference endpoints by topic, path, parameter, or schema term
 - `list_alpaca_api_endpoints` — List endpoints for one allowed Alpaca OpenAPI spec
 - `get_alpaca_endpoint_docs` — Fetch reference docs for one exact Alpaca API endpoint by method and path
+
+## Contribution Policy
+
+Contributions that add or promote integrations with third-party products or services—including provider-specific clients, API calls, hosted endpoints, referral links, or promotional content—will not be accepted unless Alpaca officially collaborates with that provider and project maintainers have approved the integration in advance. Pull requests that do not meet this requirement may be closed without review.
+
+If you are unsure whether a proposed integration qualifies, open an issue before implementing it.
 
 ## Testing
 
