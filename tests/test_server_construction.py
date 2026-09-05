@@ -17,6 +17,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from click.testing import CliRunner
 from fastmcp.client import Client
 
 from alpaca_mcp_server.readme_docs import (
@@ -24,11 +25,14 @@ from alpaca_mcp_server.readme_docs import (
     README_DOC_TOOL_NAMES,
     ReadMeClientFactory,
 )
+from alpaca_mcp_server.cli import main as cli_main
 from alpaca_mcp_server.security import DATA_KEY, SECURITY_KEY
 from alpaca_mcp_server.server import (
     _build_auth_headers,
+    _get_trading_base_url,
     _make_api_client,
     _strip_openapi_vendor_extensions,
+    LiveTradingDisabledError,
     build_server,
     get_mcp_user_agent,
     strip_v_from_version,
@@ -300,6 +304,37 @@ async def test_empty_user_agent_opts_out():
         async with _make_api_client("https://example.com", _build_auth_headers()) as client:
             request = client.build_request("GET", "/")
     assert "User-Agent" not in request.headers
+
+
+def test_live_trading_requires_explicit_opt_in() -> None:
+    env = {**DUMMY_ENV, "ALPACA_PAPER_TRADE": "false"}
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(LiveTradingDisabledError, match="ALPACA_ALLOW_LIVE_TRADING"):
+            _get_trading_base_url()
+
+
+def test_live_trading_uses_live_base_url_when_opted_in() -> None:
+    env = {
+        **DUMMY_ENV,
+        "ALPACA_PAPER_TRADE": "false",
+        "ALPACA_ALLOW_LIVE_TRADING": "true",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        assert _get_trading_base_url() == "https://api.alpaca.markets"
+
+
+def test_cli_surfaces_live_trading_opt_in_error() -> None:
+    runner = CliRunner()
+    env = {
+        "ALPACA_API_KEY": "test-key",
+        "ALPACA_SECRET_KEY": "test-secret",
+        "ALPACA_PAPER_TRADE": "false",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        result = runner.invoke(cli_main, [])
+
+    assert result.exit_code == 1
+    assert "ALPACA_ALLOW_LIVE_TRADING=true" in result.output
 
 
 @pytest.mark.parametrize(

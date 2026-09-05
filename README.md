@@ -242,27 +242,31 @@ Add to your MCP client config:
 All configuration is through environment variables set in your MCP client config. No files are written to disk.
 
 
-| Variable             | Required | Default | Description                                |
-| -------------------- | -------- | ------- | ------------------------------------------ |
-| `ALPACA_API_KEY`     | Yes      | —       | Your Alpaca API key                        |
-| `ALPACA_SECRET_KEY`  | Yes      | —       | Your Alpaca secret key                     |
-| `ALPACA_PAPER_TRADE` | No       | `true`  | Set to `false` for live trading            |
-| `ALPACA_TOOLSETS`    | No       | all     | Comma-separated list of toolsets to enable |
+| Variable                    | Required | Default | Description                                                          |
+| --------------------------- | -------- | ------- | -------------------------------------------------------------------- |
+| `ALPACA_API_KEY`            | Yes      | —       | Your Alpaca API key                                                  |
+| `ALPACA_SECRET_KEY`         | Yes      | —       | Your Alpaca secret key                                               |
+| `ALPACA_PAPER_TRADE`        | No       | `true`  | Keep `true` for paper mode; set to `false` only when opting into live |
+| `ALPACA_ALLOW_LIVE_TRADING` | No       | `false` | Required alongside `ALPACA_PAPER_TRADE=false` before live mode starts |
+| `ALPACA_TOOLSETS`           | No       | all     | Comma-separated list of toolsets to enable                           |
 
 
 ### Switching to Live Trading
 
-Update the `env` block in your MCP client config and restart:
+Update the `env` block in your MCP client config and restart. Live mode is blocked unless you opt in explicitly:
 
 ```json
 {
   "env": {
     "ALPACA_API_KEY": "your_live_api_key",
     "ALPACA_SECRET_KEY": "your_live_secret_key",
-    "ALPACA_PAPER_TRADE": "false"
+    "ALPACA_PAPER_TRADE": "false",
+    "ALPACA_ALLOW_LIVE_TRADING": "true"
   }
 }
 ```
+
+If `ALPACA_PAPER_TRADE=false` is set without `ALPACA_ALLOW_LIVE_TRADING=true`, the server exits with a configuration error instead of connecting to the live trading API accidentally.
 
 ### Toolset Filtering
 
@@ -571,7 +575,8 @@ alpaca-mcp-server/
 ## Troubleshooting
 
 - **uv/uvx not found**: Install uv from the official guide ([https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/)) and then restart your terminal so `uv`/`uvx` are on PATH.
-- **Credentials missing**: Set `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` in the client's `env` block. Paper mode default is `ALPACA_PAPER_TRADE = True`.
+- **Credentials missing**: Set `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` in the client's `env` block. Paper mode default is `ALPACA_PAPER_TRADE=true`.
+- **Live mode won't start**: Set both `ALPACA_PAPER_TRADE=false` and `ALPACA_ALLOW_LIVE_TRADING=true`. Leaving out the second flag keeps the server in its paper-first safe default.
 - **Client didn't pick up new config**: Restart the client (Cursor, Claude Desktop, VS Code) after changes.
 - **HTTP port conflicts**: If using `--transport streamable-http`, change `--port` to a free port.
 

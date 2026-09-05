@@ -57,9 +57,13 @@ def main(transport: str, host: str, port: int, env_file: Optional[Path]):
         )
         sys.exit(1)
 
-    from .server import build_server
+    from .server import LiveTradingDisabledError, build_server
 
-    server = build_server()
+    try:
+        server = build_server()
+    except LiveTradingDisabledError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
 
     if transport == "stdio":
         server.run(transport="stdio")
