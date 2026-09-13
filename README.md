@@ -150,16 +150,14 @@ Create `.vscode/mcp.json` in your project root. See the [official docs](https://
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "alpaca": {
-        "type": "stdio",
-        "command": "uvx",
-        "args": ["alpaca-mcp-server"],
-        "env": {
-          "ALPACA_API_KEY": "your_alpaca_api_key",
-          "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
-        }
+  "servers": {
+    "alpaca": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["alpaca-mcp-server"],
+      "env": {
+        "ALPACA_API_KEY": "your_alpaca_api_key",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
       }
     }
   }

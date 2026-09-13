@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "alpaca-mcp-server"
-version = "2.3.0"
+version = "2.3.1"
 description = "Alpaca Trading API integration for Model Context Protocol (MCP)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,7 +30,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastmcp>=3.1.0",
+    "fastmcp>=3.1.0,<4",
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
     "click>=8.1.0",
