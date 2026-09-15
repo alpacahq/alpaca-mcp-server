@@ -562,7 +562,8 @@ alpaca-mcp-server/
 │   └── sync-specs.sh        ← Download latest OpenAPI specs
 ├── .github/
 │   └── workflows/
-│       └── ci.yml            ← CI pipeline (core + integration)
+│       ├── ci.yml            ← CI pipeline (core + integration)
+│       └── publish-pypi.yml  ← PyPI publish on GitHub Release
 ├── AGENTS.md                 ← Instructions for coding agents
 ├── pyproject.toml
 └── README.md
