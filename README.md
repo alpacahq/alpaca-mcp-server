@@ -613,7 +613,7 @@ For information about how Alpaca handles your data, please review:
 
 This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
 
-**HTTP Transport Security**: Streamable HTTP defaults to localhost (`127.0.0.1:8000`) and validates `Host` and `Origin` headers. Docker and Helm default to stdio. Binding to `0.0.0.0` does not provide authentication. This package does not configure MCP OAuth, so do not expose it directly to the public internet. Operators that provide standards-based MCP authentication must also set FastMCP's `FASTMCP_HTTP_ALLOWED_HOSTS` to the exact public hostnames.
+**HTTP Transport Security**: Streamable HTTP defaults to localhost (`127.0.0.1:8000`) and validates `Host` and `Origin` headers. Docker defaults to stdio. Helm defaults to ClusterIP HTTP with ingress off. Binding to `0.0.0.0` does not provide authentication. This package does not configure MCP OAuth, so do not expose it directly to the public internet. Operators that provide standards-based MCP authentication must also set FastMCP's `FASTMCP_HTTP_ALLOWED_HOSTS` to the exact public hostnames.
 
 ## Support
 

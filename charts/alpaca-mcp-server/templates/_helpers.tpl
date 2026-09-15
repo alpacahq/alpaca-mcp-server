@@ -62,13 +62,17 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-JSON Host allowlist derived from ingress.hosts.
+JSON Host allowlist: ClusterIP service DNS names, plus ingress.hosts when ingress is enabled.
 Override with env.values.FASTMCP_HTTP_ALLOWED_HOSTS when needed.
 */}}
 {{- define "mcp-server.allowedHosts" -}}
-{{- $hosts := list -}}
+{{- $name := include "mcp-server.fullname" . -}}
+{{- $ns := .Release.Namespace -}}
+{{- $hosts := list $name (printf "%s.%s" $name $ns) (printf "%s.%s.svc" $name $ns) (printf "%s.%s.svc.cluster.local" $name $ns) -}}
+{{- if .Values.ingress.enabled -}}
 {{- range .Values.ingress.hosts -}}
 {{- $hosts = append $hosts .host -}}
+{{- end -}}
 {{- end -}}
 {{- $hosts | toJson -}}
 {{- end }}

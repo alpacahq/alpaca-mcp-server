@@ -13,11 +13,9 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: "<mcp-server-image-tag>"
 
-# Default to local stdio. HTTP must be opted in explicitly.
+# ClusterIP HTTP. Ingress stays off until MCP authentication is configured.
 command: ["alpaca-mcp-server"]
-# When enabling Streamable HTTP:
-# args: ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
-args: []
+args: ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
@@ -69,7 +67,7 @@ ingress:
   className: "external-nginx"
   annotations: 
     cert-manager.io/cluster-issuer: "cert-manager-resources"
-  # These hostnames are also used as FASTMCP_HTTP_ALLOWED_HOSTS.
+  # Added to FASTMCP_HTTP_ALLOWED_HOSTS only when ingress.enabled is true.
   hosts:
     - host: mcp.alpaca.markets
       paths:
@@ -87,23 +85,21 @@ resources:
     cpu: 500m
     memory: 1Gi
 
-# Disabled while the default transport is stdio. Restore TCP probes when enabling HTTP.
-# livenessProbe:
-#   tcpSocket:
-#     port: http
-#   initialDelaySeconds: 10
-#   periodSeconds: 10
-#   timeoutSeconds: 3
-#   failureThreshold: 3
-# readinessProbe:
-#   tcpSocket:
-#     port: http
-#   initialDelaySeconds: 5
-#   periodSeconds: 5
-#   timeoutSeconds: 3
-#   failureThreshold: 3
-livenessProbe: null
-readinessProbe: null
+# TCP probes: MCP requires specific HTTP headers, so HTTP path probes are not used.
+livenessProbe:
+  tcpSocket:
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+readinessProbe:
+  tcpSocket:
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
 
 # This section is for setting up autoscaling more information can be found here: https://kubernetes.io/docs/concepts/workloads/autoscaling/
 autoscaling:
@@ -134,7 +130,7 @@ affinity: {}
 
 # Environment variables configuration
 env:
-  # FASTMCP_HTTP_ALLOWED_HOSTS is derived from ingress.hosts unless set here.
+  # FASTMCP_HTTP_ALLOWED_HOSTS is derived from the Service DNS name, plus ingress.hosts when ingress is enabled.
   values: {}
   # Sensitive environment variables (stored in Secret, can be encrypted with SOPS)
   secrets: 
