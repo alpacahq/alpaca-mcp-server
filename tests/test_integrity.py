@@ -8,12 +8,19 @@ entries, and duplicate tool names.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from alpaca_mcp_server.tool_registry import TOOLS, TOOL_NAMES, TOOL_DESCRIPTIONS
 from alpaca_mcp_server.toolsets import OVERRIDE_OPERATION_IDS, TOOLSETS
 
-SPECS_DIR = Path(__file__).resolve().parent.parent / "src" / "alpaca_mcp_server" / "specs"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SPECS_DIR = REPO_ROOT / "src" / "alpaca_mcp_server" / "specs"
+
+
+def _search_version(text: str, pattern: str) -> str | None:
+    match = re.search(pattern, text, re.M)
+    return match.group(1) if match else None
 
 
 def _load_operation_ids(spec_name: str) -> set[str]:
@@ -106,3 +113,54 @@ def test_derived_lookups_match_tools():
     for op_id, t in TOOLS.items():
         assert TOOL_NAMES[op_id] == t.name
         assert TOOL_DESCRIPTIONS[op_id] == t.description
+
+
+def test_release_versions_are_consistent():
+    """Every existing release version field must match pyproject.toml."""
+    expected = _search_version(
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"),
+        r'^version = "([^"]+)"',
+    )
+    assert expected, "Could not read project.version from pyproject.toml"
+
+    found: dict[str, str | None] = {
+        "src/alpaca_mcp_server/__init__.py": _search_version(
+            (REPO_ROOT / "src" / "alpaca_mcp_server" / "__init__.py").read_text(
+                encoding="utf-8"
+            ),
+            r'^__version__ = "([^"]+)"',
+        ),
+        "server.yaml metadata.version": _search_version(
+            (REPO_ROOT / "server.yaml").read_text(encoding="utf-8"),
+            r'^  version: "([^"]+)"',
+        ),
+        "charts/alpaca-mcp-server/Chart.yaml appVersion": _search_version(
+            (REPO_ROOT / "charts" / "alpaca-mcp-server" / "Chart.yaml").read_text(
+                encoding="utf-8"
+            ),
+            r'^appVersion: "([^"]+)"',
+        ),
+        "uv.lock alpaca-mcp-server": _search_version(
+            (REPO_ROOT / "uv.lock").read_text(encoding="utf-8"),
+            r'^\[\[package\]\]\nname = "alpaca-mcp-server"\nversion = "([^"]+)"',
+        ),
+    }
+
+    server_json = json.loads((REPO_ROOT / "server.json").read_text(encoding="utf-8"))
+    found["server.json version"] = server_json.get("version")
+    packages = server_json.get("packages") or []
+    found["server.json packages[0].version"] = (
+        packages[0].get("version") if packages else None
+    )
+
+    manifest = json.loads(
+        (REPO_ROOT / ".well-known" / "mcp" / "manifest.json").read_text(encoding="utf-8")
+    )
+    found[".well-known/mcp/manifest.json version"] = manifest.get("version")
+
+    mismatches = [
+        f"{label}: {value!r} (expected {expected!r})"
+        for label, value in found.items()
+        if value != expected
+    ]
+    assert not mismatches, "Release version mismatch:\n" + "\n".join(mismatches)
