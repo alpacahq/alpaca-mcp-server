@@ -31,6 +31,7 @@ TRADING_API_BASE_URLS = {
     "live": "https://api.alpaca.markets",
 }
 MARKET_DATA_BASE_URL = "https://data.alpaca.markets"
+LIVE_TRADING_OPT_IN_ENV = "ALPACA_ALLOW_LIVE_TRADING"
 
 
 def strip_v_from_version(release_version: str) -> str:
@@ -113,8 +114,26 @@ def _build_auth_headers() -> dict[str, str]:
     return headers
 
 
+class LiveTradingDisabledError(ValueError):
+    """Raised when live trading is requested without explicit opt-in."""
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"true", "1", "yes"}
+
+
 def _get_trading_base_url() -> str:
-    paper = os.environ.get("ALPACA_PAPER_TRADE", "true").lower() in ("true", "1", "yes")
+    paper = _env_flag("ALPACA_PAPER_TRADE", True)
+    if not paper and not _env_flag(LIVE_TRADING_OPT_IN_ENV, False):
+        raise LiveTradingDisabledError(
+            "Live trading requested but not enabled. "
+            "Leave ALPACA_PAPER_TRADE=true for paper trading, or set "
+            f"{LIVE_TRADING_OPT_IN_ENV}=true alongside ALPACA_PAPER_TRADE=false "
+            "to opt in explicitly."
+        )
     return TRADING_API_BASE_URLS["paper" if paper else "live"]
 
 
