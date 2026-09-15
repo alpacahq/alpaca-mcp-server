@@ -144,7 +144,7 @@ version.
 
 ```bash
 VERSION=$(python -c 'import re, pathlib; print(re.search(r"^version = \"([^\"]+)\"", pathlib.Path("pyproject.toml").read_text(), re.M).group(1))')
-gh release create "v$VERSION" --target main --generate-notes --verify-tag=false
+gh release create "v$VERSION" --target main --generate-notes
 ```
 
 4. Watch the **Publish Python package** Action. The workflow is triggered by the

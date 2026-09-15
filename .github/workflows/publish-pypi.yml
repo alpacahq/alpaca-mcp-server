@@ -30,6 +30,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --extra dev
 
+      # origin/main is only available because the checkout above uses fetch-depth: 0.
       - name: Verify release commit is on main
         run: |
           if ! git merge-base --is-ancestor HEAD origin/main; then
