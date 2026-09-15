@@ -5,11 +5,11 @@
 This MCP server auto-generates tools from bundled OpenAPI specs (`src/alpaca_mcp_server/specs/`) using FastMCP's `from_openapi()`. Tool names, descriptions, and output risk classifications are defined in `tool_registry.py`. Complex endpoints (orders, historical data) use hand-written overrides in `overrides.py` and `market_data_overrides.py`. Toolset filtering is defined in `toolsets.py`. A trust-boundary middleware (`security.py`) wraps every tool result in a security envelope to mitigate prompt injection via tool outputs.
 
 The test suite has three layers:
-- `tests/test_integrity.py` — Spec ↔ toolset ↔ names consistency (no network)
+- `tests/test_integrity.py` — Spec ↔ toolset ↔ names consistency, plus release version alignment (no network)
 - `tests/test_server_construction.py` — Server builds correctly and exposes the expected tool set (no network)
 - `tests/test_paper_integration.py` — Real API calls against Alpaca paper (needs credentials)
 
-CI is defined in `.github/workflows/ci.yml` with two jobs: `test-core` (runs on every PR) and `test-integration` (runs when `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` secrets are available).
+CI is defined in `.github/workflows/ci.yml` with two jobs: `test-core` (runs on every PR) and `test-integration` (runs when `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` secrets are available). PyPI publishing is defined in `.github/workflows/publish-pypi.yml` and runs only when a GitHub Release is published.
 
 ---
 
@@ -77,7 +77,7 @@ Run the integrity test suite. It checks that every operationId in `toolsets.py` 
 python -m pytest tests/test_integrity.py -v
 ```
 
-All 7 tests must pass before proceeding. The tests are self-updating — they read `toolsets.py`, `tool_registry.py`, and the spec JSONs at runtime, so they never need manual changes.
+All 8 tests must pass before proceeding. The tests are self-updating — they read `toolsets.py`, `tool_registry.py`, the spec JSONs, and the existing release version fields at runtime, so they never need manual changes.
 
 ## Step 4: Update README.md
 
@@ -118,3 +118,48 @@ Write a descriptive commit message listing:
 - Any breaking changes (removed/renamed endpoints)
 - Whether README was updated
 - Whether new tests were added
+
+---
+
+# Releasing to PyPI
+
+Publishing is a human release decision. Agents may prepare a version-bump PR and
+the release command, but must not silently create a production GitHub Release.
+
+Never publish from a feature branch or an ordinary `main` push. Never upload a
+version that already exists on PyPI. Never try to delete and reuse a bad
+version.
+
+1. If the release change did not already bump versions, open a dedicated
+   version-bump PR and keep these fields aligned:
+   - `pyproject.toml` `project.version`
+   - `src/alpaca_mcp_server/__init__.py` `__version__`
+   - `server.json` `version` and `packages[0].version`
+   - `server.yaml` `metadata.version`
+   - `.well-known/mcp/manifest.json` `version`
+   - `charts/alpaca-mcp-server/Chart.yaml` `appVersion` (leave chart `version: 0.1.0` unless the chart itself changed)
+   - `uv.lock` editable `alpaca-mcp-server` package
+2. Confirm CI on `main` is green after the version PR merges.
+3. Create a GitHub Release from that `main` commit using tag `vX.Y.Z`:
+
+```bash
+VERSION=$(python -c 'import re, pathlib; print(re.search(r"^version = \"([^\"]+)\"", pathlib.Path("pyproject.toml").read_text(), re.M).group(1))')
+gh release create "v$VERSION" --target main --generate-notes --verify-tag=false
+```
+
+4. Watch the **Publish Python package** Action. The workflow is triggered by the
+   published Release, not by tag push alone.
+5. Verify:
+
+```bash
+uvx alpaca-mcp-server=="$VERSION" --version
+```
+
+Recovery:
+
+- A failure before upload may be rerun from GitHub Actions. No new version is
+  required.
+- A bad published release must be yanked on PyPI and replaced by a new patch
+  version. Do not overwrite or reuse the same version.
+- Do not use local `uv publish` or `twine upload` after the automated workflow
+  is live.
