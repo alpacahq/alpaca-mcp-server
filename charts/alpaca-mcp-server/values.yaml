@@ -63,7 +63,8 @@ service:
 
 # This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
 ingress:
-  enabled: true
+  # Public ingress requires standards-based MCP authentication and an explicit Host allowlist.
+  enabled: false
   className: "external-nginx"
   annotations: 
     cert-manager.io/cluster-issuer: "cert-manager-resources"
@@ -130,6 +131,8 @@ affinity: {}
 
 # Environment variables configuration
 env:
+  values:
+    FASTMCP_HTTP_ALLOWED_HOSTS: '["mcp.alpaca.markets"]'
   # Sensitive environment variables (stored in Secret, can be encrypted with SOPS)
   secrets: 
     ALPACA_API_KEY: "<alpaca-api-key>"

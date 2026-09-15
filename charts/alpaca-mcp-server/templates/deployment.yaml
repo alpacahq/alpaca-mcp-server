@@ -60,6 +60,13 @@ spec:
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.env.values }}
+          env:
+            {{- range $name, $value := . }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- end }}
           {{- if .Values.env.secrets }}
           envFrom:
             - secretRef:

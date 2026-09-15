@@ -5,11 +5,13 @@ CLI entry point for the Alpaca MCP Server.
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import click
 
 from . import __version__
+
+Transport = Literal["stdio", "streamable-http", "sse"]
 
 # Older Docker/Helm configs invoked `alpaca-mcp-server serve ...`; the CLI has no subcommands.
 if len(sys.argv) > 1 and sys.argv[1] == "serve":
@@ -42,7 +44,7 @@ def _default_port() -> int:
     default=None,
     help="Load environment variables from this file before starting",
 )
-def main(transport: str, host: str, port: int, env_file: Optional[Path]):
+def main(transport: Transport, host: str, port: int, env_file: Optional[Path]) -> None:
     """Alpaca MCP Server — Trading API integration for Model Context Protocol."""
     if env_file is not None:
         from dotenv import load_dotenv
@@ -63,5 +65,12 @@ def main(transport: str, host: str, port: int, env_file: Optional[Path]):
 
     if transport == "stdio":
         server.run(transport="stdio")
+    elif transport == "streamable-http":
+        server.run(
+            transport=transport,
+            host=host,
+            port=port,
+            host_origin_protection=True,
+        )
     else:
         server.run(transport=transport, host=host, port=port)
