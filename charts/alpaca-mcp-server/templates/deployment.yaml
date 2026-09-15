@@ -60,13 +60,17 @@ spec:
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.env.values }}
+          {{- $envValues := default dict .Values.env.values }}
+          {{- $derivedHosts := include "mcp-server.allowedHosts" . }}
           env:
-            {{- range $name, $value := . }}
+            {{- if not (index $envValues "FASTMCP_HTTP_ALLOWED_HOSTS") }}
+            - name: FASTMCP_HTTP_ALLOWED_HOSTS
+              value: {{ $derivedHosts | quote }}
+            {{- end }}
+            {{- range $name, $value := $envValues }}
             - name: {{ $name }}
               value: {{ $value | quote }}
             {{- end }}
-          {{- end }}
           {{- if .Values.env.secrets }}
           envFrom:
             - secretRef:

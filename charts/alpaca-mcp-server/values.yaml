@@ -69,6 +69,7 @@ ingress:
   className: "external-nginx"
   annotations: 
     cert-manager.io/cluster-issuer: "cert-manager-resources"
+  # These hostnames are also used as FASTMCP_HTTP_ALLOWED_HOSTS.
   hosts:
     - host: mcp.alpaca.markets
       paths:
@@ -133,8 +134,8 @@ affinity: {}
 
 # Environment variables configuration
 env:
-  values:
-    FASTMCP_HTTP_ALLOWED_HOSTS: '["mcp.alpaca.markets"]'
+  # FASTMCP_HTTP_ALLOWED_HOSTS is derived from ingress.hosts unless set here.
+  values: {}
   # Sensitive environment variables (stored in Secret, can be encrypted with SOPS)
   secrets: 
     ALPACA_API_KEY: "<alpaca-api-key>"

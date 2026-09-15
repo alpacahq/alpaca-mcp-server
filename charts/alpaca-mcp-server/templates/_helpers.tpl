@@ -60,3 +60,15 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+JSON Host allowlist derived from ingress.hosts.
+Override with env.values.FASTMCP_HTTP_ALLOWED_HOSTS when needed.
+*/}}
+{{- define "mcp-server.allowedHosts" -}}
+{{- $hosts := list -}}
+{{- range .Values.ingress.hosts -}}
+{{- $hosts = append $hosts .host -}}
+{{- end -}}
+{{- $hosts | toJson -}}
+{{- end }}

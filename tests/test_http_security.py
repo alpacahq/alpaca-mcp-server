@@ -109,6 +109,50 @@ async def test_default_streamable_http_accepts_loopback_host() -> None:
     assert response.status_code not in {403, 421}
 
 
+@pytest.mark.asyncio
+async def test_cli_streamable_http_app_rejects_untrusted_host() -> None:
+    server = build_server()
+    captured: dict[str, Any] = {}
+
+    def fake_run(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    server.run = fake_run  # type: ignore[method-assign]
+
+    with (
+        patch.dict(
+            "os.environ",
+            {
+                "ALPACA_API_KEY": "test-key",
+                "ALPACA_SECRET_KEY": "test-secret",
+            },
+        ),
+        patch("alpaca_mcp_server.server.build_server", return_value=server),
+    ):
+        result = CliRunner().invoke(main, ["--transport", "streamable-http"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["host_origin_protection"] is True
+
+    app = server.http_app(
+        transport=captured["transport"],
+        host_origin_protection=captured["host_origin_protection"],
+        allowed_hosts=captured.get("allowed_hosts"),
+        allowed_origins=captured.get("allowed_origins"),
+        middleware=captured.get("middleware"),
+    )
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://127.0.0.1",
+    ) as client:
+        response = await client.post("/mcp", headers={"Host": "attacker.example"})
+
+    assert response.status_code == 421
+    assert response.text == "Misdirected Request"
+
+
 def test_sse_enables_strict_host_origin_protection() -> None:
     server = MagicMock()
 
