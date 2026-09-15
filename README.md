@@ -31,7 +31,6 @@
 - [Example Prompts](#example-prompts)
 - [Available Tools](#available-tools)
 - [Testing](#testing)
-- [Releasing to PyPI](#releasing-to-pypi)
 - [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
 - [Disclosure](#disclosure)
@@ -535,38 +534,6 @@ ALPACA_API_KEY=... ALPACA_SECRET_KEY=... pytest tests/ -m integration -v
 # ReadMe docs integration tests (requires network, no Alpaca credentials)
 ALPACA_RUN_README_INTEGRATION=true pytest tests/test_readme_integration.py -v
 ```
-
-## Releasing to PyPI
-
-Publishing happens automatically when a GitHub Release is published. Do not use
-local `uv publish` or `twine upload` for normal releases.
-
-1. Update every existing version field in a reviewed PR:
-   - `pyproject.toml` (`project.version`)
-   - `src/alpaca_mcp_server/__init__.py` (`__version__`)
-   - `server.json` (`version` and `packages[0].version`)
-   - `server.yaml` (`metadata.version`)
-   - `.well-known/mcp/manifest.json` (`version`)
-   - `charts/alpaca-mcp-server/Chart.yaml` (`appVersion` only)
-   - `uv.lock` (the editable `alpaca-mcp-server` package)
-2. Merge that PR after CI on `main` is green.
-3. Read the package version and create a GitHub Release from `main`:
-
-```bash
-VERSION=$(python -c 'import re, pathlib; print(re.search(r"^version = \"([^\"]+)\"", pathlib.Path("pyproject.toml").read_text(), re.M).group(1))')
-gh release create "v$VERSION" --target main --generate-notes
-```
-
-4. Watch the **Publish Python package** Action.
-5. Verify the published package:
-
-```bash
-uvx alpaca-mcp-server=="$VERSION" --version
-```
-
-If the workflow fails before upload, fix the issue and rerun the same GitHub
-Actions run. If a bad version reaches PyPI, yank it and publish a new patch
-version. Do not delete and reuse a published version.
 
 ## Project Structure
 
