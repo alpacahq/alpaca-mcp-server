@@ -13,10 +13,11 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: "<mcp-server-image-tag>"
 
-# This sets the command to run in the container more information can be found here: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/
+# Default to local stdio. HTTP must be opted in explicitly.
 command: ["alpaca-mcp-server"]
-# This sets the arguments to pass to the command more information can be found here: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/
-args: ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+# When enabling Streamable HTTP:
+# args: ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+args: []
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
@@ -85,22 +86,23 @@ resources:
     cpu: 500m
     memory: 1Gi
 
-# This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
-# Using TCP socket probes since the MCP server requires specific HTTP headers (text/event-stream)
-livenessProbe:
-  tcpSocket:
-    port: http
-  initialDelaySeconds: 10
-  periodSeconds: 10
-  timeoutSeconds: 3
-  failureThreshold: 3
-readinessProbe:
-  tcpSocket:
-    port: http
-  initialDelaySeconds: 5
-  periodSeconds: 5
-  timeoutSeconds: 3
-  failureThreshold: 3
+# Disabled while the default transport is stdio. Restore TCP probes when enabling HTTP.
+# livenessProbe:
+#   tcpSocket:
+#     port: http
+#   initialDelaySeconds: 10
+#   periodSeconds: 10
+#   timeoutSeconds: 3
+#   failureThreshold: 3
+# readinessProbe:
+#   tcpSocket:
+#     port: http
+#   initialDelaySeconds: 5
+#   periodSeconds: 5
+#   timeoutSeconds: 3
+#   failureThreshold: 3
+livenessProbe: null
+readinessProbe: null
 
 # This section is for setting up autoscaling more information can be found here: https://kubernetes.io/docs/concepts/workloads/autoscaling/
 autoscaling:
