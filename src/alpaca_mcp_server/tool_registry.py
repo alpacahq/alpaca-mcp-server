@@ -393,25 +393,31 @@ TOOLS: dict[str, ToolDefinition] = {
         name="get_locates",
         description=(
             "Returns locate requests for the account, filtered by status, symbol, "
-            "or date range. Results are sorted by creation date descending."
+            "or date range. Results are sorted by creation date descending. "
+            "Not available in paper trading."
         ),
     ),
     "createLocates": ToolDefinition(
         name="create_locate",
         description=(
             "Creates a locate request for a short sale. Requires a symbol and "
-            "quantity. Optionally set a limit price and all-or-none flag."
+            "quantity. Optionally set a limit price and all-or-none flag. "
+            "Not available in paper trading."
         ),
     ),
     "getLocate": ToolDefinition(
         name="get_locate",
-        description="Returns a single locate request by its ID.",
+        description=(
+            "Returns a single locate request by its ID. "
+            "Not available in paper trading."
+        ),
     ),
     "listLocateQuotes": ToolDefinition(
         name="get_locate_quotes",
         description=(
             "Returns locate availability and pricing for one or more symbols. "
-            "Provide a comma-separated list of symbols."
+            "Provide a comma-separated list of symbols. "
+            "Not available in paper trading."
         ),
     ),
 

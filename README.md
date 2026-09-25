@@ -494,7 +494,7 @@ If the ReadMe MCP lookup fails, tool responses include fallback links to Alpaca'
 
 - `get_fixed_income_latest_quotes` — Latest quotes for fixed income securities by ISIN
 
-**Locates (Short Selling)**
+**Locates (Short Selling)** — not available in paper trading
 
 - `get_locates` — List locate requests filtered by status, symbol, or date range
 - `create_locate` — Create a locate request for a short sale

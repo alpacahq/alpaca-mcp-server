@@ -16,9 +16,12 @@ from typing import Any
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
+from fastmcp import FastMCP
 from fastmcp.client import Client
 
+from alpaca_mcp_server.overrides import register_order_tools
 from alpaca_mcp_server.readme_docs import (
     DEFAULT_README_MCP_URL,
     README_DOC_TOOL_NAMES,
@@ -664,6 +667,52 @@ async def test_order_tools_have_destructive_hint():
         annotations = t.annotations
         assert annotations is not None, f"{t.name} missing annotations"
         assert annotations.destructiveHint is True, f"{t.name} should have destructiveHint=True"
+
+
+async def _capture_order_body(tool_name: str, args: dict[str, Any]) -> dict:
+    """Call an order tool against a mock transport and return the sent body."""
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"id": "test-order-id"})
+
+    server = FastMCP("test-orders")
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://example.com"
+    ) as api_client:
+        register_order_tools(server, api_client)
+        async with Client(transport=server) as client:
+            await client.call_tool(tool_name, args)
+    return captured
+
+
+async def test_place_option_order_sends_stop_price():
+    """Options support stop and stop_limit, so stop_price must reach the API."""
+    body = await _capture_order_body(
+        "place_option_order",
+        {
+            "symbol": "AAPL250321C00150000",
+            "side": "buy",
+            "qty": "1",
+            "type": "stop_limit",
+            "time_in_force": "gtc",
+            "limit_price": "1.50",
+            "stop_price": "1.25",
+        },
+    )
+    assert body["stop_price"] == "1.25"
+    assert body["type"] == "stop_limit"
+    assert body["time_in_force"] == "gtc"
+
+
+async def test_place_option_order_omits_stop_price_when_unset():
+    """stop_price must not be sent for plain market orders."""
+    body = await _capture_order_body(
+        "place_option_order",
+        {"symbol": "AAPL250321C00150000", "side": "buy", "qty": "1"},
+    )
+    assert "stop_price" not in body
 
 
 async def test_toolset_filtering():
