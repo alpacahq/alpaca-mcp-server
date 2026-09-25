@@ -263,6 +263,7 @@ def register_order_tools(
         side: Optional[str] = None,
         position_intent: Optional[str] = None,
         limit_price: Optional[str] = None,
+        stop_price: Optional[str] = None,
         client_order_id: Optional[str] = None,
         order_class: Optional[str] = None,
         legs: Optional[list[dict]] = None,
@@ -280,9 +281,9 @@ def register_order_tools(
                  multiplier — each leg's ratio_qty is scaled by this
                  value (e.g., qty="10" with ratio_qty="2" = 20
                  contracts for that leg).
-            type: "market" or "limit".
-            time_in_force: "day" only. Options do not support other
-                           values.
+            type: "market", "limit", "stop", or "stop_limit" for single-leg.
+                  Multi-leg supports only "market" and "limit".
+            time_in_force: "day" or "gtc".
             symbol: OCC option symbol (e.g., "AAPL250321C00150000").
                     Required for single-leg.
             side: "buy" or "sell". Required for single-leg.
@@ -290,9 +291,11 @@ def register_order_tools(
                              or "sell_to_close". Clarifies whether the trade
                              opens or closes a position. Optional but
                              recommended.
-            limit_price: Required for limit orders. For multi-leg, this is
-                         the net debit/credit (positive = debit/cost,
-                         negative = credit/proceeds).
+            limit_price: Required for limit and stop_limit orders. For
+                         multi-leg, this is the net debit/credit
+                         (positive = debit/cost, negative = credit/proceeds).
+            stop_price: Required for stop and stop_limit orders. Single-leg
+                        only.
             client_order_id: Unique idempotency key. If the request times out,
                              you can safely retry with the same value — the API
                              will reject duplicates. Recommended for every order.
@@ -331,6 +334,8 @@ def register_order_tools(
             body["position_intent"] = position_intent
         if limit_price is not None:
             body["limit_price"] = limit_price
+        if stop_price is not None:
+            body["stop_price"] = stop_price
         if client_order_id is not None:
             body["client_order_id"] = client_order_id
         if order_class is not None:
