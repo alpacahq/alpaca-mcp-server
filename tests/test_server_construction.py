@@ -412,7 +412,7 @@ async def test_generated_tools_are_annotated_from_their_http_method():
             continue  # replaced by a hand-written override
         annotations = by_name[name].annotations
         assert annotations is not None, f"{name} has no annotations"
-        if method == "GET":
+        if method in ("GET", "HEAD", "OPTIONS"):
             assert annotations.readOnlyHint is True, f"{name} ({method}) should be read-only"
             assert annotations.destructiveHint is not True, f"{name} ({method}) marked destructive"
         else:
