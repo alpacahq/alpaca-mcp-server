@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
 from types import TracebackType
 from typing import Any
@@ -28,7 +29,9 @@ from alpaca_mcp_server.readme_docs import (
     ReadMeClientFactory,
 )
 from alpaca_mcp_server.security import DATA_KEY, SECURITY_KEY
+from alpaca_mcp_server.tool_registry import TOOL_NAMES
 from alpaca_mcp_server.server import (
+    _annotations_for_method,
     _build_auth_headers,
     _make_api_client,
     _strip_openapi_vendor_extensions,
@@ -380,6 +383,76 @@ async def test_all_tools_have_descriptions():
     tools = await _list_tools()
     empty = [t.name for t in tools if not t.description or not t.description.strip()]
     assert not empty, f"Tools with empty descriptions: {sorted(empty)}"
+
+
+def _http_method_by_tool_name() -> dict[str, str]:
+    """Map every generated tool name to the HTTP method of its route."""
+    specs_dir = Path(__file__).resolve().parent.parent / "src" / "alpaca_mcp_server" / "specs"
+    out: dict[str, str] = {}
+    for spec_name in ("trading-api", "market-data-api"):
+        spec = json.loads((specs_dir / f"{spec_name}.json").read_text(encoding="utf-8"))
+        for methods in spec["paths"].values():
+            for method, details in methods.items():
+                if isinstance(details, dict) and details.get("operationId") in TOOL_NAMES:
+                    out[TOOL_NAMES[details["operationId"]]] = method.upper()
+    return out
+
+
+async def test_generated_tools_are_annotated_from_their_http_method():
+    """A GET tool is read-only; anything that writes carries destructiveHint.
+
+    Clients use these hints to decide whether to ask the user before a call,
+    so cancel_all_orders and close_all_positions must not look like reads.
+    """
+    tools = await _list_tools()
+    by_name = {t.name: t for t in tools}
+    checked = 0
+    for name, method in _http_method_by_tool_name().items():
+        if name not in by_name:
+            continue  # replaced by a hand-written override
+        annotations = by_name[name].annotations
+        assert annotations is not None, f"{name} has no annotations"
+        if method == "GET":
+            assert annotations.readOnlyHint is True, f"{name} ({method}) should be read-only"
+            assert annotations.destructiveHint is not True, f"{name} ({method}) marked destructive"
+        else:
+            assert annotations.destructiveHint is True, f"{name} ({method}) should be destructive"
+            assert annotations.readOnlyHint is not True, f"{name} ({method}) marked read-only"
+        checked += 1
+    assert checked > 40, f"only {checked} generated tools were checked"
+
+
+async def test_every_tool_declares_read_only_or_destructive():
+    """No tool, generated or hand-written, is left without a safety hint."""
+    tools = await _list_tools()
+    unhinted = [
+        t.name
+        for t in tools
+        if t.annotations is None
+        or (t.annotations.readOnlyHint is not True and t.annotations.destructiveHint is not True)
+    ]
+    assert not unhinted, f"Tools without readOnlyHint or destructiveHint: {sorted(unhinted)}"
+
+
+@pytest.mark.parametrize(
+    "method, read_only",
+    [("GET", True), ("get", True), ("HEAD", True), ("POST", False), ("PATCH", False), ("PUT", False), ("DELETE", False)],
+)
+def test_annotations_for_method(method: str, read_only: bool) -> None:
+    hints = _annotations_for_method(method)
+    assert hints.readOnlyHint is read_only
+    assert hints.destructiveHint is (not read_only)
+
+
+def test_annotations_for_method_keeps_other_hints() -> None:
+    from mcp.types import ToolAnnotations
+
+    existing = ToolAnnotations(title="Cancel", openWorldHint=True, idempotentHint=True)
+    hints = _annotations_for_method("DELETE", existing)
+    assert hints.title == "Cancel"
+    assert hints.openWorldHint is True
+    assert hints.idempotentHint is True
+    assert hints.destructiveHint is True and hints.readOnlyHint is False
 
 
 async def test_readme_tools_are_registered_by_default():
