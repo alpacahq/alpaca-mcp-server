@@ -18,5 +18,5 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-# HTTP transport for remote MCP clients (e.g. ChatGPT). Bind all interfaces; use Render's $PORT via cli default.
-CMD ["alpaca-mcp-server", "--transport", "streamable-http", "--host", "0.0.0.0"]
+# Use the local stdio transport unless the operator explicitly configures secured HTTP.
+CMD ["alpaca-mcp-server"]

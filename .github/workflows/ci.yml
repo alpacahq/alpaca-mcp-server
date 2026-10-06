@@ -28,7 +28,7 @@ jobs:
         run: uv pip install --system -e ".[dev]"
 
       - name: Run core tests
-        run: pytest tests/test_integrity.py tests/test_server_construction.py
+        run: pytest tests/test_integrity.py tests/test_server_construction.py tests/test_http_security.py
 
   # ── Job 2: Integration tests (paper API, secrets required) ────────────
   # Runs only on pushes to main and PRs from the same repo (not forks).

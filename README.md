@@ -115,15 +115,11 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac) or 
 
 ### Claude Mobile
 
-Alpaca does not provide a hosted remote MCP server. To use the MCP server on the Claude mobile app, host it remotely on a cloud provider, then add it as a custom connector in Claude. The connector syncs to the mobile app once connected on the web.
-
-For hosting, deployment, and connector setup, see [How to Deploy Alpaca's MCP Server Remotely on Claude Mobile App](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app).
+Claude Mobile requires a remote MCP server. This package does not configure remote MCP authentication, so do not expose it directly to the public internet with your Alpaca API keys. Use the local stdio setup from a supported desktop client.
 
 ### ChatGPT
 
-Alpaca does not provide a hosted remote MCP server. To use the MCP server in ChatGPT, host it remotely on a cloud provider, then add it as a connector.
-
-See [Connectors in ChatGPT](https://help.openai.com/en/articles/11487775-connectors-in-chatgpt) and the [Claude Mobile deployment guide](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app) for hosting and setup steps.
+ChatGPT requires a remote MCP server. This package does not configure remote MCP authentication, so do not expose it directly to the public internet with your Alpaca API keys. Use the local stdio setup from a supported desktop client.
 
 ### Cursor
 
@@ -150,16 +146,14 @@ Create `.vscode/mcp.json` in your project root. See the [official docs](https://
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "alpaca": {
-        "type": "stdio",
-        "command": "uvx",
-        "args": ["alpaca-mcp-server"],
-        "env": {
-          "ALPACA_API_KEY": "your_alpaca_api_key",
-          "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
-        }
+  "servers": {
+    "alpaca": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["alpaca-mcp-server"],
+      "env": {
+        "ALPACA_API_KEY": "your_alpaca_api_key",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
       }
     }
   }
@@ -500,7 +494,7 @@ If the ReadMe MCP lookup fails, tool responses include fallback links to Alpaca'
 
 - `get_fixed_income_latest_quotes` — Latest quotes for fixed income securities by ISIN
 
-**Locates (Short Selling)**
+**Locates (Short Selling)** — not available in paper trading
 
 - `get_locates` — List locate requests filtered by status, symbol, or date range
 - `create_locate` — Create a locate request for a short sale
@@ -564,7 +558,8 @@ alpaca-mcp-server/
 │   └── sync-specs.sh        ← Download latest OpenAPI specs
 ├── .github/
 │   └── workflows/
-│       └── ci.yml            ← CI pipeline (core + integration)
+│       ├── ci.yml            ← CI pipeline (core + integration)
+│       └── publish-pypi.yml  ← PyPI publish on GitHub Release
 ├── AGENTS.md                 ← Instructions for coding agents
 ├── pyproject.toml
 └── README.md
@@ -618,7 +613,7 @@ For information about how Alpaca handles your data, please review:
 
 This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
 
-**HTTP Transport Security**: When using HTTP transport, the server defaults to localhost (127.0.0.1:8000) for security. For remote access, you can bind to all interfaces with `--host 0.0.0.0`, use SSH tunneling (`ssh -L 8000:localhost:8000 user@server`), or set up a reverse proxy with authentication for secure access.
+**HTTP Transport Security**: Streamable HTTP defaults to localhost (`127.0.0.1:8000`) and validates `Host` and `Origin` headers. Docker defaults to stdio. Helm defaults to ClusterIP HTTP with ingress off. Binding to `0.0.0.0` does not provide authentication. This package does not configure MCP OAuth, so do not expose it directly to the public internet. Operators that provide standards-based MCP authentication must also set FastMCP's `FASTMCP_HTTP_ALLOWED_HOSTS` to the exact public hostnames.
 
 ## Support
 

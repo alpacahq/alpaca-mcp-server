@@ -13,9 +13,8 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: "<mcp-server-image-tag>"
 
-# This sets the command to run in the container more information can be found here: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/
+# ClusterIP HTTP. Ingress stays off until MCP authentication is configured.
 command: ["alpaca-mcp-server"]
-# This sets the arguments to pass to the command more information can be found here: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/
 args: ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
@@ -63,10 +62,12 @@ service:
 
 # This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
 ingress:
-  enabled: true
+  # Public ingress requires standards-based MCP authentication and an explicit Host allowlist.
+  enabled: false
   className: "external-nginx"
   annotations: 
     cert-manager.io/cluster-issuer: "cert-manager-resources"
+  # Added to FASTMCP_HTTP_ALLOWED_HOSTS only when ingress.enabled is true.
   hosts:
     - host: mcp.alpaca.markets
       paths:
@@ -84,8 +85,7 @@ resources:
     cpu: 500m
     memory: 1Gi
 
-# This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
-# Using TCP socket probes since the MCP server requires specific HTTP headers (text/event-stream)
+# TCP probes: MCP requires specific HTTP headers, so HTTP path probes are not used.
 livenessProbe:
   tcpSocket:
     port: http
@@ -130,6 +130,8 @@ affinity: {}
 
 # Environment variables configuration
 env:
+  # FASTMCP_HTTP_ALLOWED_HOSTS is derived from the Service DNS name, plus ingress.hosts when ingress is enabled.
+  values: {}
   # Sensitive environment variables (stored in Secret, can be encrypted with SOPS)
   secrets: 
     ALPACA_API_KEY: "<alpaca-api-key>"

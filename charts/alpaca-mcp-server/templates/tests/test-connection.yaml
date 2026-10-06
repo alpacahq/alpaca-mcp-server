@@ -1,3 +1,4 @@
+{{- if .Values.args }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -13,3 +14,4 @@ spec:
       command: ['wget']
       args: ['{{ include "mcp-server.fullname" . }}:{{ .Values.service.port }}']
   restartPolicy: Never
+{{- end }}
