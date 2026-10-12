@@ -706,6 +706,24 @@ async def test_place_option_order_sends_stop_price():
     assert body["time_in_force"] == "gtc"
 
 
+async def test_place_option_order_accepts_numeric_limit_price():
+    """A numeric MCP price must pass validation and reach the API as a number."""
+    body = await _capture_order_body(
+        "place_option_order",
+        {
+            "symbol": "AAPL270122C00200000",
+            "side": "sell",
+            "qty": "1",
+            "type": "limit",
+            "time_in_force": "day",
+            "position_intent": "sell_to_open",
+            "limit_price": 0.88,
+        },
+    )
+    assert body["limit_price"] == 0.88
+    assert isinstance(body["limit_price"], float)
+
+
 async def test_place_option_order_omits_stop_price_when_unset():
     """stop_price must not be sent for plain market orders."""
     body = await _capture_order_body(

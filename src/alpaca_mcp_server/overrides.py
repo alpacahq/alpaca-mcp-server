@@ -262,7 +262,7 @@ def register_order_tools(
         symbol: Optional[str] = None,
         side: Optional[str] = None,
         position_intent: Optional[str] = None,
-        limit_price: Optional[str] = None,
+        limit_price: Optional[str | float] = None,
         stop_price: Optional[str] = None,
         client_order_id: Optional[str] = None,
         order_class: Optional[str] = None,
