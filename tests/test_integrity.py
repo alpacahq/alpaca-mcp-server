@@ -7,9 +7,13 @@ entries, and duplicate tool names.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import ssl
 from pathlib import Path
+
+import certifi
 
 from alpaca_mcp_server.tool_registry import TOOLS, TOOL_NAMES, TOOL_DESCRIPTIONS
 from alpaca_mcp_server.toolsets import OVERRIDE_OPERATION_IDS, TOOLSETS
@@ -164,3 +168,14 @@ def test_release_versions_are_consistent():
         if value != expected
     ]
     assert not mismatches, "Release version mismatch:\n" + "\n".join(mismatches)
+
+
+def test_client_trust_store_excludes_compromised_roots():
+    context = ssl.create_default_context(cafile=certifi.where())
+    roots = context.get_ca_certs(binary_form=True)
+    assert roots
+    fingerprints = {hashlib.sha256(root).hexdigest() for root in roots}
+    assert fingerprints.isdisjoint({
+        "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b",
+        "d7a7a0fb5d7e2731d771e9484ebcdef71d5f0c3e0a2948782bc83ee0ea699ef4",
+    })
