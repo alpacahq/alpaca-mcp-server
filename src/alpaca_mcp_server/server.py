@@ -17,7 +17,9 @@ from typing import Any
 
 import httpx
 from fastmcp import FastMCP
+from fastmcp.server.providers.openapi.components import OpenAPITool
 from fastmcp.server.providers.openapi.routing import MCPType
+from mcp.types import ToolAnnotations
 
 from .readme_docs import ReadMeClientFactory, register_readme_docs_tools
 from .security import TrustBoundaryMiddleware
@@ -88,12 +90,38 @@ def _make_filter(allowed_ops: set[str]):
     return filter_fn
 
 
+# HTTP methods that only read state. Everything else changes the account:
+# orders, positions, watchlists, account configuration.
+_READ_ONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _annotations_for_method(
+    method: str, existing: ToolAnnotations | None = None
+) -> ToolAnnotations:
+    """Derive readOnlyHint / destructiveHint from the route's HTTP method.
+
+    Hints already set on the component are kept; only the two hints that
+    follow from the method are (re)asserted, so a GET is always read-only
+    and a POST / PATCH / PUT / DELETE is always flagged destructive.
+    """
+    read_only = method.upper() in _READ_ONLY_METHODS
+    hints = existing.model_copy() if existing is not None else ToolAnnotations()
+    hints.readOnlyHint = read_only
+    hints.destructiveHint = not read_only
+    return hints
+
+
 def _make_customizer(descriptions: dict[str, str]):
-    """Create an mcp_component_fn that overrides descriptions where provided."""
+    """Create an mcp_component_fn that overrides descriptions where provided
+    and annotates every generated tool from its HTTP method."""
 
     def customizer(route, component):
         if route.operation_id in descriptions:
             component.description = descriptions[route.operation_id]
+        if isinstance(component, OpenAPITool):
+            component.annotations = _annotations_for_method(
+                route.method, component.annotations
+            )
 
     return customizer
 
