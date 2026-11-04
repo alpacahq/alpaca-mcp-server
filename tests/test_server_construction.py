@@ -652,6 +652,56 @@ async def test_readme_endpoint_tools_reject_broker_api_title():
     assert calls == []
 
 
+async def test_readme_endpoint_search_accepts_qualified_spec_titles():
+    """ReadMe titles like "Trading API (reference)" map to the plain allowed title."""
+    calls: list[CallRecord] = []
+    trading_endpoints = [{"path": "/v2/orders", "method": "POST", "summary": "Create an Order"}]
+    market_endpoints = [{"path": "/v2/stocks/bars", "method": "GET", "summary": "Stock Bars"}]
+    payload = [
+        {"title": "Broker API (reference)", "endpoints": [{"path": "/v1/accounts", "method": "POST"}]},
+        {"title": "Trading API (reference)", "endpoints": trading_endpoints},
+        {"title": "Market Data API (reference)", "endpoints": market_endpoints},
+    ]
+
+    def factory() -> FakeReadMeEndpointSearchClient:
+        return FakeReadMeEndpointSearchClient(calls, payload)
+
+    result = await _call_tool(
+        "search_alpaca_api_specs",
+        {"query": "orders"},
+        readme_client_factory=factory,
+    )
+
+    assert result[DATA_KEY] == {
+        "query": "orders",
+        "specs": [
+            {"title": "Trading API", "endpoints": trading_endpoints},
+            {"title": "Market Data API", "endpoints": market_endpoints},
+        ],
+    }
+
+
+async def test_readme_endpoint_tools_accept_qualified_spec_title():
+    calls: list[CallRecord] = []
+
+    def factory() -> FakeReadMeClient:
+        return FakeReadMeClient(calls)
+
+    await _call_tool(
+        "list_alpaca_api_endpoints",
+        {"title": "Trading API (reference)"},
+        readme_client_factory=factory,
+    )
+    broker = await _call_tool(
+        "list_alpaca_api_endpoints",
+        {"title": "Broker API (reference)"},
+        readme_client_factory=factory,
+    )
+
+    assert calls == [("list-endpoints", {"title": "Trading API"}, {"raise_on_error": False})]
+    assert "error" in broker[DATA_KEY]
+
+
 def test_readme_mcp_url_is_pinned_to_us_project():
     parsed = urlparse(DEFAULT_README_MCP_URL)
     assert parsed.path == "/mcp"
