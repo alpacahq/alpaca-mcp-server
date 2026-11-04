@@ -122,9 +122,11 @@ TOOLS: dict[str, ToolDefinition] = {
     "deleteAllOpenPositions": ToolDefinition(
         name="close_all_positions",
         description=(
-            "Closes all open positions by placing sell orders for each. "
-            "If the market is closed, the sell orders will remain queued and execute "
-            "at the next market open."
+            "Closes all open long and short positions by placing a closing order for each. "
+            "Returns one result per position: check every result's status, because a "
+            "position that could not be closed is reported as an error even when the "
+            "call as a whole succeeds. If the market is closed, the closing orders remain "
+            "queued and execute at the next market open."
         ),
     ),
     "optionExercise": ToolDefinition(
