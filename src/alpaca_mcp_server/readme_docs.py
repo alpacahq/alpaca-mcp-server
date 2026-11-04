@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from types import TracebackType
 from typing import Any, Protocol, cast
@@ -31,6 +32,8 @@ ALLOWED_SPEC_TITLES = (
     "Market Data API",
     "Authentication API",
 )
+# ReadMe may append a qualifier to spec titles, e.g. "Trading API (reference)".
+_SPEC_TITLE_QUALIFIER = re.compile(r"\s*\([^)]*\)\s*$")
 
 README_DOC_TOOL_NAMES = {
     SEARCH_ALPACA_DOCS,
@@ -92,8 +95,9 @@ def _clean_args(values: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalize_spec_title(title: str) -> str | None:
+    base = _SPEC_TITLE_QUALIFIER.sub("", title)
     for allowed in ALLOWED_SPEC_TITLES:
-        if title.casefold() == allowed.casefold():
+        if base.casefold() == allowed.casefold():
             return allowed
     return None
 
@@ -109,8 +113,9 @@ def _allowed_spec_groups(groups: list[Any]) -> list[dict[str, Any]]:
         if not isinstance(group, dict):
             continue
         title = group.get("title")
-        if isinstance(title, str) and _normalize_spec_title(title) is not None:
-            allowed.append(group)
+        normalized = _normalize_spec_title(title) if isinstance(title, str) else None
+        if normalized is not None:
+            allowed.append({**group, "title": normalized})
     return allowed
 
 
