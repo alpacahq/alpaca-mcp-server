@@ -21,6 +21,7 @@ import pytest
 from fastmcp import FastMCP
 from fastmcp.client import Client
 
+from alpaca_mcp_server.market_data_overrides import register_market_data_tools
 from alpaca_mcp_server.overrides import register_order_tools
 from alpaca_mcp_server.readme_docs import (
     DEFAULT_README_MCP_URL,
@@ -763,6 +764,56 @@ async def test_place_option_order_omits_stop_price_when_unset():
         {"symbol": "AAPL250321C00150000", "side": "buy", "qty": "1"},
     )
     assert "stop_price" not in body
+
+
+HISTORICAL_DATA_TOOLS = {
+    "get_stock_bars": ("/v2/stocks/bars", {"symbols": "AAPL"}),
+    "get_stock_quotes": ("/v2/stocks/quotes", {"symbols": "AAPL"}),
+    "get_stock_trades": ("/v2/stocks/trades", {"symbols": "AAPL"}),
+    "get_crypto_bars": ("/v1beta3/crypto/us/bars", {"symbols": "BTC/USD"}),
+    "get_crypto_quotes": ("/v1beta3/crypto/us/quotes", {"symbols": "BTC/USD"}),
+    "get_crypto_trades": ("/v1beta3/crypto/us/trades", {"symbols": "BTC/USD"}),
+}
+
+
+@pytest.mark.parametrize("tool_name", sorted(HISTORICAL_DATA_TOOLS))
+async def test_historical_data_tools_forward_page_token(tool_name: str):
+    """next_page_token is returned by the API, so page_token must be accepted and sent."""
+    path, args = HISTORICAL_DATA_TOOLS[tool_name]
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"next_page_token": None})
+
+    server = FastMCP("test-market-data")
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://example.com"
+    ) as api_client:
+        register_market_data_tools(server, api_client)
+        async with Client(transport=server) as client:
+            await client.call_tool(tool_name, {**args, "page_token": "cursor-123"})
+    assert captured["path"] == path
+    assert captured["params"]["page_token"] == "cursor-123"
+
+
+async def test_historical_data_omits_page_token_when_unset():
+    """The first page must not send an empty page_token."""
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={})
+
+    server = FastMCP("test-market-data")
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://example.com"
+    ) as api_client:
+        register_market_data_tools(server, api_client)
+        async with Client(transport=server) as client:
+            await client.call_tool("get_stock_bars", {"symbols": "AAPL"})
+    assert "page_token" not in captured["params"]
 
 
 async def test_toolset_filtering():
