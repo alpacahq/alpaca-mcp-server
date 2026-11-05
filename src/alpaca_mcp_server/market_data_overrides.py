@@ -25,14 +25,29 @@ _TIMEFRAME_ALIASES: dict[str, str] = {
 _TIMEFRAME_PATTERN = re.compile(r"^(\d+)(min|hour|day|week|month)$")
 
 
-def _relative_start(days: int = 0, hours: int = 0, minutes: int = 0) -> str | None:
-    """ISO-8601 timestamp computed as now(UTC) minus the given offset.
+def _parse_end(end: str | None) -> datetime:
+    """Parse an RFC 3339 / ISO-8601 ``end`` value; fall back to now(UTC)."""
+    if end:
+        try:
+            parsed = datetime.fromisoformat(end.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return datetime.now(timezone.utc)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    return datetime.now(timezone.utc)
+
+
+def _relative_start(
+    days: int = 0, hours: int = 0, minutes: int = 0, end: str | None = None
+) -> str | None:
+    """ISO-8601 timestamp computed as ``end`` (default now, UTC) minus the offset.
 
     Returns None when offset is zero so the API can apply its own default.
     """
     if days == 0 and hours == 0 and minutes == 0:
         return None
-    start = datetime.now(timezone.utc) - timedelta(days=days, hours=hours, minutes=minutes)
+    start = _parse_end(end) - timedelta(days=days, hours=hours, minutes=minutes)
     return start.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -116,7 +131,7 @@ def register_market_data_tools(
         """Retrieve historical price bars (OHLCV) for one or more stocks.
 
         When start is omitted, it is automatically computed as
-        now minus the days/hours/minutes lookback.
+        ``end`` (or now when omitted) minus the days/hours/minutes lookback.
 
         Args:
             symbols: Comma-separated tickers (e.g. "AAPL" or "AAPL,MSFT,GOOG").
@@ -140,7 +155,7 @@ def register_market_data_tools(
                   Useful for backtesting with historical ticker changes.
         """
         if start is None:
-            start = _relative_start(days=days, hours=hours, minutes=minutes)
+            start = _relative_start(days=days, hours=hours, minutes=minutes, end=end)
         return await _get(client, "/v2/stocks/bars", {
             "symbols": symbols,
             "timeframe": _normalize_timeframe(timeframe),
@@ -177,7 +192,7 @@ def register_market_data_tools(
         """Retrieve historical bid/ask quotes (level 1) for one or more stocks.
 
         When start is omitted, it is automatically computed as
-        now minus the days/hours/minutes lookback.
+        ``end`` (or now when omitted) minus the days/hours/minutes lookback.
 
         Args:
             symbols: Comma-separated tickers (e.g. "AAPL" or "AAPL,MSFT").
@@ -196,7 +211,7 @@ def register_market_data_tools(
             asof: As-of date (YYYY-MM-DD) for point-in-time symbol mapping.
         """
         if start is None:
-            start = _relative_start(days=days, hours=hours, minutes=minutes)
+            start = _relative_start(days=days, hours=hours, minutes=minutes, end=end)
         return await _get(client, "/v2/stocks/quotes", {
             "symbols": symbols,
             "start": start,
@@ -231,7 +246,7 @@ def register_market_data_tools(
         """Retrieve historical trade data for one or more stocks.
 
         When start is omitted, it is automatically computed as
-        now minus the days/hours/minutes lookback.
+        ``end`` (or now when omitted) minus the days/hours/minutes lookback.
 
         Args:
             symbols: Comma-separated tickers (e.g. "AAPL" or "AAPL,MSFT").
@@ -250,7 +265,7 @@ def register_market_data_tools(
             asof: As-of date (YYYY-MM-DD) for point-in-time symbol mapping.
         """
         if start is None:
-            start = _relative_start(days=days, hours=hours, minutes=minutes)
+            start = _relative_start(days=days, hours=hours, minutes=minutes, end=end)
         return await _get(client, "/v2/stocks/trades", {
             "symbols": symbols,
             "start": start,
@@ -285,7 +300,7 @@ def register_market_data_tools(
         """Retrieve historical price bars (OHLCV) for one or more cryptocurrencies.
 
         When start is omitted, it is automatically computed as
-        now minus the days/hours/minutes lookback.
+        ``end`` (or now when omitted) minus the days/hours/minutes lookback.
 
         Args:
             symbols: Comma-separated crypto pairs (e.g. "BTC/USD" or
@@ -302,7 +317,7 @@ def register_market_data_tools(
             sort: Timestamp sort order — "asc" (default) or "desc".
         """
         if start is None:
-            start = _relative_start(days=days, hours=hours, minutes=minutes)
+            start = _relative_start(days=days, hours=hours, minutes=minutes, end=end)
         return await _get(client, "/v1beta3/crypto/us/bars", {
             "symbols": symbols,
             "timeframe": _normalize_timeframe(timeframe),
@@ -332,7 +347,7 @@ def register_market_data_tools(
         """Retrieve historical bid/ask quotes for one or more cryptocurrencies.
 
         When start is omitted, it is automatically computed as
-        now minus the days/hours/minutes lookback.
+        ``end`` (or now when omitted) minus the days/hours/minutes lookback.
 
         Args:
             symbols: Comma-separated crypto pairs (e.g. "BTC/USD" or
@@ -347,7 +362,7 @@ def register_market_data_tools(
             sort: Timestamp sort order — "asc" (default) or "desc".
         """
         if start is None:
-            start = _relative_start(days=days, hours=hours, minutes=minutes)
+            start = _relative_start(days=days, hours=hours, minutes=minutes, end=end)
         return await _get(client, "/v1beta3/crypto/us/quotes", {
             "symbols": symbols,
             "start": start,
@@ -376,7 +391,7 @@ def register_market_data_tools(
         """Retrieve historical trade data for one or more cryptocurrencies.
 
         When start is omitted, it is automatically computed as
-        now minus the days/hours/minutes lookback.
+        ``end`` (or now when omitted) minus the days/hours/minutes lookback.
 
         Args:
             symbols: Comma-separated crypto pairs (e.g. "BTC/USD" or
@@ -391,7 +406,7 @@ def register_market_data_tools(
             sort: Timestamp sort order — "asc" (default) or "desc".
         """
         if start is None:
-            start = _relative_start(days=days, hours=hours, minutes=minutes)
+            start = _relative_start(days=days, hours=hours, minutes=minutes, end=end)
         return await _get(client, "/v1beta3/crypto/us/trades", {
             "symbols": symbols,
             "start": start,
