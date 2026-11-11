@@ -188,3 +188,24 @@ async def test_risk_level_used_in_envelope():
     result = _parse_structured(raw)
     assert result[SECURITY_KEY]["risk"] == "external_text"
     assert result[SECURITY_KEY]["instructions"] == INSTRUCTIONS["external_text"]
+
+
+def test_tool_result_import_supports_fastmcp_3_and_4(monkeypatch):
+    """security module resolves ToolResult from fastmcp.tools (v4+) or fastmcp.tools.tool (v3)."""
+    import importlib
+    import sys
+    import types
+    import alpaca_mcp_server.security as sec_mod
+
+    orig = sec_mod.ToolResult
+    try:
+        sentinel = type("DummyToolResult", (), {})
+        fake_tools_pkg = types.ModuleType("fastmcp.tools")
+        fake_tools_pkg.ToolResult = sentinel
+        monkeypatch.setitem(sys.modules, "fastmcp.tools", fake_tools_pkg)
+        monkeypatch.delitem(sys.modules, "fastmcp.tools.tool", raising=False)
+
+        importlib.reload(sec_mod)
+        assert sec_mod.ToolResult is sentinel
+    finally:
+        sec_mod.ToolResult = orig
