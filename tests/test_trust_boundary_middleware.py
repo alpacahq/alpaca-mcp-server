@@ -199,13 +199,26 @@ def test_tool_result_import_supports_fastmcp_3_and_4(monkeypatch):
 
     orig = sec_mod.ToolResult
     try:
-        sentinel = type("DummyToolResult", (), {})
-        fake_tools_pkg = types.ModuleType("fastmcp.tools")
-        fake_tools_pkg.ToolResult = sentinel
-        monkeypatch.setitem(sys.modules, "fastmcp.tools", fake_tools_pkg)
+        # Case 1: FastMCP 4+ where fastmcp.tools exports ToolResult directly
+        sentinel_v4 = type("DummyToolResultV4", (), {})
+        fake_tools_v4 = types.ModuleType("fastmcp.tools")
+        fake_tools_v4.ToolResult = sentinel_v4
+        monkeypatch.setitem(sys.modules, "fastmcp.tools", fake_tools_v4)
         monkeypatch.delitem(sys.modules, "fastmcp.tools.tool", raising=False)
 
         importlib.reload(sec_mod)
-        assert sec_mod.ToolResult is sentinel
+        assert sec_mod.ToolResult is sentinel_v4
+
+        # Case 2: FastMCP 3.x fallback where fastmcp.tools lacks ToolResult and fastmcp.tools.tool provides it
+        sentinel_v3 = type("DummyToolResultV3", (), {})
+        fake_tools_v3 = types.ModuleType("fastmcp.tools")
+        fake_tools_v3.__path__ = []
+        fake_tool_submod = types.ModuleType("fastmcp.tools.tool")
+        fake_tool_submod.ToolResult = sentinel_v3
+        monkeypatch.setitem(sys.modules, "fastmcp.tools", fake_tools_v3)
+        monkeypatch.setitem(sys.modules, "fastmcp.tools.tool", fake_tool_submod)
+
+        importlib.reload(sec_mod)
+        assert sec_mod.ToolResult is sentinel_v3
     finally:
         sec_mod.ToolResult = orig
