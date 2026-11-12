@@ -146,7 +146,8 @@ async def _cancel_order_after_replace(mcp: Client, order_id: str) -> None:
             await mcp.call_tool("cancel_order_by_id", {"order_id": cancel_id})
             return
         except Exception as exc:
-            text = str(exc).lower()
+            # FastMCP 4 JSON-encodes the upstream error body, escaping its quotes.
+            text = str(exc).lower().replace('\\"', '"')
             if "pending replacement" not in text and '"replaced" state' not in text:
                 raise
             last_error = exc
