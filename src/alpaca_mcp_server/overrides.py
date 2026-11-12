@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-import httpx
+import httpx2
 from fastmcp import FastMCP
 
 
@@ -21,7 +21,7 @@ def _error(message: str, **extra: object) -> dict:
     return {"error": err}
 
 
-async def _post_order(client: httpx.AsyncClient, body: dict) -> dict:
+async def _post_order(client: httpx2.AsyncClient, body: dict) -> dict:
     """Submit an order and return the response, surfacing API error details.
 
     Catches read-timeouts explicitly because the request may have reached
@@ -30,7 +30,7 @@ async def _post_order(client: httpx.AsyncClient, body: dict) -> dict:
     """
     try:
         resp = await client.post("/v2/orders", json=body)
-    except httpx.ReadTimeout:
+    except httpx2.ReadTimeout:
         return _error(
             "Request was sent but timed out waiting for a response. "
             "The order MAY have been placed. Check open orders before "
@@ -54,7 +54,7 @@ async def _post_order(client: httpx.AsyncClient, body: dict) -> dict:
 
 def register_order_tools(
     server: FastMCP,
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
 ) -> None:
     """Register the three order placement tools on the given server."""
 

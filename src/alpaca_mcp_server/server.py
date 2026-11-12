@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-import httpx
+import certifi
+import httpx2
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi.routing import MCPType
 
@@ -132,8 +134,21 @@ def _parse_toolsets() -> set[str] | None:
     return {t.strip() for t in raw.split(",") if t.strip()}
 
 
-def _make_api_client(base_url: str, headers: dict[str, str]) -> httpx.AsyncClient:
-    client = httpx.AsyncClient(base_url=base_url, headers=headers, timeout=30.0)
+def _make_ssl_context() -> ssl.SSLContext:
+    """Verify Alpaca API calls against the certifi bundle this package pins.
+
+    httpx2 defaults to the OS trust store, whose contents we cannot pin.
+    """
+    return ssl.create_default_context(cafile=certifi.where())
+
+
+def _make_api_client(base_url: str, headers: dict[str, str]) -> httpx2.AsyncClient:
+    client = httpx2.AsyncClient(
+        base_url=base_url,
+        headers=headers,
+        timeout=30.0,
+        verify=_make_ssl_context(),
+    )
     if "User-Agent" not in headers:
         client.headers.pop("User-Agent", None)
     return client
@@ -150,14 +165,14 @@ def build_server(
     trading_base = _get_trading_base_url()
     data_base = _ensure_scheme(os.environ.get("DATA_API_URL", MARKET_DATA_BASE_URL)).rstrip("/")
 
-    clients: list[httpx.AsyncClient] = []
+    clients: list[httpx2.AsyncClient] = []
 
-    trading_client: httpx.AsyncClient | None = None
+    trading_client: httpx2.AsyncClient | None = None
     if "trading" in spec_ops:
         trading_client = _make_api_client(trading_base, auth_headers)
         clients.append(trading_client)
 
-    data_client: httpx.AsyncClient | None = None
+    data_client: httpx2.AsyncClient | None = None
     if "market-data" in spec_ops:
         data_client = _make_api_client(data_base, auth_headers)
         clients.append(data_client)
@@ -214,14 +229,14 @@ def build_server(
     return main
 
 
-def _register_trading_overrides(server: FastMCP, trading_client: httpx.AsyncClient) -> None:
+def _register_trading_overrides(server: FastMCP, trading_client: httpx2.AsyncClient) -> None:
     """Register hand-crafted override tools for complex trading endpoints."""
     from .overrides import register_order_tools
 
     register_order_tools(server, trading_client)
 
 
-def _register_market_data_overrides(server: FastMCP, data_client: httpx.AsyncClient) -> None:
+def _register_market_data_overrides(server: FastMCP, data_client: httpx2.AsyncClient) -> None:
     """Register hand-crafted override tools for historical market data."""
     from .market_data_overrides import register_market_data_tools
 

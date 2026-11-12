@@ -13,7 +13,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import httpx
+import httpx2
 from fastmcp import FastMCP
 
 _TIMEFRAME_ALIASES: dict[str, str] = {
@@ -54,17 +54,17 @@ def _error(message: str, **extra: object) -> dict:
     return {"error": err}
 
 
-async def _get(client: httpx.AsyncClient, path: str, params: dict) -> dict:
+async def _get(client: httpx2.AsyncClient, path: str, params: dict) -> dict:
     """GET request with error handling matching the order override pattern."""
     params = {k: v for k, v in params.items() if v is not None}
     try:
         resp = await client.get(path, params=params)
-    except httpx.ReadTimeout:
+    except httpx2.ReadTimeout:
         return _error(
             "Request timed out. Try narrowing the time range or reducing the limit.",
             timeout=True,
         )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         return _error(f"HTTP transport error: {exc}")
 
     if resp.is_error:
@@ -85,7 +85,7 @@ async def _get(client: httpx.AsyncClient, path: str, params: dict) -> dict:
 
 def register_market_data_tools(
     server: FastMCP,
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
 ) -> None:
     """Register the six historical market data tools on the given server."""
 

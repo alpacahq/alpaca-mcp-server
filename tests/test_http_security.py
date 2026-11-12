@@ -3,7 +3,7 @@
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import httpx
+import httpx2
 import pytest
 from click.testing import CliRunner
 from fastmcp.server.http import HostOriginGuardMiddleware
@@ -50,9 +50,9 @@ def test_streamable_http_enables_strict_host_origin_protection() -> None:
 
 @pytest.mark.asyncio
 async def test_streamable_http_rejects_untrusted_host() -> None:
-    transport = httpx.ASGITransport(app=_protected_http_app())
+    transport = httpx2.ASGITransport(app=_protected_http_app())
 
-    async with httpx.AsyncClient(
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url="http://mcp.example.com",
     ) as client:
@@ -64,9 +64,9 @@ async def test_streamable_http_rejects_untrusted_host() -> None:
 
 @pytest.mark.asyncio
 async def test_streamable_http_rejects_untrusted_origin() -> None:
-    transport = httpx.ASGITransport(app=_protected_http_app())
+    transport = httpx2.ASGITransport(app=_protected_http_app())
 
-    async with httpx.AsyncClient(
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url="http://mcp.example.com",
     ) as client:
@@ -81,9 +81,9 @@ async def test_streamable_http_rejects_untrusted_origin() -> None:
 
 @pytest.mark.asyncio
 async def test_default_streamable_http_rejects_untrusted_host() -> None:
-    transport = httpx.ASGITransport(app=_default_protected_http_app())
+    transport = httpx2.ASGITransport(app=_default_protected_http_app())
 
-    async with httpx.AsyncClient(
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url="http://127.0.0.1",
     ) as client:
@@ -95,12 +95,12 @@ async def test_default_streamable_http_rejects_untrusted_host() -> None:
 
 @pytest.mark.asyncio
 async def test_default_streamable_http_accepts_loopback_host() -> None:
-    transport = httpx.ASGITransport(
+    transport = httpx2.ASGITransport(
         app=_default_protected_http_app(),
         raise_app_exceptions=False,
     )
 
-    async with httpx.AsyncClient(
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url="http://127.0.0.1",
     ) as client:
@@ -141,9 +141,9 @@ async def test_cli_streamable_http_app_rejects_untrusted_host() -> None:
         allowed_origins=captured.get("allowed_origins"),
         middleware=captured.get("middleware"),
     )
-    transport = httpx.ASGITransport(app=app)
+    transport = httpx2.ASGITransport(app=app)
 
-    async with httpx.AsyncClient(
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url="http://127.0.0.1",
     ) as client:
