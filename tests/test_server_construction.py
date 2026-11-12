@@ -16,7 +16,7 @@ from typing import Any
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import httpx2
 import pytest
 from fastmcp import FastMCP
 from fastmcp.client import Client
@@ -723,13 +723,13 @@ async def _capture_order_body(tool_name: str, args: dict[str, Any]) -> dict:
     """Call an order tool against a mock transport and return the sent body."""
     captured: dict = {}
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         captured.update(json.loads(request.content))
-        return httpx.Response(200, json={"id": "test-order-id"})
+        return httpx2.Response(200, json={"id": "test-order-id"})
 
     server = FastMCP("test-orders")
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(handler), base_url="https://example.com"
+    async with httpx2.AsyncClient(
+        transport=httpx2.MockTransport(handler), base_url="https://example.com"
     ) as api_client:
         register_order_tools(server, api_client)
         async with Client(transport=server) as client:

@@ -1,6 +1,6 @@
 FROM python:3.11-slim-trixie
 
-# Python's system trust store is separate from the certifi bundle used by HTTPX.
+# Python's system trust store is separate from the certifi bundle used for Alpaca API calls.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge '20250419+deb13u1' \
