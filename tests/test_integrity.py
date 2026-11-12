@@ -12,9 +12,9 @@ import json
 import re
 import ssl
 from pathlib import Path
+from unittest.mock import patch
 
-import certifi
-
+from alpaca_mcp_server.server import _make_api_client
 from alpaca_mcp_server.tool_registry import TOOLS, TOOL_NAMES, TOOL_DESCRIPTIONS
 from alpaca_mcp_server.toolsets import OVERRIDE_OPERATION_IDS, TOOLSETS
 
@@ -171,7 +171,11 @@ def test_release_versions_are_consistent():
 
 
 def test_client_trust_store_excludes_compromised_roots():
-    context = ssl.create_default_context(cafile=certifi.where())
+    with patch("alpaca_mcp_server.server.httpx2.AsyncClient") as client_cls:
+        _make_api_client("https://example.com", {})
+
+    context = client_cls.call_args.kwargs["verify"]
+    assert isinstance(context, ssl.SSLContext)
     roots = context.get_ca_certs(binary_form=True)
     assert roots
     fingerprints = {hashlib.sha256(root).hexdigest() for root in roots}
