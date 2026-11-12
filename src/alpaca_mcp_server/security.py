@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from .tool_registry import TOOL_OUTPUT_RISK_BY_NAME, OutputRisk
 

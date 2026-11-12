@@ -395,9 +395,9 @@ async def test_readme_docs_tools_have_required_openai_annotations():
     for name in README_DOC_TOOL_NAMES:
         annotations = by_name[name].annotations
         assert annotations is not None, f"{name} missing annotations"
-        assert annotations.readOnlyHint is True
-        assert annotations.openWorldHint is True
-        assert annotations.destructiveHint is False
+        assert annotations.read_only_hint is True
+        assert annotations.open_world_hint is True
+        assert annotations.destructive_hint is False
 
 
 async def test_readme_tool_descriptions_route_by_use_case():
@@ -716,7 +716,7 @@ async def test_order_tools_have_destructive_hint():
     for t in order_tools:
         annotations = t.annotations
         assert annotations is not None, f"{t.name} missing annotations"
-        assert annotations.destructiveHint is True, f"{t.name} should have destructiveHint=True"
+        assert annotations.destructive_hint is True, f"{t.name} should have destructiveHint=True"
 
 
 async def _capture_order_body(tool_name: str, args: dict[str, Any]) -> dict:
