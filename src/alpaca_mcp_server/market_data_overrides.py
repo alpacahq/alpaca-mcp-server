@@ -112,6 +112,7 @@ def register_market_data_tools(
         currency: Optional[str] = None,
         sort: str = "asc",
         asof: Optional[str] = None,
+        page_token: Optional[str] = None,
     ) -> dict:
         """Retrieve historical price bars (OHLCV) for one or more stocks.
 
@@ -138,6 +139,8 @@ def register_market_data_tools(
             sort: Timestamp sort order — "asc" (default) or "desc".
             asof: As-of date (YYYY-MM-DD) for point-in-time symbol mapping.
                   Useful for backtesting with historical ticker changes.
+            page_token: Pagination cursor from a previous response's
+                        next_page_token, to fetch the next page.
         """
         if start is None:
             start = _relative_start(days=days, hours=hours, minutes=minutes)
@@ -152,6 +155,7 @@ def register_market_data_tools(
             "currency": currency,
             "sort": sort,
             "asof": asof,
+            "page_token": page_token,
         })
 
     @server.tool(
@@ -173,6 +177,7 @@ def register_market_data_tools(
         currency: Optional[str] = None,
         sort: str = "asc",
         asof: Optional[str] = None,
+        page_token: Optional[str] = None,
     ) -> dict:
         """Retrieve historical bid/ask quotes (level 1) for one or more stocks.
 
@@ -194,6 +199,8 @@ def register_market_data_tools(
             currency: Price currency (ISO 4217). Default USD.
             sort: Timestamp sort order — "asc" (default) or "desc".
             asof: As-of date (YYYY-MM-DD) for point-in-time symbol mapping.
+            page_token: Pagination cursor from a previous response's
+                        next_page_token, to fetch the next page.
         """
         if start is None:
             start = _relative_start(days=days, hours=hours, minutes=minutes)
@@ -206,6 +213,7 @@ def register_market_data_tools(
             "currency": currency,
             "sort": sort,
             "asof": asof,
+            "page_token": page_token,
         })
 
     @server.tool(
@@ -227,6 +235,7 @@ def register_market_data_tools(
         currency: Optional[str] = None,
         sort: str = "asc",
         asof: Optional[str] = None,
+        page_token: Optional[str] = None,
     ) -> dict:
         """Retrieve historical trade data for one or more stocks.
 
@@ -248,6 +257,8 @@ def register_market_data_tools(
             currency: Price currency (ISO 4217). Default USD.
             sort: Timestamp sort order — "asc" (default) or "desc".
             asof: As-of date (YYYY-MM-DD) for point-in-time symbol mapping.
+            page_token: Pagination cursor from a previous response's
+                        next_page_token, to fetch the next page.
         """
         if start is None:
             start = _relative_start(days=days, hours=hours, minutes=minutes)
@@ -260,6 +271,7 @@ def register_market_data_tools(
             "currency": currency,
             "sort": sort,
             "asof": asof,
+            "page_token": page_token,
         })
 
     # ── Crypto Historical Data ─────────────────────────────────────────────
@@ -281,6 +293,7 @@ def register_market_data_tools(
         minutes: int = 0,
         limit: int = 1000,
         sort: str = "asc",
+        page_token: Optional[str] = None,
     ) -> dict:
         """Retrieve historical price bars (OHLCV) for one or more cryptocurrencies.
 
@@ -300,6 +313,8 @@ def register_market_data_tools(
             limit: Max total data points returned across all symbols,
                    1–10000 (default 1000).
             sort: Timestamp sort order — "asc" (default) or "desc".
+            page_token: Pagination cursor from a previous response's
+                        next_page_token, to fetch the next page.
         """
         if start is None:
             start = _relative_start(days=days, hours=hours, minutes=minutes)
@@ -310,6 +325,7 @@ def register_market_data_tools(
             "end": end,
             "limit": limit,
             "sort": sort,
+            "page_token": page_token,
         })
 
     @server.tool(
@@ -328,6 +344,7 @@ def register_market_data_tools(
         minutes: int = 15,
         limit: int = 1000,
         sort: str = "asc",
+        page_token: Optional[str] = None,
     ) -> dict:
         """Retrieve historical bid/ask quotes for one or more cryptocurrencies.
 
@@ -345,6 +362,8 @@ def register_market_data_tools(
             limit: Max total data points returned across all symbols,
                    1–10000 (default 1000).
             sort: Timestamp sort order — "asc" (default) or "desc".
+            page_token: Pagination cursor from a previous response's
+                        next_page_token, to fetch the next page.
         """
         if start is None:
             start = _relative_start(days=days, hours=hours, minutes=minutes)
@@ -354,6 +373,7 @@ def register_market_data_tools(
             "end": end,
             "limit": limit,
             "sort": sort,
+            "page_token": page_token,
         })
 
     @server.tool(
@@ -372,6 +392,7 @@ def register_market_data_tools(
         minutes: int = 15,
         limit: int = 1000,
         sort: str = "asc",
+        page_token: Optional[str] = None,
     ) -> dict:
         """Retrieve historical trade data for one or more cryptocurrencies.
 
@@ -389,6 +410,8 @@ def register_market_data_tools(
             limit: Max total data points returned across all symbols,
                    1–10000 (default 1000).
             sort: Timestamp sort order — "asc" (default) or "desc".
+            page_token: Pagination cursor from a previous response's
+                        next_page_token, to fetch the next page.
         """
         if start is None:
             start = _relative_start(days=days, hours=hours, minutes=minutes)
@@ -398,4 +421,5 @@ def register_market_data_tools(
             "end": end,
             "limit": limit,
             "sort": sort,
+            "page_token": page_token,
         })
