@@ -9,7 +9,7 @@ The test suite has three layers:
 - `tests/test_server_construction.py` — Server builds correctly and exposes the expected tool set (no network)
 - `tests/test_paper_integration.py` — Real API calls against Alpaca paper (needs credentials)
 
-CI is defined in `.github/workflows/ci.yml` with two jobs: `test-core` (runs on every PR) and `test-integration` (runs when `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` secrets are available). PyPI publishing is defined in `.github/workflows/publish-pypi.yml` and runs only when a GitHub Release is published.
+CI is defined in `.github/workflows/ci.yml` with three jobs: `test-core` (runs on every PR), `test-image` (builds the Docker image and runs `scripts/check-image-trust.py` inside it on every PR), and `test-integration` (runs when `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` secrets are available). PyPI publishing is defined in `.github/workflows/publish-pypi.yml` and runs only when a GitHub Release is published.
 
 ---
 

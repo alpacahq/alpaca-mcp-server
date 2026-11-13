@@ -30,7 +30,25 @@ jobs:
       - name: Run core tests
         run: pytest tests/test_integrity.py tests/test_server_construction.py tests/test_http_security.py
 
-  # ── Job 2: Integration tests (paper API, secrets required) ────────────
+  # ── Job 2: Image trust store (no secrets) ─────────────────────────────
+  # Builds the Docker image and fails if system pip is back or any
+  # certificate bundle in it still trusts the compromised eMudhra roots.
+  test-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t alpaca-mcp-server:ci .
+
+      - name: Check image trust store
+        run: >-
+          docker run --rm
+          -v "$PWD/scripts:/check:ro"
+          --entrypoint /usr/local/bin/python3
+          alpaca-mcp-server:ci /check/check-image-trust.py
+
+  # ── Job 3: Integration tests (paper API, secrets required) ────────────
   # Runs only on pushes to main and PRs from the same repo (not forks).
   # Fork PRs cannot access secrets, so this job is skipped for them.
   #

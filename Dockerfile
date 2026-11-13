@@ -1,11 +1,14 @@
-FROM python:3.11-slim-trixie
+FROM python:3.12-slim-trixie
 
 # Python's system trust store is separate from the certifi bundle used by HTTPX.
+# The base image's pip vendors a certifi that still trusts the compromised eMudhra
+# roots; the app runs from the uv-managed venv and never needs it.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge '20250419+deb13u1' \
     && update-ca-certificates --fresh \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip uninstall -y pip
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
