@@ -68,23 +68,23 @@ def register_order_tools(
         }
     )
     async def place_stock_order(
-        symbol: str,
-        side: str,
-        qty: Optional[str] = None,
-        notional: Optional[str] = None,
-        type: str = "market",
-        time_in_force: str = "day",
-        limit_price: Optional[str] = None,
-        stop_price: Optional[str] = None,
-        trail_price: Optional[str] = None,
-        trail_percent: Optional[str] = None,
-        extended_hours: bool = False,
-        client_order_id: Optional[str] = None,
-        order_class: Optional[str] = None,
-        take_profit_limit_price: Optional[str] = None,
-        stop_loss_stop_price: Optional[str] = None,
-        stop_loss_limit_price: Optional[str] = None,
-        advanced_instructions: Optional[dict] = None,
+	symbol: str,
+	side: str,
+	qty: Optional[float] = None,           # ← float (or int)
+	notional: Optional[float] = None,      # ← float
+	type: str = "market",
+	time_in_force: str = "day",
+	limit_price: Optional[float] = None,   # ← float
+	stop_price: Optional[float] = None,    # ← float
+	trail_price: Optional[float] = None,   # ← float
+	trail_percent: Optional[float] = None, # ← float
+	extended_hours: bool = False,
+	client_order_id: Optional[str] = None,
+	order_class: Optional[str] = None,
+	take_profit_limit_price: Optional[float] = None,  # ← float
+	stop_loss_stop_price: Optional[float] = None, # ← float
+	stop_loss_limit_price: Optional[float] = None,# ← float
+	advanced_instructions: Optional[dict] = None,        
     ) -> dict:
         """Place a stock or ETF order.
 
@@ -200,15 +200,15 @@ def register_order_tools(
         }
     )
     async def place_crypto_order(
-        symbol: str,
-        side: str,
-        qty: Optional[str] = None,
-        notional: Optional[str] = None,
-        type: str = "market",
-        time_in_force: str = "gtc",
-        limit_price: Optional[str] = None,
-        stop_price: Optional[str] = None,
-        client_order_id: Optional[str] = None,
+	symbol: str,
+	side: str,
+	qty: Optional[float] = None,
+	notional: Optional[float] = None,
+	type: str = "market",
+	time_in_force: str = "gtc",
+	limit_price: Optional[float] = None,
+	stop_price: Optional[float] = None,
+	client_order_id: Optional[str] = None,        
     ) -> dict:
         """Place a cryptocurrency order.
 
@@ -256,7 +256,7 @@ def register_order_tools(
         }
     )
     async def place_option_order(
-        qty: str,
+        qty: float,
         type: str = "market",
         time_in_force: str = "day",
         symbol: Optional[str] = None,
