@@ -571,6 +571,7 @@ alpaca-mcp-server/
 - **Credentials missing**: Set `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` in the client's `env` block. Paper mode default is `ALPACA_PAPER_TRADE = True`.
 - **Client didn't pick up new config**: Restart the client (Cursor, Claude Desktop, VS Code) after changes.
 - **HTTP port conflicts**: If using `--transport streamable-http`, change `--port` to a free port.
+- **421 Misdirected Request in Docker or container networks**: HTTP transports reject non-loopback `Host` headers by default to prevent DNS rebinding. When calling the server via a container service name (for example `http://alpaca:8000/mcp`), pass `--allowed-host alpaca` (or set `FASTMCP_HTTP_ALLOWED_HOSTS='["alpaca"]'` / `FASTMCP_HTTP_ALLOWED_HOSTS=alpaca`).
 
 ## Disclosure
 
@@ -613,7 +614,7 @@ For information about how Alpaca handles your data, please review:
 
 This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
 
-**HTTP Transport Security**: Streamable HTTP defaults to localhost (`127.0.0.1:8000`) and validates `Host` and `Origin` headers. Docker defaults to stdio. Helm defaults to ClusterIP HTTP with ingress off. Binding to `0.0.0.0` does not provide authentication. This package does not configure MCP OAuth, so do not expose it directly to the public internet. Operators that provide standards-based MCP authentication must also set FastMCP's `FASTMCP_HTTP_ALLOWED_HOSTS` to the exact public hostnames.
+**HTTP Transport Security**: Streamable HTTP defaults to localhost (`127.0.0.1:8000`) and validates `Host` and `Origin` headers. Docker defaults to stdio. Helm defaults to ClusterIP HTTP with ingress off. Binding to `0.0.0.0` does not provide authentication. This package does not configure MCP OAuth, so do not expose it directly to the public internet. Operators running on isolated container networks or behind standards-based MCP authentication must explicitly allow non-loopback hostnames via `--allowed-host` or `FASTMCP_HTTP_ALLOWED_HOSTS` (and browser origins via `--allowed-origin` or `FASTMCP_HTTP_ALLOWED_ORIGINS`).
 
 ## Support
 
