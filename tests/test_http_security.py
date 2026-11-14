@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -309,6 +310,67 @@ def test_cli_accepts_comma_separated_fastmcp_allowed_hosts_in_fresh_process() ->
     }
     proc = subprocess.run(
         [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, f"stdout={proc.stdout}\nstderr={proc.stderr}"
+
+
+def test_cli_accepts_comma_separated_allowlists_from_env_file_in_fresh_process(
+    tmp_path: Path,
+) -> None:
+    env_file = tmp_path / "mcp.env"
+    env_file.write_text(
+        "ALPACA_API_KEY=test-key\n"
+        "ALPACA_SECRET_KEY=test-secret\n"
+        "FASTMCP_HTTP_ALLOWED_HOSTS=alpaca,mcp.internal\n"
+        "FASTMCP_HTTP_ALLOWED_ORIGINS=https://one.example,https://two.example\n",
+        encoding="utf-8",
+    )
+    code = (
+        "import builtins, sys\n"
+        "from unittest.mock import MagicMock\n"
+        "from click.testing import CliRunner\n"
+        "from alpaca_mcp_server.cli import main\n"
+        "assert 'fastmcp' not in sys.modules\n"
+        "srv = MagicMock()\n"
+        "orig_import = builtins.__import__\n"
+        "def hooked_import(name, globals=None, locals=None, fromlist=(), level=0):\n"
+        "    mod = orig_import(name, globals, locals, fromlist, level)\n"
+        "    if mod.__name__ == 'alpaca_mcp_server.server':\n"
+        "        mod.build_server = lambda: srv\n"
+        "    return mod\n"
+        "builtins.__import__ = hooked_import\n"
+        "try:\n"
+        "    res = CliRunner().invoke(\n"
+        "        main,\n"
+        "        ['--env-file', sys.argv[1], '--transport', 'streamable-http', '--host', '0.0.0.0'],\n"
+        "    )\n"
+        "finally:\n"
+        "    builtins.__import__ = orig_import\n"
+        "assert res.exit_code == 0, res.output\n"
+        "import fastmcp\n"
+        "assert fastmcp.settings.http_allowed_hosts == ['alpaca', 'mcp.internal']\n"
+        "assert fastmcp.settings.http_allowed_origins == ['https://one.example', 'https://two.example']\n"
+        "kwargs = srv.run.call_args.kwargs\n"
+        "assert kwargs['allowed_hosts'] == ['alpaca', 'mcp.internal'], kwargs\n"
+        "assert kwargs['allowed_origins'] == ['https://one.example', 'https://two.example'], kwargs\n"
+    )
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k
+        not in {
+            "ALPACA_API_KEY",
+            "ALPACA_SECRET_KEY",
+            "FASTMCP_HTTP_ALLOWED_HOSTS",
+            "FASTMCP_HTTP_ALLOWED_ORIGINS",
+        }
+    }
+    proc = subprocess.run(
+        [sys.executable, "-c", code, str(env_file)],
         env=env,
         capture_output=True,
         text=True,
