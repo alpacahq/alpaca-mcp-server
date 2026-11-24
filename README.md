@@ -18,7 +18,7 @@
   A comprehensive Model Context Protocol (MCP) server for Alpaca's Trading API. Enable natural language trading operations through AI assistants like Claude, Cursor, and VS Code. Supports stocks, options, crypto, portfolio management, and real-time market data.
 </p>
 
-> **Alpaca MCP Server v2 is here.** This version is a complete rewrite built with FastMCP and OpenAPI. If you're upgrading from v1, please read the [Upgrade Guide](#upgrading-from-v1) — tool names, parameters, and configuration have changed.
+> **Alpaca Trading API MCP Server v2 is here.** This version is a complete rewrite built with FastMCP and OpenAPI. If you're upgrading from v1, please read the [Upgrade Guide](#upgrading-from-v1) — tool names, parameters, and configuration have changed.
 
 ## Table of Contents
 

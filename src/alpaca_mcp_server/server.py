@@ -1,5 +1,5 @@
 """
-Alpaca MCP Server v2 — FastMCP + OpenAPI
+Alpaca Trading API MCP Server v2 — FastMCP + OpenAPI
 
 Builds MCP tools from Alpaca's OpenAPI specs at process init time.
 No hand-crafted tool functions except for overrides (e.g., order placement).
@@ -142,7 +142,7 @@ def _make_api_client(base_url: str, headers: dict[str, str]) -> httpx.AsyncClien
 def build_server(
     readme_client_factory: ReadMeClientFactory | None = None,
 ) -> FastMCP:
-    """Construct the Alpaca MCP server from OpenAPI specs."""
+    """Construct the Alpaca Trading API MCP Server from OpenAPI specs."""
     active_toolsets = _parse_toolsets()
     spec_ops = get_active_operations(active_toolsets)
 
@@ -170,7 +170,7 @@ def build_server(
             for c in clients:
                 await c.aclose()
 
-    main = FastMCP("Alpaca MCP Server", lifespan=lifespan)
+    main = FastMCP("Alpaca Trading API MCP Server", lifespan=lifespan)
     main.add_middleware(TrustBoundaryMiddleware())
 
     if trading_client is not None:

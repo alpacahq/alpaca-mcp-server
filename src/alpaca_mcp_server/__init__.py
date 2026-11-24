@@ -1,5 +1,5 @@
 """
-Alpaca MCP Server - Trading API Integration for Model Context Protocol
+Alpaca Trading API MCP Server - Trading API Integration for Model Context Protocol
 
 This package provides a comprehensive MCP server implementation for Alpaca
 Trading API, enabling natural language trading operations through AI assistants.

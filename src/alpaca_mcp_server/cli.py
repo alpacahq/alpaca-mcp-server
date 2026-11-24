@@ -1,5 +1,5 @@
 """
-CLI entry point for the Alpaca MCP Server.
+CLI entry point for the Alpaca Trading API MCP Server.
 """
 
 import os
@@ -45,7 +45,7 @@ def _default_port() -> int:
     help="Load environment variables from this file before starting",
 )
 def main(transport: Transport, host: str, port: int, env_file: Optional[Path]) -> None:
-    """Alpaca MCP Server — Trading API integration for Model Context Protocol."""
+    """Alpaca Trading API MCP Server — Trading API integration for Model Context Protocol."""
     if env_file is not None:
         from dotenv import load_dotenv
 
