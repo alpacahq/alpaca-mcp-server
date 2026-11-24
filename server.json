@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "io.github.alpacahq/alpaca-mcp-server",
-  "title": "Alpaca's MCP Server",
+  "title": "Trading API MCP",
   "description": "Alpaca Trading API integration for Model Context Protocol (MCP). V2 generates 60+ tools directly from Alpaca's OpenAPI specs using FastMCP.",
   "repository": {
     "url": "https://github.com/alpacahq/alpaca-mcp-server",

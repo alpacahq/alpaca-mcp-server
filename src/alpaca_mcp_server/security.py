@@ -1,5 +1,5 @@
 """
-Trust-boundary middleware for Alpaca MCP tool outputs.
+Trust-boundary middleware for Trading API MCP tool outputs.
 
 Wraps every tool result in a strict envelope that separates server-authored
 metadata from untrusted API data, making the trust boundary visible to models.

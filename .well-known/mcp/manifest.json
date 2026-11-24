@@ -5,7 +5,7 @@
   "schema_version": "0.2.0",
   "manifest_version": "0.3",
   "name": "alpaca-mcp-server",
-  "display_name": "Alpaca MCP Server",
+  "display_name": "Trading API MCP",
   "description": "Alpaca Trading API integration for Model Context Protocol. V2 generates 60+ tools from Alpaca's OpenAPI specs using FastMCP, with toolset filtering and hand-crafted order overrides.",
   "author": "Alpaca",
   "license": "MIT",
