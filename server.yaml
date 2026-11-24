@@ -23,7 +23,7 @@ meta:
     - llm
 
 about:
-  title: Trading API MCP
+  title: Alpaca Trading API MCP Server
   description: |
     Alpaca Trading API integration for Model Context Protocol.
 

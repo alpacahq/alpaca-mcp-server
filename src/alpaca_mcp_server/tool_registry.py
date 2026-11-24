@@ -1,5 +1,5 @@
 """
-Tool registry for Trading API MCP.
+Tool registry for the Alpaca Trading API MCP Server.
 
 Maps OpenAPI operationIds to user-friendly MCP tool names, curated
 descriptions, and output risk classifications. These keep the v1 tool

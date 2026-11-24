@@ -1,4 +1,4 @@
-"""Shared fixtures for the Trading API MCP test suite."""
+"""Shared fixtures for the Alpaca Trading API MCP Server test suite."""
 
 from __future__ import annotations
 

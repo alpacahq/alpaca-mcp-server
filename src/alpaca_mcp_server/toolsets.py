@@ -1,5 +1,5 @@
 """
-Toolset definitions for Trading API MCP.
+Toolset definitions for the Alpaca Trading API MCP Server.
 
 Each toolset maps to a set of operationIds from the OpenAPI specs. Only endpoints
 listed here are exposed as MCP tools. New endpoints are excluded by default —
