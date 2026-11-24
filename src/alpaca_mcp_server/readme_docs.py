@@ -22,9 +22,9 @@ README_DOCS_FALLBACK_MESSAGE = (
     "the fallback source."
 )
 README_DOCS_FALLBACK_URLS = (
-    "https://docs.alpaca.markets/us/reference/api-references",
-    "https://docs.alpaca.markets/llms.txt",
-    "https://alpaca.markets/llms-full.txt"
+    "https://docs.alpaca.markets/us/reference",
+    "https://docs.alpaca.markets/us/llms.txt",
+    "https://alpaca.markets/llms.txt",
 )
 DEFAULT_SPEC_TITLE = "Trading API"
 ALLOWED_SPEC_TITLES = (

@@ -450,9 +450,9 @@ async def test_readme_tool_errors_include_public_docs_fallback():
     assert error["message"] == "ReadMe MCP error: ReadMe timed out"
     assert error["fallback"]["message"].startswith("ReadMe MCP lookup failed")
     assert error["fallback"]["urls"] == [
-        "https://docs.alpaca.markets/us/reference/api-references",
-        "https://docs.alpaca.markets/llms.txt",
-        "https://alpaca.markets/llms-full.txt",
+        "https://docs.alpaca.markets/us/reference",
+        "https://docs.alpaca.markets/us/llms.txt",
+        "https://alpaca.markets/llms.txt",
     ]
 
 

@@ -296,7 +296,7 @@ Available toolsets:
 
 Docs are scoped to the Trading API, Market Data API, and Authentication API specs; Broker API endpoint docs are intentionally excluded from this server.
 
-If the ReadMe MCP lookup fails, tool responses include fallback links to Alpaca's public docs plus `llms.txt` and `llms-full.txt`.
+If the ReadMe MCP lookup fails, tool responses include fallback links to Alpaca's public API reference and `llms.txt` indexes.
 
 ## Features
 
