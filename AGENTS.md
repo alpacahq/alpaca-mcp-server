@@ -60,7 +60,7 @@ Endpoints with operationIds not present in any toolset.
 **Action:** Evaluate each:
 
 1. **Is this endpoint useful for LLM interactions?** (e.g., CRUD for a core trading resource = yes; internal/admin endpoints = no)
-2. **If yes:** Add the operationId to the appropriate toolset in `toolsets.py`. Add a `ToolDefinition` entry to the `TOOLS` dict in `tool_registry.py` with a `snake_case` name and a curated description (see existing entries for the pattern). Set `output_risk="external_text"` if the endpoint returns arbitrary third-party prose (e.g. news, comments); otherwise leave the default `"api_structured"`.
+2. **If yes:** Add the operationId to the appropriate toolset in `toolsets.py`. Add a `ToolDefinition` entry to the `TOOLS` dict in `tool_registry.py` with a `snake_case` name and a curated description (see existing entries for the pattern). Set `output_risk="external_text"` if the endpoint returns arbitrary third-party prose (e.g. news, comments); otherwise leave the default `"api_structured"`. If the endpoint is not a GET, also set `write=` to its MCP behavior hints: `_ADDITIVE` if it only creates something new, `_DESTRUCTIVE_IDEMPOTENT` if it cancels, deletes or overwrites and repeating it changes nothing further, `_DESTRUCTIVE` otherwise. `tests/test_integrity.py` fails until this is set.
 3. **If the endpoint is complex** (many conditional params, multiple use cases in one schema like `POST /v2/orders`): Write an override function in `overrides.py`, add the operationId to `OVERRIDE_OPERATION_IDS` in `toolsets.py`, and do NOT add it to any toolset's operations.
 4. **If not useful:** Note in the commit message that the endpoint was evaluated and excluded.
 

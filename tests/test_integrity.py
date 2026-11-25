@@ -38,6 +38,22 @@ def _load_operation_ids(spec_name: str) -> set[str]:
     return ids
 
 
+def _load_operation_methods(spec_name: str) -> dict[str, str]:
+    """Map each operationId in a bundled OpenAPI spec to its HTTP method."""
+    spec = json.loads((SPECS_DIR / f"{spec_name}.json").read_text(encoding="utf-8"))
+    methods: dict[str, str] = {}
+    for path_item in spec["paths"].values():
+        for method, details in path_item.items():
+            if isinstance(details, dict) and "operationId" in details:
+                methods[details["operationId"]] = method.upper()
+    return methods
+
+
+OPERATION_METHODS = {
+    **_load_operation_methods("trading-api"),
+    **_load_operation_methods("market-data-api"),
+}
+
 TRADING_OPS = _load_operation_ids("trading-api")
 MARKET_DATA_OPS = _load_operation_ids("market-data-api")
 
@@ -108,6 +124,29 @@ def test_all_descriptions_non_empty():
     """Every ToolDefinition must have a non-empty description."""
     empty = [op_id for op_id, t in TOOLS.items() if not t.description.strip()]
     assert not empty, f"Empty descriptions: {empty}"
+
+
+def test_write_operations_declare_write_behavior():
+    """Every exposed non-GET operation must declare its MCP write hints.
+
+    Without this, a state-changing endpoint added by a spec sync would only
+    get the fail-closed fallback, and an endpoint that turned into a read
+    would keep stale write hints.
+    """
+    problems: list[str] = []
+    for ts_name, ts_config in TOOLSETS.items():
+        for op_id in sorted(ts_config["operations"]):
+            if op_id in OVERRIDE_OPERATION_IDS:
+                continue
+            method = OPERATION_METHODS[op_id]
+            write = TOOLS[op_id].write
+            if method != "GET" and write is None:
+                problems.append(
+                    f"{ts_name}/{op_id} is {method} but has no write=WriteBehavior(...)"
+                )
+            if method == "GET" and write is not None:
+                problems.append(f"{ts_name}/{op_id} is GET but declares write hints")
+    assert not problems, "Missing or stale write hints:\n" + "\n".join(problems)
 
 
 def test_derived_lookups_match_tools():

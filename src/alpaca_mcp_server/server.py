@@ -18,10 +18,11 @@ from typing import Any
 import httpx
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi.routing import MCPType
+from mcp.types import ToolAnnotations
 
 from .readme_docs import ReadMeClientFactory, register_readme_docs_tools
 from .security import TrustBoundaryMiddleware
-from .tool_registry import TOOL_DESCRIPTIONS, TOOL_NAMES
+from .tool_registry import TOOL_DESCRIPTIONS, TOOL_NAMES, TOOL_WRITE_BEHAVIOR, WriteBehavior
 from .toolsets import OVERRIDE_OPERATION_IDS, TOOLSETS, get_active_operations
 
 SPECS_DIR = Path(__file__).parent / "specs"
@@ -88,12 +89,61 @@ def _make_filter(allowed_ops: set[str]):
     return filter_fn
 
 
-def _make_customizer(descriptions: dict[str, str]):
-    """Create an mcp_component_fn that overrides descriptions where provided."""
+_READ_ONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+# Used for a state-changing endpoint that has no WriteBehavior in the registry
+# (e.g. one added by a spec sync). Fails closed: clients treat it as destructive.
+_UNCLASSIFIED_WRITE = WriteBehavior(destructive=True, idempotent=False)
+
+
+def _derive_annotations(method: str, write: WriteBehavior | None) -> ToolAnnotations:
+    """Derive MCP behavior hints for a generated tool from its HTTP route.
+
+    Reads are annotated read-only. Writes take their hints from the
+    registry's WriteBehavior, falling back to destructive when unclassified.
+    Every Alpaca endpoint reaches an external service, so openWorldHint is
+    always True, matching the hand-written tools.
+    """
+    if method.upper() in _READ_ONLY_METHODS:
+        return ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            openWorldHint=True,
+        )
+    behavior = write or _UNCLASSIFIED_WRITE
+    return ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=behavior.destructive,
+        idempotentHint=behavior.idempotent,
+        openWorldHint=True,
+    )
+
+
+def _merge_annotations(
+    existing: ToolAnnotations | None, derived: ToolAnnotations
+) -> ToolAnnotations:
+    """Fill in derived hints without overwriting any hint already set."""
+    if existing is None:
+        return derived
+    missing = {
+        field: value
+        for field, value in derived.model_dump().items()
+        if value is not None and getattr(existing, field, None) is None
+    }
+    return existing.model_copy(update=missing)
+
+
+def _make_customizer(
+    descriptions: dict[str, str],
+    write_behavior: dict[str, WriteBehavior] = TOOL_WRITE_BEHAVIOR,
+):
+    """Create an mcp_component_fn that sets curated descriptions and behavior hints."""
 
     def customizer(route, component):
         if route.operation_id in descriptions:
             component.description = descriptions[route.operation_id]
+        derived = _derive_annotations(route.method, write_behavior.get(route.operation_id))
+        component.annotations = _merge_annotations(component.annotations, derived)
 
     return customizer
 

@@ -10,6 +10,9 @@ Each key is the operationId from the OpenAPI spec. Values contain:
   - description: curated description shown to LLMs
   - output_risk: classification of how much untrusted external text the
                  tool output may contain (see OutputRisk)
+  - write:       MCP behavior hints for endpoints that change state (see
+                 WriteBehavior). Required for every non-GET endpoint, and
+                 left unset for reads, which are annotated read-only.
 """
 
 from dataclasses import dataclass
@@ -21,10 +24,33 @@ OutputRisk = Literal["api_structured", "external_text"]
 
 
 @dataclass(frozen=True, slots=True)
+class WriteBehavior:
+    """MCP tool annotation hints for an endpoint that changes state.
+
+    MCP clients read these to decide whether to ask the user before a call.
+
+    destructive: False only when the call is purely additive (creates
+                 something new). True when it cancels, closes, replaces,
+                 overwrites, or deletes existing state.
+    idempotent:  True when repeating the call with the same arguments has
+                 no further effect.
+    """
+
+    destructive: bool
+    idempotent: bool
+
+
+_ADDITIVE = WriteBehavior(destructive=False, idempotent=False)
+_DESTRUCTIVE_IDEMPOTENT = WriteBehavior(destructive=True, idempotent=True)
+_DESTRUCTIVE = WriteBehavior(destructive=True, idempotent=False)
+
+
+@dataclass(frozen=True, slots=True)
 class ToolDefinition:
     name: str
     description: str
     output_risk: OutputRisk = "api_structured"
+    write: WriteBehavior | None = None
 
 
 TOOLS: dict[str, ToolDefinition] = {
@@ -49,6 +75,7 @@ TOOLS: dict[str, ToolDefinition] = {
             "Updates one or more account configuration settings. Only the fields you "
             "provide will be changed; all others retain their current values."
         ),
+        write=_DESTRUCTIVE_IDEMPOTENT,
     ),
     "getAccountPortfolioHistory": ToolDefinition(
         name="get_portfolio_history",
@@ -92,14 +119,17 @@ TOOLS: dict[str, ToolDefinition] = {
             "Replaces an existing open order with updated parameters. "
             "At least one optional field must be provided."
         ),
+        write=_DESTRUCTIVE,
     ),
     "deleteOrderByOrderID": ToolDefinition(
         name="cancel_order_by_id",
         description="Cancel a specific order by its ID.",
+        write=_DESTRUCTIVE_IDEMPOTENT,
     ),
     "deleteAllOrders": ToolDefinition(
         name="cancel_all_orders",
         description="Cancel all open orders.",
+        write=_DESTRUCTIVE_IDEMPOTENT,
     ),
 
     # --- Trading: Positions ---
@@ -118,6 +148,7 @@ TOOLS: dict[str, ToolDefinition] = {
             "If the market is closed, the sell order will remain queued and execute "
             "at the next market open."
         ),
+        write=_DESTRUCTIVE,
     ),
     "deleteAllOpenPositions": ToolDefinition(
         name="close_all_positions",
@@ -128,14 +159,17 @@ TOOLS: dict[str, ToolDefinition] = {
             "call as a whole succeeds. If the market is closed, the closing orders remain "
             "queued and execute at the next market open."
         ),
+        write=_DESTRUCTIVE,
     ),
     "optionExercise": ToolDefinition(
         name="exercise_options_position",
         description="Exercises a held option contract, converting it into the underlying asset.",
+        write=_DESTRUCTIVE,
     ),
     "optionDoNotExercise": ToolDefinition(
         name="do_not_exercise_options_position",
         description="Submits a do-not-exercise instruction for a held option contract.",
+        write=_DESTRUCTIVE_IDEMPOTENT,
     ),
 
     # --- Watchlists ---
@@ -146,6 +180,7 @@ TOOLS: dict[str, ToolDefinition] = {
     "postWatchlist": ToolDefinition(
         name="create_watchlist",
         description="Creates a new watchlist with specified symbols.",
+        write=_ADDITIVE,
     ),
     "getWatchlistById": ToolDefinition(
         name="get_watchlist_by_id",
@@ -158,18 +193,22 @@ TOOLS: dict[str, ToolDefinition] = {
             "You must include the symbols parameter with the full list of desired symbols, "
             "otherwise all assets will be removed."
         ),
+        write=_DESTRUCTIVE_IDEMPOTENT,
     ),
     "deleteWatchlistById": ToolDefinition(
         name="delete_watchlist_by_id",
         description="Delete a specific watchlist by its ID.",
+        write=_DESTRUCTIVE_IDEMPOTENT,
     ),
     "addAssetToWatchlist": ToolDefinition(
         name="add_asset_to_watchlist_by_id",
         description="Add an asset by symbol to a specific watchlist.",
+        write=_ADDITIVE,
     ),
     "removeAssetFromWatchlist": ToolDefinition(
         name="remove_asset_from_watchlist_by_id",
         description="Remove an asset by symbol from a specific watchlist.",
+        write=_DESTRUCTIVE_IDEMPOTENT,
     ),
 
     # --- Assets & Market Info ---
@@ -406,6 +445,7 @@ TOOLS: dict[str, ToolDefinition] = {
             "quantity. Optionally set a limit price and all-or-none flag. "
             "Not available in paper trading."
         ),
+        write=_ADDITIVE,
     ),
     "getLocate": ToolDefinition(
         name="get_locate",
@@ -428,6 +468,9 @@ TOOLS: dict[str, ToolDefinition] = {
 # Derived lookups used by server.py and security.py
 TOOL_NAMES: dict[str, str] = {op_id: t.name for op_id, t in TOOLS.items()}
 TOOL_DESCRIPTIONS: dict[str, str] = {op_id: t.description for op_id, t in TOOLS.items()}
+TOOL_WRITE_BEHAVIOR: dict[str, WriteBehavior] = {
+    op_id: t.write for op_id, t in TOOLS.items() if t.write is not None
+}
 TOOL_OUTPUT_RISK_BY_NAME: dict[str, OutputRisk] = {
     t.name: t.output_risk for t in TOOLS.values()
 }
