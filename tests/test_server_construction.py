@@ -765,6 +765,51 @@ async def test_place_option_order_omits_stop_price_when_unset():
     assert "stop_price" not in body
 
 
+async def test_place_option_order_accepts_legs_as_json_string():
+    """Multi-leg option orders accept legs serialized as a JSON array string."""
+    legs = [
+        {
+            "symbol": "SPY260731P00395000",
+            "ratio_qty": "1",
+            "side": "sell",
+            "position_intent": "sell_to_open",
+        },
+        {
+            "symbol": "SPY260731P00380000",
+            "ratio_qty": "1",
+            "side": "buy",
+            "position_intent": "buy_to_open",
+        },
+    ]
+    body = await _capture_order_body(
+        "place_option_order",
+        {
+            "qty": "1",
+            "type": "limit",
+            "limit_price": "-0.01",
+            "time_in_force": "gtc",
+            "order_class": "mleg",
+            "legs": json.dumps(legs),
+        },
+    )
+    assert body["legs"] == legs
+    assert body["order_class"] == "mleg"
+
+
+async def test_place_option_order_rejects_invalid_legs_json_string():
+    """Non-JSON or non-array strings for legs are still rejected."""
+    for bad_legs in ("not-json", '{"symbol": "SPY"}'):
+        with pytest.raises(Exception):
+            await _capture_order_body(
+                "place_option_order",
+                {
+                    "qty": "1",
+                    "order_class": "mleg",
+                    "legs": bad_legs,
+                },
+            )
+
+
 async def test_toolset_filtering():
     """ALPACA_TOOLSETS should limit which tools are exposed."""
     tools = await _list_tools({**DUMMY_ENV, "ALPACA_TOOLSETS": "account"})

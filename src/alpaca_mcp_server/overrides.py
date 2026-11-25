@@ -8,10 +8,25 @@ tools with curated parameters per asset class.
 
 from __future__ import annotations
 
-from typing import Optional
+import json
+from typing import Annotated, Any, Optional
 
 import httpx
 from fastmcp import FastMCP
+from pydantic import BeforeValidator
+
+
+def _coerce_json_list(value: Any) -> Any:
+    """Parse a JSON-encoded array string into a list for clients that stringify list args."""
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError("legs must be a valid JSON array") from exc
+        if not isinstance(parsed, list):
+            raise ValueError("legs must be a JSON array")
+        return parsed
+    return value
 
 
 def _error(message: str, **extra: object) -> dict:
@@ -266,7 +281,7 @@ def register_order_tools(
         stop_price: Optional[str] = None,
         client_order_id: Optional[str] = None,
         order_class: Optional[str] = None,
-        legs: Optional[list[dict]] = None,
+        legs: Annotated[Optional[list[dict]], BeforeValidator(_coerce_json_list)] = None,
     ) -> dict:
         """Place an options order (single-leg or multi-leg).
 
