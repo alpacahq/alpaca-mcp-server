@@ -31,6 +31,7 @@ from alpaca_mcp_server.security import DATA_KEY, SECURITY_KEY
 from alpaca_mcp_server.server import (
     _build_auth_headers,
     _make_api_client,
+    _make_customizer,
     _strip_openapi_vendor_extensions,
     build_server,
     get_mcp_user_agent,
@@ -717,6 +718,84 @@ async def test_order_tools_have_destructive_hint():
         annotations = t.annotations
         assert annotations is not None, f"{t.name} missing annotations"
         assert annotations.destructiveHint is True, f"{t.name} should have destructiveHint=True"
+
+
+# (destructiveHint, idempotentHint) for every tool that changes state.
+# Every other tool must be annotated read-only.
+EXPECTED_WRITE_HINTS = {
+    "update_account_config": (True, True),
+    "replace_order_by_id": (True, False),
+    "cancel_order_by_id": (True, True),
+    "cancel_all_orders": (True, True),
+    "close_position": (True, False),
+    "close_all_positions": (True, False),
+    "exercise_options_position": (True, False),
+    "do_not_exercise_options_position": (True, True),
+    "create_watchlist": (False, False),
+    "update_watchlist_by_id": (True, True),
+    "delete_watchlist_by_id": (True, True),
+    "add_asset_to_watchlist_by_id": (False, False),
+    "remove_asset_from_watchlist_by_id": (True, True),
+    "create_locate": (False, False),
+    "place_stock_order": (True, False),
+    "place_crypto_order": (True, False),
+    "place_option_order": (True, False),
+}
+
+
+async def test_every_tool_declares_read_only_hint():
+    """Clients use readOnlyHint to decide whether to confirm a call, so no tool may omit it."""
+    tools = await _list_tools()
+    missing = [t.name for t in tools if t.annotations is None or t.annotations.readOnlyHint is None]
+    assert not missing, f"Tools without readOnlyHint: {sorted(missing)}"
+
+
+async def test_write_tools_have_expected_hints():
+    """State-changing tools must not look like reads, and their hints must match intent."""
+    tools = await _list_tools()
+    actual = {
+        t.name: (t.annotations.destructiveHint, t.annotations.idempotentHint)
+        for t in tools
+        if t.annotations is not None and t.annotations.readOnlyHint is False
+    }
+    assert actual == EXPECTED_WRITE_HINTS
+
+
+async def test_read_tools_are_not_destructive():
+    tools = await _list_tools()
+    wrong = [
+        t.name
+        for t in tools
+        if t.name not in EXPECTED_WRITE_HINTS
+        and (t.annotations.readOnlyHint is not True or t.annotations.destructiveHint is True)
+    ]
+    assert not wrong, f"Read tools with write hints: {sorted(wrong)}"
+
+
+def test_unclassified_write_route_fails_closed():
+    """A non-GET route with no registry entry is annotated destructive, not left blank."""
+    customize = _make_customizer({}, write_behavior={})
+    component = SimpleNamespace(description="", annotations=None)
+    customize(SimpleNamespace(operation_id="newEndpoint", method="POST"), component)
+    assert component.annotations.readOnlyHint is False
+    assert component.annotations.destructiveHint is True
+    assert component.annotations.idempotentHint is False
+
+
+def test_customizer_keeps_existing_hints():
+    """Derived hints fill gaps but never overwrite a hint that is already set."""
+    from mcp.types import ToolAnnotations
+
+    customize = _make_customizer({}, write_behavior={})
+    component = SimpleNamespace(
+        description="",
+        annotations=ToolAnnotations(title="Kept", destructiveHint=False),
+    )
+    customize(SimpleNamespace(operation_id="newEndpoint", method="DELETE"), component)
+    assert component.annotations.title == "Kept"
+    assert component.annotations.destructiveHint is False
+    assert component.annotations.readOnlyHint is False
+    assert component.annotations.openWorldHint is True
 
 
 async def _capture_order_body(tool_name: str, args: dict[str, Any]) -> dict:
