@@ -20,6 +20,7 @@ import httpx
 import pytest
 from fastmcp import FastMCP
 from fastmcp.client import Client
+from fastmcp.exceptions import ToolError
 
 from alpaca_mcp_server.overrides import register_order_tools
 from alpaca_mcp_server.readme_docs import (
@@ -797,17 +798,34 @@ async def test_place_option_order_accepts_legs_as_json_string():
 
 
 async def test_place_option_order_rejects_invalid_legs_json_string():
-    """Non-JSON or non-array strings for legs are still rejected."""
-    for bad_legs in ("not-json", '{"symbol": "SPY"}'):
-        with pytest.raises(Exception):
-            await _capture_order_body(
-                "place_option_order",
-                {
-                    "qty": "1",
-                    "order_class": "mleg",
-                    "legs": bad_legs,
-                },
-            )
+    """Non-JSON or non-array strings for legs are rejected before any request is sent."""
+    sent_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent_requests.append(request)
+        return httpx.Response(200, json={"id": "test-order-id"})
+
+    server = FastMCP("test-orders")
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://example.com"
+    ) as api_client:
+        register_order_tools(server, api_client)
+        async with Client(transport=server) as client:
+            for bad_legs, expected_msg in (
+                ("not-json", "legs must be a valid JSON array"),
+                ('{"symbol": "SPY"}', "legs must be a JSON array"),
+            ):
+                with pytest.raises(ToolError, match=expected_msg):
+                    await client.call_tool(
+                        "place_option_order",
+                        {
+                            "qty": "1",
+                            "order_class": "mleg",
+                            "legs": bad_legs,
+                        },
+                    )
+
+    assert sent_requests == []
 
 
 async def test_toolset_filtering():
