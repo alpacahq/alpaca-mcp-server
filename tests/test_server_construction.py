@@ -20,6 +20,7 @@ import httpx
 import pytest
 from fastmcp import FastMCP
 from fastmcp.client import Client
+from fastmcp.exceptions import ToolError
 
 from alpaca_mcp_server.overrides import register_order_tools
 from alpaca_mcp_server.readme_docs import (
@@ -763,6 +764,68 @@ async def test_place_option_order_omits_stop_price_when_unset():
         {"symbol": "AAPL250321C00150000", "side": "buy", "qty": "1"},
     )
     assert "stop_price" not in body
+
+
+async def test_place_option_order_accepts_legs_as_json_string():
+    """Multi-leg option orders accept legs serialized as a JSON array string."""
+    legs = [
+        {
+            "symbol": "SPY260731P00395000",
+            "ratio_qty": "1",
+            "side": "sell",
+            "position_intent": "sell_to_open",
+        },
+        {
+            "symbol": "SPY260731P00380000",
+            "ratio_qty": "1",
+            "side": "buy",
+            "position_intent": "buy_to_open",
+        },
+    ]
+    body = await _capture_order_body(
+        "place_option_order",
+        {
+            "qty": "1",
+            "type": "limit",
+            "limit_price": "-0.01",
+            "time_in_force": "gtc",
+            "order_class": "mleg",
+            "legs": json.dumps(legs),
+        },
+    )
+    assert body["legs"] == legs
+    assert body["order_class"] == "mleg"
+
+
+async def test_place_option_order_rejects_invalid_legs_json_string():
+    """Non-JSON or non-array strings for legs are rejected before any request is sent."""
+    sent_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent_requests.append(request)
+        return httpx.Response(200, json={"id": "test-order-id"})
+
+    server = FastMCP("test-orders")
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://example.com"
+    ) as api_client:
+        register_order_tools(server, api_client)
+        async with Client(transport=server) as client:
+            for bad_legs, expected_msg in (
+                ("not-json", "legs must be a valid JSON array"),
+                ('{"symbol": "SPY"}', "legs must be a JSON array"),
+            ):
+                with pytest.raises(ToolError, match=expected_msg):
+                    await client.call_tool(
+                        "place_option_order",
+                        {
+                            "qty": "1",
+                            "order_class": "mleg",
+                            "legs": bad_legs,
+                        },
+                    )
+
+    assert sent_requests == []
 
 
 async def test_toolset_filtering():
